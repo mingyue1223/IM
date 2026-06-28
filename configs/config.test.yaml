@@ -6,9 +6,9 @@ server:
 mysql:
   host: "localhost"
   port: 3306
-  user: "goim_test"
-  password: "goim_test"
-  db_name: "goim_test"
+  user: "goim"
+  password: "goim123"
+  db_name: "goim"
 
 redis:
   addr: "localhost:6379"

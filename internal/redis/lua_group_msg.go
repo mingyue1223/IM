@@ -46,11 +46,10 @@ end
 
 -- 3. Message dedup
 local dedupKey = 'msg_dedup:' .. senderID .. ':' .. clientMsgID
-local dedup = redis.call('SETNX', dedupKey, '1')
-if dedup == 0 then
+local dedup = redis.call('SET', dedupKey, '1', 'EX', 300, 'NX')
+if dedup == false then
     return {3, 0, 0, 0, 0}
 end
-redis.call('EXPIRE', dedupKey, 300) -- TTL=5min
 
 -- 4. Allocate global message ID
 local msgID = redis.call('INCR', 'msg_id_global')

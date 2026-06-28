@@ -34,6 +34,11 @@ local msgs = redis.call('ZRANGE', zsetKey, 0, -1)
 for i, msg in ipairs(msgs) do
     local decoded = cjson.decode(msg)
     if decoded.msgId == msgID then
+        -- Authorization: only the original sender can revoke
+        if decoded.fromId ~= tonumber(userID) then
+            return 0 -- Not authorized: requester is not the sender
+        end
+
         -- Check 2-minute window
         if nowTimestamp - decoded.timestamp > 120000 then
             return 0 -- Too late, cannot revoke

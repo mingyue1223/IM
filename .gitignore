@@ -1,0 +1,5 @@
+uploads/
+*.exe
+*.test
+.env
+config.local.yaml

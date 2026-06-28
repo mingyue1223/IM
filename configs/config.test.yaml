@@ -1,0 +1,35 @@
+server:
+  port: 8080
+  ws_path: "/ws"
+  upload_dir: "./uploads"
+
+mysql:
+  host: "localhost"
+  port: 3306
+  user: "goim_test"
+  password: "goim_test"
+  db_name: "goim_test"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 1
+
+rabbitmq:
+  url: "amqp://guest:guest@localhost:5672/"
+
+jwt:
+  secret: "test-secret"
+  access_exp_hours: 1
+  refresh_exp_days: 1
+
+llm:
+  provider: "openai"
+  api_key: "test-key"
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-4o-mini"
+
+file:
+  max_size_mb: 10
+  allowed_exts: ["jpg", "png"]
+  upload_dir: "./uploads"

@@ -175,50 +175,165 @@ func (m *MySQLRepoImpl) UpdateUser(ctx context.Context, user *model.User) error 
 	return nil
 }
 
-// ── Friendships (stub — fleshed out in Task 13) ──
+// ── Friendships (implemented in Task 13) ──
 
 func (m *MySQLRepoImpl) CreateFriendRequest(ctx context.Context, req *model.FriendRequest) error {
-	return fmt.Errorf("stub: CreateFriendRequest not yet implemented")
+	query := `INSERT INTO friend_requests (from_user_id, to_user_id, message, status)
+	          VALUES (?, ?, ?, ?)`
+	result, err := m.db.ExecContext(ctx, query,
+		req.FromUserID,
+		req.ToUserID,
+		req.Message,
+		req.Status,
+	)
+	if err != nil {
+		return fmt.Errorf("insert friend_requests: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("insert friend_requests lastInsertId: %w", err)
+	}
+	req.ID = id
+	return nil
 }
 
 func (m *MySQLRepoImpl) UpdateFriendRequest(ctx context.Context, req *model.FriendRequest) error {
-	return fmt.Errorf("stub: UpdateFriendRequest not yet implemented")
+	query := `UPDATE friend_requests SET status=?, updated_at=NOW() WHERE id=?`
+	_, err := m.db.ExecContext(ctx, query, req.Status, req.ID)
+	if err != nil {
+		return fmt.Errorf("update friend_requests: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) GetFriendRequestByID(ctx context.Context, id int64) (*model.FriendRequest, error) {
-	return nil, fmt.Errorf("stub: GetFriendRequestByID not yet implemented")
+	query := `SELECT id, from_user_id, to_user_id, message, status, created_at, updated_at
+	          FROM friend_requests WHERE id = ?`
+	row := m.db.QueryRowContext(ctx, query, id)
+	var r model.FriendRequest
+	err := row.Scan(&r.ID, &r.FromUserID, &r.ToUserID, &r.Message, &r.Status, &r.CreatedAt, &r.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get friend_request by id: %w", err)
+	}
+	return &r, nil
 }
 
 func (m *MySQLRepoImpl) GetFriendRequestsByUser(ctx context.Context, userID int64) ([]model.FriendRequest, error) {
-	return nil, fmt.Errorf("stub: GetFriendRequestsByUser not yet implemented")
+	query := `SELECT id, from_user_id, to_user_id, message, status, created_at, updated_at
+	          FROM friend_requests WHERE from_user_id = ? OR to_user_id = ?
+	          ORDER BY created_at DESC`
+	rows, err := m.db.QueryContext(ctx, query, userID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get friend_requests by user: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.FriendRequest
+	for rows.Next() {
+		var r model.FriendRequest
+		if err := rows.Scan(&r.ID, &r.FromUserID, &r.ToUserID, &r.Message, &r.Status, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan friend_request: %w", err)
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate friend_requests: %w", err)
+	}
+	return results, nil
 }
 
 func (m *MySQLRepoImpl) CreateFriendship(ctx context.Context, fs *model.Friendship) error {
-	return fmt.Errorf("stub: CreateFriendship not yet implemented")
+	// Insert bidirectional rows: user→friend AND friend→user
+	query := `INSERT INTO friendships (user_id, friend_id) VALUES (?, ?)`
+	_, err := m.db.ExecContext(ctx, query, fs.UserID, fs.FriendID)
+	if err != nil {
+		return fmt.Errorf("insert friendship user→friend: %w", err)
+	}
+	_, err = m.db.ExecContext(ctx, query, fs.FriendID, fs.UserID)
+	if err != nil {
+		return fmt.Errorf("insert friendship friend→user: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) DeleteFriendship(ctx context.Context, userID, friendID int64) error {
-	return fmt.Errorf("stub: DeleteFriendship not yet implemented")
+	// Delete bidirectional rows: user→friend AND friend→user
+	query := `DELETE FROM friendships WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`
+	_, err := m.db.ExecContext(ctx, query, userID, friendID, friendID, userID)
+	if err != nil {
+		return fmt.Errorf("delete friendship: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) GetFriendList(ctx context.Context, userID int64) ([]model.Friendship, error) {
-	return nil, fmt.Errorf("stub: GetFriendList not yet implemented")
+	query := `SELECT f.id, f.user_id, f.friend_id, f.created_at
+	          FROM friendships f
+	          WHERE f.user_id = ?`
+	rows, err := m.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get friend list: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.Friendship
+	for rows.Next() {
+		var fs model.Friendship
+		if err := rows.Scan(&fs.ID, &fs.UserID, &fs.FriendID, &fs.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan friendship: %w", err)
+		}
+		results = append(results, fs)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate friendships: %w", err)
+	}
+	return results, nil
 }
 
 func (m *MySQLRepoImpl) IsFriend(ctx context.Context, userID, friendID int64) (bool, error) {
-	return false, fmt.Errorf("stub: IsFriend not yet implemented")
+	query := `SELECT COUNT(*) FROM friendships WHERE user_id = ? AND friend_id = ?`
+	var count int
+	err := m.db.QueryRowContext(ctx, query, userID, friendID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check is_friend: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (m *MySQLRepoImpl) CreateBlacklist(ctx context.Context, bl *model.Blacklist) error {
-	return fmt.Errorf("stub: CreateBlacklist not yet implemented")
+	query := `INSERT INTO blacklist (user_id, blocked_id) VALUES (?, ?)`
+	result, err := m.db.ExecContext(ctx, query, bl.UserID, bl.BlockedID)
+	if err != nil {
+		return fmt.Errorf("insert blacklist: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("insert blacklist lastInsertId: %w", err)
+	}
+	bl.ID = id
+	return nil
 }
 
 func (m *MySQLRepoImpl) DeleteBlacklist(ctx context.Context, userID, blockedID int64) error {
-	return fmt.Errorf("stub: DeleteBlacklist not yet implemented")
+	query := `DELETE FROM blacklist WHERE user_id = ? AND blocked_id = ?`
+	_, err := m.db.ExecContext(ctx, query, userID, blockedID)
+	if err != nil {
+		return fmt.Errorf("delete blacklist: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) IsBlocked(ctx context.Context, userID, blockedID int64) (bool, error) {
-	return false, fmt.Errorf("stub: IsBlocked not yet implemented")
+	query := `SELECT COUNT(*) FROM blacklist WHERE user_id = ? AND blocked_id = ?`
+	var count int
+	err := m.db.QueryRowContext(ctx, query, userID, blockedID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check is_blocked: %w", err)
+	}
+	return count > 0, nil
 }
 
 // ── Groups (stub — fleshed out in Task 14) ──

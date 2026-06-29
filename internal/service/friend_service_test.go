@@ -316,6 +316,8 @@ func (m *mockFriendRedisRepo) ExecInboxMarkRead(_ context.Context, _ int64, _ st
 func (m *mockFriendRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string, _ int64, _ string, _ int64) (bool, error) {
 	return false, nil
 }
+func (m *mockFriendRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
+func (m *mockFriendRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
 
 // ──────────────────────────────────────────────────────
 // Helper: new test FriendService

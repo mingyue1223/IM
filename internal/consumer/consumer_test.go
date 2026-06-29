@@ -187,6 +187,8 @@ func (m *MockRedisRepo) ExecInboxMarkRead(ctx context.Context, userID int64, con
 func (m *MockRedisRepo) ExecRevokeMsg(ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error) {
 	return false, fmt.Errorf("stub: not used by consumer")
 }
+func (m *MockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
+func (m *MockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
 
 // ──────────────────────────────────────────────────────
 // Helper: create a ClientConnection without a real websocket.Conn

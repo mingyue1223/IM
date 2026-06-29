@@ -15,6 +15,30 @@ const (
 	PMErrDuplicate = 3
 )
 
+// Client-facing error codes mapped from Lua error codes.
+// These avoid leaking raw Lua integers (1,2,3) alongside HTTP-style codes (400,500,403).
+const (
+	CodePMNotFriend  = 4001
+	CodePMBlocked    = 4002
+	CodePMDuplicate  = 4003
+)
+
+// MapLuaErrToClientCode translates a private-message Lua error code to a
+// client-facing error code. Returns 0 for OK and the original code for
+// unrecognized Lua codes (they fall through as "unknown error").
+func MapLuaErrToClientCode(luaErrCode int) int {
+	switch luaErrCode {
+	case PMErrNotFriend:
+		return CodePMNotFriend
+	case PMErrBlocked:
+		return CodePMBlocked
+	case PMErrDuplicate:
+		return CodePMDuplicate
+	default:
+		return luaErrCode
+	}
+}
+
 // PrivateMsgCheckResult holds the result of the private message check Lua script.
 type PrivateMsgCheckResult struct {
 	ErrCode   int   // 0=ok, 1=not_friend, 2=blocked, 3=duplicate

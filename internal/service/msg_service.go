@@ -88,16 +88,16 @@ func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *
 	case redislua.PMErrOK:
 		// proceed below
 	case redislua.PMErrNotFriend:
-		s.sendError(senderID, redislua.PMErrNotFriend, ErrNotFriend)
+		s.sendError(senderID, redislua.CodePMNotFriend, ErrNotFriend)
 		return
 	case redislua.PMErrBlocked:
-		s.sendError(senderID, redislua.PMErrBlocked, ErrBlocked)
+		s.sendError(senderID, redislua.CodePMBlocked, ErrBlocked)
 		return
 	case redislua.PMErrDuplicate:
-		s.sendError(senderID, redislua.PMErrDuplicate, ErrDuplicate)
+		s.sendError(senderID, redislua.CodePMDuplicate, ErrDuplicate)
 		return
 	default:
-		s.sendError(senderID, checkResult.ErrCode, "unknown error")
+		s.sendError(senderID, redislua.MapLuaErrToClientCode(checkResult.ErrCode), "unknown error")
 		return
 	}
 
@@ -168,16 +168,16 @@ func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *mo
 	case redislua.GMErrOK:
 		// proceed below
 	case redislua.GMErrNotMember:
-		s.sendError(senderID, redislua.GMErrNotMember, ErrNotMember)
+		s.sendError(senderID, redislua.CodeGMNotMember, ErrNotMember)
 		return
 	case redislua.GMErrMuted:
-		s.sendError(senderID, redislua.GMErrMuted, ErrMuted)
+		s.sendError(senderID, redislua.CodeGMMuted, ErrMuted)
 		return
 	case redislua.GMErrDuplicate:
-		s.sendError(senderID, redislua.GMErrDuplicate, ErrDuplicate)
+		s.sendError(senderID, redislua.CodeGMDuplicate, ErrDuplicate)
 		return
 	default:
-		s.sendError(senderID, checkResult.ErrCode, "unknown error")
+		s.sendError(senderID, redislua.MapGroupLuaErrToClientCode(checkResult.ErrCode), "unknown error")
 		return
 	}
 
@@ -310,7 +310,10 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 		convID := model.BuildConvID(model.ConvTypeGroup, gid, 0)
 		lastReadSeq, _ := s.redisRepo.GetGroupReadPos(ctx, userID, convID)
 
-		outboxMsgs, err := s.redisRepo.ReadOutbox(ctx, gid, req.LastSyncTime, req.BatchSize+1)
+		// Over-fetch by 3x batchSize to compensate for groupSeq filtering.
+		// Many outbox entries may fall below lastReadSeq and be discarded,
+		// so requesting batchSize+1 is insufficient for reliable hasMore detection.
+		outboxMsgs, err := s.redisRepo.ReadOutbox(ctx, gid, req.LastSyncTime, req.BatchSize*3)
 		if err != nil {
 			s.logger.Warn("ReadOutbox failed", zap.Int64("groupID", gid), zap.Error(err))
 			continue
@@ -330,7 +333,10 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 	})
 
 	// ── 4. Determine hasMore ──
-	hasMore := len(allMsgs) > req.BatchSize
+	// If the qualifying message count >= batchSize, there may be more messages
+	// in future pages. This handles the case where group filtering reduces the
+	// count below batchSize even though more qualifying entries exist.
+	hasMore := len(allMsgs) >= req.BatchSize
 	if hasMore {
 		allMsgs = allMsgs[:req.BatchSize]
 	}

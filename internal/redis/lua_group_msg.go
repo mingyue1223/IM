@@ -15,6 +15,29 @@ const (
 	GMErrDuplicate = 3
 )
 
+// Client-facing error codes mapped from group Lua error codes.
+const (
+	CodeGMNotMember  = 5001
+	CodeGMMuted      = 5002
+	CodeGMDuplicate  = 5003
+)
+
+// MapGroupLuaErrToClientCode translates a group-message Lua error code to a
+// client-facing error code. Returns 0 for OK and the original code for
+// unrecognized Lua codes.
+func MapGroupLuaErrToClientCode(luaErrCode int) int {
+	switch luaErrCode {
+	case GMErrNotMember:
+		return CodeGMNotMember
+	case GMErrMuted:
+		return CodeGMMuted
+	case GMErrDuplicate:
+		return CodeGMDuplicate
+	default:
+		return luaErrCode
+	}
+}
+
 // GroupMsgCheckResult holds the result of the group message check Lua script.
 type GroupMsgCheckResult struct {
 	ErrCode  int   // 0=ok, 1=not_member, 2=muted, 3=duplicate

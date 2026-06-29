@@ -81,7 +81,7 @@ func (m *mockRedisRepo) ReadInbox(_ context.Context, userID int64, lastSyncTime 
 	msgs := m.inboxMessages[userID]
 	var result []model.InboxMessage
 	for _, msg := range msgs {
-		if msg.Timestamp > lastSyncTime {
+		if msg.Timestamp >= lastSyncTime {
 			result = append(result, msg)
 			if len(result) >= batchSize {
 				break
@@ -97,7 +97,7 @@ func (m *mockRedisRepo) ReadOutbox(_ context.Context, groupID int64, lastSyncTim
 	msgs := m.outboxMessages[groupID]
 	var result []model.InboxMessage
 	for _, msg := range msgs {
-		if msg.Timestamp > lastSyncTime {
+		if msg.Timestamp >= lastSyncTime {
 			result = append(result, msg)
 			if len(result) >= limit {
 				break
@@ -169,6 +169,10 @@ func (m *mockRedisRepo) CheckDuplicate(_ context.Context, userID int64, clientMs
 
 func (m *mockRedisRepo) TrimInbox(_ context.Context, userID int64, maxCount int) error { return nil }
 func (m *mockRedisRepo) TrimOutbox(_ context.Context, groupID int64, maxCount int) error { return nil }
+func (m *mockRedisRepo) TrimInboxByTime(_ context.Context, userID int64, beforeTimestamp int64) error { return nil }
+func (m *mockRedisRepo) TrimOutboxByTime(_ context.Context, groupID int64, beforeTimestamp int64) error { return nil }
+func (m *mockRedisRepo) TrimConvListByTime(_ context.Context, userID int64, beforeTimestamp int64) error { return nil }
+func (m *mockRedisRepo) TrimTimelineByTime(_ context.Context, userID int64, beforeTimestamp int64) error { return nil }
 
 func (m *mockRedisRepo) ExecPrivateMsgCheck(_ context.Context, senderID, receiverID int64, clientMsgID string) (*redislua.PrivateMsgCheckResult, error) {
 	m.mu.Lock()
@@ -369,7 +373,7 @@ func TestPrivateMsgSend_NotFriend(t *testing.T) {
 
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
-	assert.Equal(t, redislua.PMErrNotFriend, wsErr.Code)
+	assert.Equal(t, redislua.CodePMNotFriend, wsErr.Code)
 	assert.Equal(t, ErrNotFriend, wsErr.Message)
 
 	// Verify: MQ publish was NOT called
@@ -413,7 +417,7 @@ func TestPrivateMsgSend_Blocked(t *testing.T) {
 
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
-	assert.Equal(t, redislua.PMErrBlocked, wsErr.Code)
+	assert.Equal(t, redislua.CodePMBlocked, wsErr.Code)
 	assert.Equal(t, ErrBlocked, wsErr.Message)
 }
 
@@ -450,7 +454,7 @@ func TestPrivateMsgSend_Duplicate(t *testing.T) {
 
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
-	assert.Equal(t, redislua.PMErrDuplicate, wsErr.Code)
+	assert.Equal(t, redislua.CodePMDuplicate, wsErr.Code)
 }
 
 func TestPrivateMsgSend_ReceiverOffline(t *testing.T) {
@@ -619,7 +623,7 @@ func TestGroupMsgSend_NotMember(t *testing.T) {
 
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
-	assert.Equal(t, redislua.GMErrNotMember, wsErr.Code)
+	assert.Equal(t, redislua.CodeGMNotMember, wsErr.Code)
 	assert.Equal(t, ErrNotMember, wsErr.Message)
 }
 
@@ -660,7 +664,7 @@ func TestGroupMsgSend_Muted(t *testing.T) {
 
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
-	assert.Equal(t, redislua.GMErrMuted, wsErr.Code)
+	assert.Equal(t, redislua.CodeGMMuted, wsErr.Code)
 	assert.Equal(t, ErrMuted, wsErr.Message)
 }
 

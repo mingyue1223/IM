@@ -44,6 +44,10 @@ type RedisRepo interface {
 	// ── Trim (for cleanup task) ──
 	TrimInbox(ctx context.Context, userID int64, maxCount int) error
 	TrimOutbox(ctx context.Context, groupID int64, maxCount int) error
+	TrimInboxByTime(ctx context.Context, userID int64, beforeTimestamp int64) error
+	TrimOutboxByTime(ctx context.Context, groupID int64, beforeTimestamp int64) error
+	TrimConvListByTime(ctx context.Context, userID int64, beforeTimestamp int64) error
+	TrimTimelineByTime(ctx context.Context, userID int64, beforeTimestamp int64) error
 
 	// ── Lua script wrappers ──
 	ExecPrivateMsgCheck(ctx context.Context, senderID, receiverID int64, clientMsgID string) (*redis.PrivateMsgCheckResult, error)
@@ -289,6 +293,44 @@ func (r *RedisRepoImpl) TrimOutbox(ctx context.Context, groupID int64, maxCount 
 		if err := r.rdb.ZRemRangeByRank(ctx, key, 0, removeCount-1).Err(); err != nil {
 			return fmt.Errorf("ZRemRangeByRank outbox: %w", err)
 		}
+	}
+	return nil
+}
+
+// ── Time-based Trim ──
+
+func (r *RedisRepoImpl) TrimInboxByTime(ctx context.Context, userID int64, beforeTimestamp int64) error {
+	key := fmt.Sprintf("inbox:%d", userID)
+	max := fmt.Sprintf("%d", beforeTimestamp)
+	if err := r.rdb.ZRemRangeByScore(ctx, key, "0", max).Err(); err != nil {
+		return fmt.Errorf("ZRemRangeByScore inbox: %w", err)
+	}
+	return nil
+}
+
+func (r *RedisRepoImpl) TrimOutboxByTime(ctx context.Context, groupID int64, beforeTimestamp int64) error {
+	key := fmt.Sprintf("outbox:%d", groupID)
+	max := fmt.Sprintf("%d", beforeTimestamp)
+	if err := r.rdb.ZRemRangeByScore(ctx, key, "0", max).Err(); err != nil {
+		return fmt.Errorf("ZRemRangeByScore outbox: %w", err)
+	}
+	return nil
+}
+
+func (r *RedisRepoImpl) TrimConvListByTime(ctx context.Context, userID int64, beforeTimestamp int64) error {
+	key := fmt.Sprintf("conv_list:%d", userID)
+	max := fmt.Sprintf("%d", beforeTimestamp)
+	if err := r.rdb.ZRemRangeByScore(ctx, key, "0", max).Err(); err != nil {
+		return fmt.Errorf("ZRemRangeByScore conv_list: %w", err)
+	}
+	return nil
+}
+
+func (r *RedisRepoImpl) TrimTimelineByTime(ctx context.Context, userID int64, beforeTimestamp int64) error {
+	key := fmt.Sprintf("timeline:%d", userID)
+	max := fmt.Sprintf("%d", beforeTimestamp)
+	if err := r.rdb.ZRemRangeByScore(ctx, key, "0", max).Err(); err != nil {
+		return fmt.Errorf("ZRemRangeByScore timeline: %w", err)
 	}
 	return nil
 }

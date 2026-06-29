@@ -290,6 +290,9 @@ func (m *momentMockRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string
 }
 func (m *momentMockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
 func (m *momentMockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
+func (m *momentMockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
+func (m *momentMockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
+func (m *momentMockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 
 // momentMockMQRepo implements repository.MQRepo for moment tests.
 type momentMockMQRepo struct {

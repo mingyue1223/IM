@@ -325,6 +325,9 @@ func (m *mockFriendRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ in
 func (m *mockFriendRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
+func (m *mockFriendRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
+func (m *mockFriendRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
+func (m *mockFriendRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 
 // ──────────────────────────────────────────────────────
 // Helper: new test FriendService

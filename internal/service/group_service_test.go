@@ -338,6 +338,9 @@ func (r *mockGroupRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int
 func (r *mockGroupRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
+func (r *mockGroupRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
+func (r *mockGroupRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
+func (r *mockGroupRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 
 // ──────────────────────────────────────────────────────
 // Helper: verify mockMySQLRepo satisfies MySQLRepo interface

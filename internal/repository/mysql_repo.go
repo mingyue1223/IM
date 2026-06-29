@@ -558,13 +558,60 @@ func (m *MySQLRepoImpl) DeleteMomentComment(ctx context.Context, id int64) error
 // ── AI (stub — fleshed out in Task 16) ──
 
 func (m *MySQLRepoImpl) CreateAISummary(ctx context.Context, summary *model.AISummary) error {
-	return fmt.Errorf("stub: CreateAISummary not yet implemented")
+	query := `INSERT INTO ai_summaries (user_id, topic, key_points, conclusion, user_intent, message_range, created_at)
+	          VALUES (?, ?, ?, ?, ?, ?, ?)`
+	_, err := m.db.ExecContext(ctx, query,
+		summary.UserID,
+		summary.Topic,
+		summary.KeyPoints,
+		summary.Conclusion,
+		summary.UserIntent,
+		summary.MessageRange,
+		summary.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("insert ai_summaries: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) CreateAIProfileItem(ctx context.Context, item *model.AIProfileItem) error {
-	return fmt.Errorf("stub: CreateAIProfileItem not yet implemented")
+	query := `INSERT INTO ai_user_profiles (user_id, field_name, value, confidence, source, updated_at)
+	          VALUES (?, ?, ?, ?, ?, ?)
+	          ON DUPLICATE KEY UPDATE value=VALUES(value), confidence=VALUES(confidence), source=VALUES(source), updated_at=VALUES(updated_at)`
+	_, err := m.db.ExecContext(ctx, query,
+		item.UserID,
+		item.FieldName,
+		item.Value,
+		item.Confidence,
+		item.Source,
+		item.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("insert ai_user_profiles: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) GetAIProfileByUser(ctx context.Context, userID int64) ([]model.AIProfileItem, error) {
-	return nil, fmt.Errorf("stub: GetAIProfileByUser not yet implemented")
+	query := `SELECT id, user_id, field_name, value, confidence, source, updated_at
+	          FROM ai_user_profiles WHERE user_id = ? ORDER BY confidence DESC`
+	rows, err := m.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query ai_user_profiles: %w", err)
+	}
+	defer rows.Close()
+
+	var items []model.AIProfileItem
+	for rows.Next() {
+		var item model.AIProfileItem
+		if err := rows.Scan(&item.ID, &item.UserID, &item.FieldName, &item.Value, &item.Confidence, &item.Source, &item.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan ai_user_profile: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate ai_user_profiles: %w", err)
+	}
+	return items, nil
 }

@@ -170,6 +170,9 @@ func (m *mockRedisRepo) GetGroupMembers(_ context.Context, groupID int64) ([]int
 	return []int64{}, nil
 }
 
+func (m *mockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error    { return nil }
+func (m *mockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
+
 func (m *mockRedisRepo) CheckDuplicate(_ context.Context, userID int64, clientMsgID string) (bool, error) {
 	return false, nil
 }

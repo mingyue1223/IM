@@ -221,34 +221,105 @@ func (m *MySQLRepoImpl) IsBlocked(ctx context.Context, userID, blockedID int64) 
 	return false, fmt.Errorf("stub: IsBlocked not yet implemented")
 }
 
-// ── Groups (stub — fleshed out in Task 14) ──
+// ── Groups (fleshed out in Task 14) ──
 
 func (m *MySQLRepoImpl) CreateGroup(ctx context.Context, group *model.Group) (int64, error) {
-	return 0, fmt.Errorf("stub: CreateGroup not yet implemented")
+	query := `INSERT INTO groups (name, notice, owner_id, max_members, created_at, updated_at)
+	          VALUES (?, ?, ?, 500, NOW(), NOW())`
+	result, err := m.db.ExecContext(ctx, query,
+		group.Name,
+		group.Notice,
+		group.OwnerID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("create group: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("create group lastInsertId: %w", err)
+	}
+	return id, nil
 }
 
 func (m *MySQLRepoImpl) UpdateGroup(ctx context.Context, group *model.Group) error {
-	return fmt.Errorf("stub: UpdateGroup not yet implemented")
+	query := `UPDATE groups SET name=?, notice=?, updated_at=NOW() WHERE id=?`
+	_, err := m.db.ExecContext(ctx, query, group.Name, group.Notice, group.ID)
+	if err != nil {
+		return fmt.Errorf("update group: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) GetGroupByID(ctx context.Context, groupID int64) (*model.Group, error) {
-	return nil, fmt.Errorf("stub: GetGroupByID not yet implemented")
+	query := `SELECT id, name, notice, owner_id, max_members, created_at, updated_at
+	          FROM groups WHERE id = ?`
+	row := m.db.QueryRowContext(ctx, query, groupID)
+	var g model.Group
+	err := row.Scan(&g.ID, &g.Name, &g.Notice, &g.OwnerID, &g.MaxMembers, &g.CreatedAt, &g.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get group by id: %w", err)
+	}
+	return &g, nil
 }
 
 func (m *MySQLRepoImpl) AddGroupMember(ctx context.Context, member *model.GroupMember) error {
-	return fmt.Errorf("stub: AddGroupMember not yet implemented")
+	query := `INSERT INTO group_members (group_id, user_id, role, muted_until, joined_at)
+	          VALUES (?, ?, ?, ?, NOW())`
+	_, err := m.db.ExecContext(ctx, query,
+		member.GroupID,
+		member.UserID,
+		member.Role,
+		member.MutedUntil,
+	)
+	if err != nil {
+		return fmt.Errorf("add group member: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) RemoveGroupMember(ctx context.Context, groupID, userID int64) error {
-	return fmt.Errorf("stub: RemoveGroupMember not yet implemented")
+	query := `DELETE FROM group_members WHERE group_id=? AND user_id=?`
+	_, err := m.db.ExecContext(ctx, query, groupID, userID)
+	if err != nil {
+		return fmt.Errorf("remove group member: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) GetGroupMembers(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
-	return nil, fmt.Errorf("stub: GetGroupMembers not yet implemented")
+	query := `SELECT id, group_id, user_id, role, muted_until, joined_at
+	          FROM group_members WHERE group_id = ?`
+	rows, err := m.db.QueryContext(ctx, query, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("get group members: %w", err)
+	}
+	defer rows.Close()
+
+	members := make([]model.GroupMember, 0)
+	for rows.Next() {
+		var gm model.GroupMember
+		err := rows.Scan(&gm.ID, &gm.GroupID, &gm.UserID, &gm.Role, &gm.MutedUntil, &gm.JoinedAt)
+		if err != nil {
+			return nil, fmt.Errorf("scan group member: %w", err)
+		}
+		members = append(members, gm)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate group members: %w", err)
+	}
+	return members, nil
 }
 
 func (m *MySQLRepoImpl) UpdateGroupMemberRole(ctx context.Context, groupID, userID, role int) error {
-	return fmt.Errorf("stub: UpdateGroupMemberRole not yet implemented")
+	query := `UPDATE group_members SET role=? WHERE group_id=? AND user_id=?`
+	_, err := m.db.ExecContext(ctx, query, role, groupID, userID)
+	if err != nil {
+		return fmt.Errorf("update group member role: %w", err)
+	}
+	return nil
 }
 
 // ── Moments (stub — fleshed out in Task 15) ──

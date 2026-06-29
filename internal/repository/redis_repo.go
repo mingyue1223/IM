@@ -38,6 +38,8 @@ type RedisRepo interface {
 	// ── Group memberships ──
 	GetGroupMemberships(ctx context.Context, userID int64) ([]int64, error)
 	GetGroupMembers(ctx context.Context, groupID int64) ([]int64, error)
+	AddGroupMemberRedis(ctx context.Context, groupID, userID int64) error
+	RemoveGroupMemberRedis(ctx context.Context, groupID, userID int64) error
 
 	// ── Dedup ──
 	CheckDuplicate(ctx context.Context, userID int64, clientMsgID string) (bool, error)
@@ -270,6 +272,36 @@ func (r *RedisRepoImpl) GetGroupMembers(ctx context.Context, groupID int64) ([]i
 		memberIDs = append(memberIDs, id)
 	}
 	return memberIDs, nil
+}
+
+func (r *RedisRepoImpl) AddGroupMemberRedis(ctx context.Context, groupID, userID int64) error {
+	groupKey := fmt.Sprintf("group_members:%d", groupID)
+	userKey := fmt.Sprintf("user_groups:%d", userID)
+	userIDStr := strconv.FormatInt(userID, 10)
+	groupIDStr := strconv.FormatInt(groupID, 10)
+
+	if err := r.rdb.SAdd(ctx, groupKey, userIDStr).Err(); err != nil {
+		return fmt.Errorf("SADD group_members: %w", err)
+	}
+	if err := r.rdb.SAdd(ctx, userKey, groupIDStr).Err(); err != nil {
+		return fmt.Errorf("SADD user_groups: %w", err)
+	}
+	return nil
+}
+
+func (r *RedisRepoImpl) RemoveGroupMemberRedis(ctx context.Context, groupID, userID int64) error {
+	groupKey := fmt.Sprintf("group_members:%d", groupID)
+	userKey := fmt.Sprintf("user_groups:%d", userID)
+	userIDStr := strconv.FormatInt(userID, 10)
+	groupIDStr := strconv.FormatInt(groupID, 10)
+
+	if err := r.rdb.SRem(ctx, groupKey, userIDStr).Err(); err != nil {
+		return fmt.Errorf("SREM group_members: %w", err)
+	}
+	if err := r.rdb.SRem(ctx, userKey, groupIDStr).Err(); err != nil {
+		return fmt.Errorf("SREM user_groups: %w", err)
+	}
+	return nil
 }
 
 // ── Dedup ──

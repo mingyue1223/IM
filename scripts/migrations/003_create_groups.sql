@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS groups (
+CREATE TABLE IF NOT EXISTS `groups` (
     id            BIGINT PRIMARY KEY AUTO_INCREMENT,
     name          VARCHAR(100) NOT NULL,
     notice        VARCHAR(500) DEFAULT '',

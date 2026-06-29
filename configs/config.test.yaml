@@ -5,13 +5,13 @@ server:
 
 mysql:
   host: "localhost"
-  port: 3306
+  port: 13306
   user: "goim"
   password: "goim123"
   db_name: "goim"
 
 redis:
-  addr: "localhost:6379"
+  addr: "localhost:16379"
   password: ""
   db: 1
 

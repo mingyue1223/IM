@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/goim/goim/internal/conn"
 	"github.com/goim/goim/internal/middleware"
 	"github.com/gorilla/websocket"
@@ -28,7 +27,7 @@ var upgrader = websocket.Upgrader{
 //  2. Upgrades the HTTP connection to WebSocket
 //  3. Creates a ClientConnection
 //  4. Kicks any existing connection for the same user (single-device policy)
-//  5. Updates Redis online status (online:{userID} TTL=60s, conn:{userID} device info)
+//  5. Updates Redis online status (online:{userID} TTL=60s, conn:{userID} TTL=60s)
 //  6. Starts ReadPump and WritePump goroutines
 func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionManager, msgHandler func(*conn.ClientConnection, []byte)) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -39,11 +38,8 @@ func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionMana
 			return
 		}
 
-		claims := &middleware.Claims{}
-		parsedToken, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
-			return []byte(jwtSecret), nil
-		})
-		if err != nil || !parsedToken.Valid {
+		_, claims, err := middleware.ParseToken(token, jwtSecret)
+		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
@@ -61,12 +57,18 @@ func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionMana
 		// Kick old connection for this user (single-device policy)
 		cm.KickOld(claims.UserID, client)
 
-		// Update Redis online status
-		ctx := context.Background()
-		onlineKey := fmt.Sprintf("online:%d", claims.UserID)
-		connKey := fmt.Sprintf("conn:%d", claims.UserID)
-		rdb.Set(ctx, onlineKey, "1", 60*time.Second)
-		rdb.Set(ctx, connKey, fmt.Sprintf("ws:%d", time.Now().UnixNano()), 0)
+		// Update Redis online status (nil guard — Redis is optional in test environments)
+		if rdb != nil {
+			ctx := context.Background()
+			onlineKey := fmt.Sprintf("online:%d", claims.UserID)
+			connKey := fmt.Sprintf("conn:%d", claims.UserID)
+			if err := rdb.Set(ctx, onlineKey, "1", 60*time.Second).Err(); err != nil {
+				log.Printf("redis set online key error: %v", err)
+			}
+			if err := rdb.Set(ctx, connKey, fmt.Sprintf("ws:%d", time.Now().UnixNano()), 60*time.Second).Err(); err != nil {
+				log.Printf("redis set conn key error: %v", err)
+			}
+		}
 
 		log.Printf("user %d (%s) connected via WebSocket", claims.UserID, claims.Username)
 

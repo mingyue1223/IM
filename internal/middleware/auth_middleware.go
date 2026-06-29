@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -44,6 +45,24 @@ func GenerateRefreshToken(userID int64, secret string, expireDays int) (string, 
 	return token.SignedString([]byte(secret))
 }
 
+// ParseToken parses and validates a JWT token string using the given secret.
+// It returns the parsed token and claims on success, or an error on failure.
+// Both JWTAuthMiddleware and ServeWebSocket use this helper to avoid
+// duplicating JWT parsing logic.
+func ParseToken(tokenStr, secret string) (*jwt.Token, *Claims, error) {
+	claims := &Claims{}
+	parsedToken, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if !parsedToken.Valid {
+		return nil, nil, fmt.Errorf("token is invalid")
+	}
+	return parsedToken, claims, nil
+}
+
 // JWTAuthMiddleware returns a Gin middleware that validates JWT tokens.
 // It accepts tokens from:
 //   - Authorization header (Bearer <token>)
@@ -65,10 +84,7 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 		}
 
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-		claims := &Claims{}
-		_, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-			return []byte(secret), nil
-		})
+		_, claims, err := ParseToken(tokenStr, secret)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return

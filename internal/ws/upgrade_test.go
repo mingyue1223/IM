@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/goim/goim/internal/conn"
@@ -67,19 +68,28 @@ func TestServeWebSocket_ValidToken_Upgrades(t *testing.T) {
 	// Connect as a WebSocket client
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?token=" + token
 	wsClient, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err == nil {
-		// Successfully upgraded
-		assert.NotNil(t, wsClient)
-		// Verify connection was registered in ConnectionManager
-		clientConn, ok := cm.Get(1)
-		assert.True(t, ok)
-		assert.NotNil(t, clientConn)
-
-		// Clean up
-		wsClient.Close()
-	} else {
+	if err != nil {
 		// In some test environments, the WebSocket upgrade may not succeed
-		// due to timing or goroutine issues — we just verify the HTTP part works
-		t.Logf("WebSocket client dial error (expected in some environments): %v", err)
+		// due to timing or goroutine issues — skip rather than silently pass
+		t.Skipf("WebSocket client dial error (skipping): %v", err)
 	}
+	defer wsClient.Close()
+
+	// Successfully upgraded
+	assert.NotNil(t, wsClient)
+
+	// Verify connection was registered in ConnectionManager
+	// Registration happens in a goroutine that may not have completed immediately,
+	// so we retry with a short timeout to avoid a flaky race condition.
+	var clientConn *conn.ClientConnection
+	var ok bool
+	for i := 0; i < 10; i++ {
+		clientConn, ok = cm.Get(1)
+		if ok {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	assert.True(t, ok, "expected connection for user 1 to be registered in ConnectionManager")
+	assert.NotNil(t, clientConn)
 }

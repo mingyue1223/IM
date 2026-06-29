@@ -84,6 +84,31 @@ func TestJWTAuthMiddleware_QueryParamToken(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 }
 
+func TestParseToken_ValidToken(t *testing.T) {
+	token, err := GenerateAccessToken(10, "parseuser", "parse-secret", 2)
+	assert.NoError(t, err)
+
+	parsedToken, claims, err := ParseToken(token, "parse-secret")
+	assert.NoError(t, err)
+	assert.NotNil(t, parsedToken)
+	assert.True(t, parsedToken.Valid)
+	assert.Equal(t, int64(10), claims.UserID)
+	assert.Equal(t, "parseuser", claims.Username)
+}
+
+func TestParseToken_InvalidToken(t *testing.T) {
+	_, _, err := ParseToken("invalid-token-string", "some-secret")
+	assert.Error(t, err)
+}
+
+func TestParseToken_WrongSecret(t *testing.T) {
+	token, err := GenerateAccessToken(5, "user5", "secret-a", 2)
+	assert.NoError(t, err)
+
+	_, _, err = ParseToken(token, "secret-b")
+	assert.Error(t, err)
+}
+
 func TestGenerateAccessToken(t *testing.T) {
 	token, err := GenerateAccessToken(100, "alice", "mysecret", 2)
 	assert.NoError(t, err)

@@ -185,6 +185,15 @@ func (m *mockMySQLRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfil
 func (m *mockMySQLRepo) GetAIProfileByUser(_ context.Context, _ int64) ([]model.AIProfileItem, error) {
 	panic("not implemented")
 }
+func (m *mockMySQLRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) {
+	panic("not implemented")
+}
+func (m *mockMySQLRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error {
+	panic("not implemented")
+}
+func (m *mockMySQLRepo) SearchPrivateMessages(_ context.Context, _ int64, _ string, _ int, _ int) ([]model.PrivateMessage, error) {
+	panic("not implemented")
+}
 
 // momentMockRedisRepo implements repository.RedisRepo for moment tests.
 // Only moment feed methods are implemented; others panic.

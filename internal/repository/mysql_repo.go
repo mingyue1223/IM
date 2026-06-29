@@ -58,6 +58,13 @@ type MySQLRepo interface {
 	CreateAISummary(ctx context.Context, summary *model.AISummary) error
 	CreateAIProfileItem(ctx context.Context, item *model.AIProfileItem) error
 	GetAIProfileByUser(ctx context.Context, userID int64) ([]model.AIProfileItem, error)
+
+	// ── User Settings ──
+	GetUserSettings(ctx context.Context, userID int64) (*model.UserSettings, error)
+	CreateOrUpdateUserSettings(ctx context.Context, settings *model.UserSettings) error
+
+	// ── Message Search ──
+	SearchPrivateMessages(ctx context.Context, userID int64, query string, limit, offset int) ([]model.PrivateMessage, error)
 }
 
 // ──────────────────────────────────────────────────────
@@ -110,10 +117,26 @@ func (m *MySQLRepoImpl) InsertGroupMessage(ctx context.Context, msg *model.Group
 }
 
 func (m *MySQLRepoImpl) InsertMsgRevoked(ctx context.Context, revoked *model.MsgRevoked) error {
-	return fmt.Errorf("stub: InsertMsgRevoked not yet implemented")
+	query := `INSERT INTO msg_revoked (msg_id, conv_id, operator_id, revoked_at)
+	          VALUES (?, ?, ?, ?)`
+	result, err := m.db.ExecContext(ctx, query,
+		revoked.MsgID,
+		revoked.ConvID,
+		revoked.OperatorID,
+		revoked.RevokedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("insert msg_revoked: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("insert msg_revoked lastInsertId: %w", err)
+	}
+	revoked.ID = id
+	return nil
 }
 
-// ── Users (stub implementations — fleshed out in Task 12) ──
+// ── Users (fleshed out in Task 12) ──
 
 func (m *MySQLRepoImpl) GetUserByID(ctx context.Context, userID int64) (*model.User, error) {
 	query := `SELECT id, username, password_hash, nickname, avatar_url, sign, gender, created_at, updated_at
@@ -247,21 +270,21 @@ func (m *MySQLRepoImpl) GetFriendRequestsByUser(ctx context.Context, userID int6
 }
 
 func (m *MySQLRepoImpl) CreateFriendship(ctx context.Context, fs *model.Friendship) error {
-	// Insert bidirectional rows: user→friend AND friend→user
+	// Insert bidirectional rows: user->friend AND friend->user
 	query := `INSERT INTO friendships (user_id, friend_id) VALUES (?, ?)`
 	_, err := m.db.ExecContext(ctx, query, fs.UserID, fs.FriendID)
 	if err != nil {
-		return fmt.Errorf("insert friendship user→friend: %w", err)
+		return fmt.Errorf("insert friendship user->friend: %w", err)
 	}
 	_, err = m.db.ExecContext(ctx, query, fs.FriendID, fs.UserID)
 	if err != nil {
-		return fmt.Errorf("insert friendship friend→user: %w", err)
+		return fmt.Errorf("insert friendship friend->user: %w", err)
 	}
 	return nil
 }
 
 func (m *MySQLRepoImpl) DeleteFriendship(ctx context.Context, userID, friendID int64) error {
-	// Delete bidirectional rows: user→friend AND friend→user
+	// Delete bidirectional rows: user->friend AND friend->user
 	query := `DELETE FROM friendships WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`
 	_, err := m.db.ExecContext(ctx, query, userID, friendID, friendID, userID)
 	if err != nil {
@@ -555,7 +578,7 @@ func (m *MySQLRepoImpl) DeleteMomentComment(ctx context.Context, id int64) error
 	return nil
 }
 
-// ── AI (stub — fleshed out in Task 16) ──
+// ── AI (fleshed out in Task 16) ──
 
 func (m *MySQLRepoImpl) CreateAISummary(ctx context.Context, summary *model.AISummary) error {
 	query := `INSERT INTO ai_summaries (user_id, topic, key_points, conclusion, user_intent, message_range, created_at)
@@ -614,4 +637,82 @@ func (m *MySQLRepoImpl) GetAIProfileByUser(ctx context.Context, userID int64) ([
 		return nil, fmt.Errorf("iterate ai_user_profiles: %w", err)
 	}
 	return items, nil
+}
+
+// ── User Settings (fleshed out in Task 17) ──
+
+func (m *MySQLRepoImpl) GetUserSettings(ctx context.Context, userID int64) (*model.UserSettings, error) {
+	query := `SELECT id, user_id, notification_enabled, msg_preview_enabled, mute_list, created_at, updated_at
+	          FROM user_settings WHERE user_id = ?`
+	row := m.db.QueryRowContext(ctx, query, userID)
+	var s model.UserSettings
+	var muteList sql.NullString
+	err := row.Scan(&s.ID, &s.UserID, &s.NotificationEnabled, &s.MsgPreviewEnabled, &muteList, &s.CreatedAt, &s.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get user_settings: %w", err)
+	}
+	if muteList.Valid {
+		s.MuteList = muteList.String
+	}
+	return &s, nil
+}
+
+func (m *MySQLRepoImpl) CreateOrUpdateUserSettings(ctx context.Context, settings *model.UserSettings) error {
+	query := `INSERT INTO user_settings (user_id, notification_enabled, msg_preview_enabled, mute_list)
+	          VALUES (?, ?, ?, ?)
+	          ON DUPLICATE KEY UPDATE notification_enabled=VALUES(notification_enabled),
+	          msg_preview_enabled=VALUES(msg_preview_enabled), mute_list=VALUES(mute_list)`
+	var muteList interface{}
+	if settings.MuteList == "" {
+		muteList = nil
+	} else {
+		muteList = settings.MuteList
+	}
+	result, err := m.db.ExecContext(ctx, query,
+		settings.UserID,
+		settings.NotificationEnabled,
+		settings.MsgPreviewEnabled,
+		muteList,
+	)
+	if err != nil {
+		return fmt.Errorf("create or update user_settings: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		// ON DUPLICATE KEY UPDATE: LastInsertId may not be meaningful, but ignore error
+		return nil
+	}
+	settings.ID = id
+	return nil
+}
+
+// ── Message Search (fleshed out in Task 17) ──
+
+func (m *MySQLRepoImpl) SearchPrivateMessages(ctx context.Context, userID int64, query string, limit, offset int) ([]model.PrivateMessage, error) {
+	sqlQuery := `SELECT id, sender_id, receiver_id, content, msg_type, created_at
+	             FROM private_messages
+	             WHERE (sender_id = ? OR receiver_id = ?) AND content LIKE ?
+	             ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	likeQuery := "%" + query + "%"
+	rows, err := m.db.QueryContext(ctx, sqlQuery, userID, userID, likeQuery, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("search private_messages: %w", err)
+	}
+	defer rows.Close()
+
+	var results []model.PrivateMessage
+	for rows.Next() {
+		var msg model.PrivateMessage
+		if err := rows.Scan(&msg.ID, &msg.SenderID, &msg.ReceiverID, &msg.Content, &msg.MsgType, &msg.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan private_message: %w", err)
+		}
+		results = append(results, msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate private_messages: %w", err)
+	}
+	return results, nil
 }

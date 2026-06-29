@@ -200,6 +200,12 @@ func (m *mockGroupMySQLRepo) GetMomentCommentByID(_ context.Context, _ int64) (*
 	return nil, nil
 }
 
+func (m *mockGroupMySQLRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) { return nil, nil }
+func (m *mockGroupMySQLRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error { return nil }
+func (m *mockGroupMySQLRepo) SearchPrivateMessages(_ context.Context, _ int64, _ string, _ int, _ int) ([]model.PrivateMessage, error) {
+	return nil, nil
+}
+
 // ──────────────────────────────────────────────────────
 // Mock RedisRepo for group tests
 // ──────────────────────────────────────────────────────

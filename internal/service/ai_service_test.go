@@ -236,6 +236,12 @@ func (m *mockAIMySQLRepo) CreateMomentComment(_ context.Context, _ *model.Moment
 func (m *mockAIMySQLRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
 func (m *mockAIMySQLRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) { return nil, nil }
 
+func (m *mockAIMySQLRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) { return nil, nil }
+func (m *mockAIMySQLRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error { return nil }
+func (m *mockAIMySQLRepo) SearchPrivateMessages(_ context.Context, _ int64, _ string, _ int, _ int) ([]model.PrivateMessage, error) {
+	return nil, nil
+}
+
 // ──────────────────────────────────────────────────────
 // MockLLMClient
 // ──────────────────────────────────────────────────────

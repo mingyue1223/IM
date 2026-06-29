@@ -268,6 +268,9 @@ func (m *mockFriendRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfi
 func (m *mockFriendRepo) GetAIProfileByUser(_ context.Context, _ int64) ([]model.AIProfileItem, error) {
 	return nil, nil
 }
+func (m *mockFriendRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
+	return nil, nil
+}
 
 // ──────────────────────────────────────────────────────
 // Mock RedisRepo for friend tests
@@ -318,6 +321,10 @@ func (m *mockFriendRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string
 }
 func (m *mockFriendRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
 func (m *mockFriendRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
+func (m *mockFriendRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
+func (m *mockFriendRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
+	return nil, nil
+}
 
 // ──────────────────────────────────────────────────────
 // Helper: new test FriendService

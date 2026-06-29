@@ -288,6 +288,8 @@ func (m *momentMockRedisRepo) ExecInboxMarkRead(_ context.Context, _ int64, _ st
 func (m *momentMockRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string, _ int64, _ string, _ int64) (bool, error) {
 	panic("not implemented")
 }
+func (m *momentMockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
+func (m *momentMockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
 
 // momentMockMQRepo implements repository.MQRepo for moment tests.
 type momentMockMQRepo struct {

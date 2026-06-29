@@ -196,6 +196,9 @@ func (m *mockGroupMySQLRepo) CreateAIProfileItem(_ context.Context, _ *model.AIP
 func (m *mockGroupMySQLRepo) GetAIProfileByUser(_ context.Context, _ int64) ([]model.AIProfileItem, error) {
 	return nil, nil
 }
+func (m *mockGroupMySQLRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
+	return nil, nil
+}
 
 // ──────────────────────────────────────────────────────
 // Mock RedisRepo for group tests
@@ -330,6 +333,10 @@ func (r *mockGroupRedisRepo) ExecGroupMsgCheck(_ context.Context, _ int64, _ int
 func (r *mockGroupRedisRepo) ExecInboxMarkRead(_ context.Context, _ int64, _ string) (int64, error) { return 0, nil }
 func (r *mockGroupRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string, _ int64, _ string, _ int64) (bool, error) {
 	return false, nil
+}
+func (r *mockGroupRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
+func (r *mockGroupRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
+	return nil, nil
 }
 
 // ──────────────────────────────────────────────────────

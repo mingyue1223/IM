@@ -189,6 +189,10 @@ func (m *MockRedisRepo) ExecRevokeMsg(ctx context.Context, userID int64, convID 
 }
 func (m *MockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
 func (m *MockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
+func (m *MockRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
+func (m *MockRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
+	return nil, nil
+}
 
 // ──────────────────────────────────────────────────────
 // Helper: create a ClientConnection without a real websocket.Conn

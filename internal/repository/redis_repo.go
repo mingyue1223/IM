@@ -57,6 +57,10 @@ type RedisRepo interface {
 	ExecGroupMsgCheck(ctx context.Context, groupID, senderID int64, clientMsgID string) (*redis.GroupMsgCheckResult, error)
 	ExecInboxMarkRead(ctx context.Context, userID int64, convID string) (int64, error)
 	ExecRevokeMsg(ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error)
+
+	// ── Moment feed ──
+	PublishMomentFeed(ctx context.Context, userID int64, momentID int64, timestamp int64) error
+	GetMomentFeed(ctx context.Context, userID int64, lastSyncTime int64, limit int) ([]int64, error)
 }
 
 // ──────────────────────────────────────────────────────
@@ -402,4 +406,38 @@ func (r *RedisRepoImpl) ExecInboxMarkRead(ctx context.Context, userID int64, con
 
 func (r *RedisRepoImpl) ExecRevokeMsg(ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error) {
 	return redis.ExecRevokeMsg(r.rdb, ctx, userID, convID, msgID, revokeMsgJSON, nowTimestamp)
+}
+
+// ── Moment feed ──
+
+func (r *RedisRepoImpl) PublishMomentFeed(ctx context.Context, userID int64, momentID int64, timestamp int64) error {
+	key := fmt.Sprintf("timeline:%d", userID)
+	return r.rdb.ZAdd(ctx, key, goredis.Z{
+		Score:  float64(timestamp),
+		Member: strconv.FormatInt(momentID, 10),
+	}).Err()
+}
+
+func (r *RedisRepoImpl) GetMomentFeed(ctx context.Context, userID int64, lastSyncTime int64, limit int) ([]int64, error) {
+	key := fmt.Sprintf("timeline:%d", userID)
+	min := fmt.Sprintf("%d", lastSyncTime)
+	results, err := r.rdb.ZRangeByScore(ctx, key, &goredis.ZRangeBy{
+		Min:    min,
+		Max:    "+inf",
+		Offset: 0,
+		Count:  int64(limit),
+	}).Result()
+	if err != nil {
+		return nil, fmt.Errorf("ZRangeByScore timeline: %w", err)
+	}
+
+	momentIDs := make([]int64, 0, len(results))
+	for _, raw := range results {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			continue // skip malformed entries
+		}
+		momentIDs = append(momentIDs, id)
+	}
+	return momentIDs, nil
 }

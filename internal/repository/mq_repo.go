@@ -16,6 +16,7 @@ import (
 type MQRepo interface {
 	PublishPrivateMsg(ctx context.Context, msg *model.PrivateMessage) error
 	PublishGroupMsg(ctx context.Context, msg *model.GroupMessage) error
+	PublishMomentPush(ctx context.Context, moment *model.Moment) error
 }
 
 // ──────────────────────────────────────────────────────
@@ -72,6 +73,30 @@ func (m *MQRepoImpl) PublishGroupMsg(ctx context.Context, msg *model.GroupMessag
 		"group_msg_fanout",  // routing key = queue name
 		false,               // mandatory
 		false,               // immediate
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			DeliveryMode: 2, // persistent
+		},
+	)
+}
+
+func (m *MQRepoImpl) PublishMomentPush(ctx context.Context, moment *model.Moment) error {
+	if m.ch == nil {
+		return fmt.Errorf("amqp channel is nil")
+	}
+	body, err := json.Marshal(moment)
+	if err != nil {
+		return fmt.Errorf("marshal moment: %w", err)
+	}
+	publishCtx, cancel := context.WithTimeout(ctx, mqPublishTimeout)
+	defer cancel()
+	return m.ch.PublishWithContext(
+		publishCtx,
+		"",               // exchange (default)
+		"moment_push",    // routing key = queue name
+		false,            // mandatory
+		false,            // immediate
 		amqp.Publishing{
 			ContentType:  "application/json",
 			Body:         body,

@@ -18,6 +18,7 @@ type MySQLRepo interface {
 
 	// ── Users ──
 	GetUserByID(ctx context.Context, userID int64) (*model.User, error)
+	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
 	CreateUser(ctx context.Context, user *model.User) error
 	UpdateUser(ctx context.Context, user *model.User) error
 
@@ -114,15 +115,64 @@ func (m *MySQLRepoImpl) InsertMsgRevoked(ctx context.Context, revoked *model.Msg
 // ── Users (stub implementations — fleshed out in Task 12) ──
 
 func (m *MySQLRepoImpl) GetUserByID(ctx context.Context, userID int64) (*model.User, error) {
-	return nil, fmt.Errorf("stub: GetUserByID not yet implemented")
+	query := `SELECT id, username, password_hash, nickname, avatar_url, sign, gender, created_at, updated_at
+	          FROM users WHERE id = ?`
+	row := m.db.QueryRowContext(ctx, query, userID)
+	var u model.User
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Nickname, &u.AvatarURL, &u.Sign, &u.Gender, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get user by id: %w", err)
+	}
+	return &u, nil
+}
+
+func (m *MySQLRepoImpl) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
+	query := `SELECT id, username, password_hash, nickname, avatar_url, sign, gender, created_at, updated_at
+	          FROM users WHERE username = ?`
+	row := m.db.QueryRowContext(ctx, query, username)
+	var u model.User
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Nickname, &u.AvatarURL, &u.Sign, &u.Gender, &u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get user by username: %w", err)
+	}
+	return &u, nil
 }
 
 func (m *MySQLRepoImpl) CreateUser(ctx context.Context, user *model.User) error {
-	return fmt.Errorf("stub: CreateUser not yet implemented")
+	query := `INSERT INTO users (username, password_hash, nickname, avatar_url, sign, gender)
+	          VALUES (?, ?, ?, ?, ?, ?)`
+	result, err := m.db.ExecContext(ctx, query,
+		user.Username,
+		user.PasswordHash,
+		user.Nickname,
+		user.AvatarURL,
+		user.Sign,
+		user.Gender,
+	)
+	if err != nil {
+		return fmt.Errorf("create user: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("create user lastInsertId: %w", err)
+	}
+	user.ID = id
+	return nil
 }
 
 func (m *MySQLRepoImpl) UpdateUser(ctx context.Context, user *model.User) error {
-	return fmt.Errorf("stub: UpdateUser not yet implemented")
+	query := `UPDATE users SET nickname=?, avatar_url=?, sign=?, gender=? WHERE id=?`
+	_, err := m.db.ExecContext(ctx, query, user.Nickname, user.AvatarURL, user.Sign, user.Gender, user.ID)
+	if err != nil {
+		return fmt.Errorf("update user: %w", err)
+	}
+	return nil
 }
 
 // ── Friendships (stub — fleshed out in Task 13) ──

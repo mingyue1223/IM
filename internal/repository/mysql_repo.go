@@ -51,6 +51,7 @@ type MySQLRepo interface {
 	CreateMomentLike(ctx context.Context, like *model.MomentLike) error
 	DeleteMomentLike(ctx context.Context, momentID, userID int64) error
 	CreateMomentComment(ctx context.Context, comment *model.MomentComment) error
+	GetMomentCommentByID(ctx context.Context, id int64) (*model.MomentComment, error)
 	DeleteMomentComment(ctx context.Context, id int64) error
 
 	// ── AI ──
@@ -251,34 +252,121 @@ func (m *MySQLRepoImpl) UpdateGroupMemberRole(ctx context.Context, groupID, user
 	return fmt.Errorf("stub: UpdateGroupMemberRole not yet implemented")
 }
 
-// ── Moments (stub — fleshed out in Task 15) ──
+// ── Moments ──
 
 func (m *MySQLRepoImpl) CreateMoment(ctx context.Context, moment *model.Moment) error {
-	return fmt.Errorf("stub: CreateMoment not yet implemented")
+	query := `INSERT INTO moments (author_id, content, media_urls, visibility, created_at)
+	          VALUES (?, ?, ?, ?, ?)`
+	result, err := m.db.ExecContext(ctx, query,
+		moment.AuthorID,
+		moment.Content,
+		moment.MediaUrls,
+		moment.Visibility,
+		moment.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("insert moment: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("insert moment lastInsertId: %w", err)
+	}
+	moment.ID = id
+	return nil
 }
 
 func (m *MySQLRepoImpl) GetMomentByID(ctx context.Context, id int64) (*model.Moment, error) {
-	return nil, fmt.Errorf("stub: GetMomentByID not yet implemented")
+	query := `SELECT id, author_id, content, media_urls, visibility, created_at
+	          FROM moments WHERE id = ?`
+	row := m.db.QueryRowContext(ctx, query, id)
+	var moment model.Moment
+	err := row.Scan(&moment.ID, &moment.AuthorID, &moment.Content, &moment.MediaUrls, &moment.Visibility, &moment.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get moment by id: %w", err)
+	}
+	return &moment, nil
 }
 
 func (m *MySQLRepoImpl) GetMomentsByUser(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error) {
-	return nil, fmt.Errorf("stub: GetMomentsByUser not yet implemented")
+	query := `SELECT id, author_id, content, media_urls, visibility, created_at
+	          FROM moments WHERE author_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	rows, err := m.db.QueryContext(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("get moments by user: %w", err)
+	}
+	defer rows.Close()
+
+	moments := make([]model.Moment, 0)
+	for rows.Next() {
+		var moment model.Moment
+		if err := rows.Scan(&moment.ID, &moment.AuthorID, &moment.Content, &moment.MediaUrls, &moment.Visibility, &moment.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan moment: %w", err)
+		}
+		moments = append(moments, moment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return moments, nil
 }
 
 func (m *MySQLRepoImpl) CreateMomentLike(ctx context.Context, like *model.MomentLike) error {
-	return fmt.Errorf("stub: CreateMomentLike not yet implemented")
+	query := `INSERT INTO moment_likes (moment_id, user_id, created_at) VALUES (?, ?, ?)`
+	result, err := m.db.ExecContext(ctx, query, like.MomentID, like.UserID, like.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("insert moment_like: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("insert moment_like lastInsertId: %w", err)
+	}
+	like.ID = id
+	return nil
 }
 
 func (m *MySQLRepoImpl) DeleteMomentLike(ctx context.Context, momentID, userID int64) error {
-	return fmt.Errorf("stub: DeleteMomentLike not yet implemented")
+	query := `DELETE FROM moment_likes WHERE moment_id = ? AND user_id = ?`
+	_, err := m.db.ExecContext(ctx, query, momentID, userID)
+	if err != nil {
+		return fmt.Errorf("delete moment_like: %w", err)
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) CreateMomentComment(ctx context.Context, comment *model.MomentComment) error {
-	return fmt.Errorf("stub: CreateMomentComment not yet implemented")
+	query := `INSERT INTO moment_comments (id, moment_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)`
+	_, err := m.db.ExecContext(ctx, query, comment.ID, comment.MomentID, comment.UserID, comment.Content, comment.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("insert moment_comment: %w", err)
+	}
+	return nil
+}
+
+func (m *MySQLRepoImpl) GetMomentCommentByID(ctx context.Context, id int64) (*model.MomentComment, error) {
+	query := `SELECT id, moment_id, user_id, content, created_at
+	          FROM moment_comments WHERE id = ?`
+	row := m.db.QueryRowContext(ctx, query, id)
+	var comment model.MomentComment
+	err := row.Scan(&comment.ID, &comment.MomentID, &comment.UserID, &comment.Content, &comment.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get moment_comment by id: %w", err)
+	}
+	return &comment, nil
 }
 
 func (m *MySQLRepoImpl) DeleteMomentComment(ctx context.Context, id int64) error {
-	return fmt.Errorf("stub: DeleteMomentComment not yet implemented")
+	query := `DELETE FROM moment_comments WHERE id = ?`
+	_, err := m.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("delete moment_comment: %w", err)
+	}
+	return nil
 }
 
 // ── AI (stub — fleshed out in Task 16) ──

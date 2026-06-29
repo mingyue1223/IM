@@ -129,6 +129,9 @@ func (m *mockAuthRepo) GetMomentsByUser(_ context.Context, _ int64, _ int, _ int
 func (m *mockAuthRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error    { return nil }
 func (m *mockAuthRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error       { return nil }
 func (m *mockAuthRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error { return nil }
+func (m *mockAuthRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
+	return nil, nil
+}
 func (m *mockAuthRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
 
 func (m *mockAuthRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }

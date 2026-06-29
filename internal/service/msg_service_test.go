@@ -209,6 +209,14 @@ func (m *mockRedisRepo) ExecRevokeMsg(_ context.Context, userID int64, convID st
 	return m.revokeResult, m.revokeErr
 }
 
+func (m *mockRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error {
+	return nil
+}
+
+func (m *mockRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
+	return nil, nil
+}
+
 // mockMQRepo implements repository.MQRepo for testing.
 type mockMQRepo struct {
 	mu             sync.Mutex
@@ -237,6 +245,10 @@ func (m *mockMQRepo) PublishGroupMsg(_ context.Context, msg *model.GroupMessage)
 	m.publishGroup = true
 	m.mu.Unlock()
 	return m.publishErr
+}
+
+func (m *mockMQRepo) PublishMomentPush(_ context.Context, _ *model.Moment) error {
+	return nil
 }
 
 // ──────────────────────────────────────────────────────

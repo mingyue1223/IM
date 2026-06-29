@@ -1,8 +1,6 @@
 // Package main is the GoIM server entry point.
 // It wires all infrastructure components (config, MySQL, Redis, RabbitMQ)
-// and starts a Gin HTTP server with a health-check endpoint.
-// Components from future tasks (ConnectionManager, WebSocket upgrade,
-// MQ consumers, cleanup task, API routes) are stubbed with TODO markers.
+// and starts a Gin HTTP server + WebSocket handler + MQ consumers.
 package main
 
 import (
@@ -11,13 +9,27 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	amqp "github.com/rabbitmq/amqp091-go"
+	goredisv9 "github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/goim/goim/internal/api"
 	"github.com/goim/goim/internal/config"
+	"github.com/goim/goim/internal/conn"
+	"github.com/goim/goim/internal/consumer"
 	"github.com/goim/goim/internal/infra"
+	"github.com/goim/goim/internal/llm"
+	"github.com/goim/goim/internal/middleware"
+	"github.com/goim/goim/internal/repository"
 	goredis "github.com/goim/goim/internal/redis"
+	"github.com/goim/goim/internal/service"
+	"github.com/goim/goim/internal/ws"
 )
 
 func main() {
@@ -73,55 +85,139 @@ func main() {
 	}
 	logger.Info("Redis Lua scripts loaded")
 
-	// ── TODO: Init ConnectionManager (Task 7) ──
-	// cm := conn.NewConnectionManager()
+	// ── Build repositories ──
+	mysqlRepo := repository.NewMySQLRepo(db)
+	redisRepo := repository.NewRedisRepo(rdb)
+	mqRepo := repository.NewMQRepo(mqCh)
 
-	// ── TODO: Init services (Tasks 9-17) ──
-	// msgSvc := service.NewMessageService(db, rdb, mqCh, logger)
-	// authSvc := service.NewAuthService(db, rdb, cfg, logger)
-	// friendSvc := service.NewFriendService(db, rdb, logger)
-	// groupSvc := service.NewGroupService(db, rdb, mqCh, logger)
-	// momentSvc := service.NewMomentService(db, rdb, mqCh, logger)
-	// aiSvc := service.NewAIService(db, rdb, cfg.LLM, logger)
-	// msgOpSvc := service.NewMsgOpService(db, rdb, logger)
-	// userSettingsSvc := service.NewUserSettingsService(db, rdb, logger)
+	// ── Init ConnectionManager ──
+	cm := conn.NewConnectionManager()
 
-	// ── Setup Gin router with health-check ──
-	router := setupRouter()
-	// TODO: Replace with api.SetupRouter(cfg, db, rdb, mqCh, cm, logger) (Task 18)
+	// ── Init LLM client ──
+	llmClient := llm.NewLLMClient(cfg.LLM)
+
+	// ── Init services ──
+	msgSvc := service.NewMsgService(redisRepo, mqRepo, cm, logger)
+	authSvc := service.NewAuthService(mysqlRepo, cfg.JWT.Secret, cfg.JWT.AccessExpHours, cfg.JWT.RefreshExpDays)
+	friendSvc := service.NewFriendService(mysqlRepo, redisRepo, logger)
+	groupSvc := service.NewGroupService(mysqlRepo, redisRepo, logger)
+	momentSvc := service.NewMomentService(mysqlRepo, redisRepo, mqRepo, logger)
+	aiSvc := service.NewAIService(mysqlRepo, redisRepo, llmClient, logger)
+	msgOpSvc := service.NewMsgOpService(mysqlRepo, redisRepo, logger)
+	settingsSvc := service.NewSettingsService(mysqlRepo, logger)
+
+	// ── Init WebSocket dispatcher ──
+	dispatcher := ws.NewMessageDispatcher(msgSvc, friendSvc, aiSvc)
+
+	// ── Init HTTP handlers ──
+	authHandler := api.NewAuthHandler(authSvc)
+	friendHandler := api.NewFriendHandler(friendSvc)
+	groupHandler := api.NewGroupHandler(groupSvc)
+	momentHandler := api.NewMomentHandler(momentSvc)
+	aiHandler := api.NewAIHandler(aiSvc)
+	msgOpHandler := api.NewMsgOpHandler(msgOpSvc)
+	settingsHandler := api.NewSettingsHandler(settingsSvc)
+
+	// ── Setup Gin router ──
+	router := setupRouter(
+		cfg, mysqlRepo, redisRepo, rdb, mqCh, cm,
+		dispatcher, logger,
+		authHandler, friendHandler, groupHandler,
+		momentHandler, aiHandler, msgOpHandler, settingsHandler,
+	)
+
+	// ── Start MQ consumers ──
+	privateMsgConsumer := consumer.NewPrivateMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
+	groupMsgConsumer := consumer.NewGroupMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
+	momentFeedConsumer := consumer.NewMomentFeedConsumer(mqCh, mysqlRepo, redisRepo, logger)
+
+	if err := privateMsgConsumer.Start(ctx); err != nil {
+		logger.Fatal("failed to start private msg consumer", zap.Error(err))
+	}
+	if err := groupMsgConsumer.Start(ctx); err != nil {
+		logger.Fatal("failed to start group msg consumer", zap.Error(err))
+	}
+	if err := momentFeedConsumer.Start(ctx); err != nil {
+		logger.Fatal("failed to start moment feed consumer", zap.Error(err))
+	}
+	logger.Info("MQ consumers started")
+
+	// ── Start cleanup task ──
+	infra.StartCleanupTask(rdb, logger, 1*time.Hour)
 
 	// ── Start HTTP server ──
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	srv := &http.Server{Addr: addr, Handler: router}
+
 	go func() {
 		logger.Info("starting HTTP server", zap.String("addr", addr))
-		if err := router.Run(addr); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("HTTP server failed", zap.Error(err))
 		}
 	}()
 
-	// ── TODO: Start MQ consumers (Task 10) ──
-	// consumer.StartAll(mqCh, db, rdb, cm, logger)
-
-	// ── TODO: Start cleanup task (Task 11) ──
-	// infra.StartCleanupTask(rdb, logger)
-
 	logger.Info("GoIM server started", zap.Int("port", cfg.Server.Port))
 
-	// Block forever — goroutines handle all work.
-	select {}
+	// ── Graceful shutdown ──
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	logger.Info("shutting down server...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("server forced shutdown", zap.Error(err))
+	}
+
+	logger.Info("server exited")
 }
 
-// setupRouter creates a minimal Gin router with a health-check endpoint.
-// This will be replaced by api.SetupRouter in Task 18.
-func setupRouter() *gin.Engine {
+// ──────────────────────────────────────────────────────
+// Router setup — wires all HTTP routes + WebSocket endpoint
+// ──────────────────────────────────────────────────────
+
+func setupRouter(
+	cfg *config.Config,
+	mysqlRepo repository.MySQLRepo,
+	redisRepo repository.RedisRepo,
+	rdb *goredisv9.Client,
+	mqCh *amqp.Channel,
+	cm *conn.ConnectionManager,
+	dispatcher *ws.MessageDispatcher,
+	logger *zap.Logger,
+	authHandler *api.AuthHandler,
+	friendHandler *api.FriendHandler,
+	groupHandler *api.GroupHandler,
+	momentHandler *api.MomentHandler,
+	aiHandler *api.AIHandler,
+	msgOpHandler *api.MsgOpHandler,
+	settingsHandler *api.SettingsHandler,
+) *gin.Engine {
 	r := gin.Default()
 
+	// ── Health check ──
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
-			"service": "goim",
-		})
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "goim"})
 	})
+
+	// ── Public routes (no auth required) ──
+	public := r.Group("/api/v1")
+	authHandler.RegisterRoutes(public)
+
+	// ── Protected routes (JWT auth required) ──
+	protected := r.Group("/api/v1")
+	protected.Use(middleware.JWTAuthMiddleware(cfg.JWT.Secret))
+	friendHandler.RegisterRoutes(protected)
+	groupHandler.RegisterRoutes(protected)
+	momentHandler.RegisterRoutes(protected)
+	aiHandler.RegisterRoutes(protected)
+	msgOpHandler.RegisterRoutes(protected)
+	settingsHandler.RegisterRoutes(protected)
+
+	// ── WebSocket endpoint ──
+	wsHandler := ws.ServeWebSocket(cfg.JWT.Secret, rdb, cm, dispatcher.Callback())
+	r.GET(cfg.Server.WsPath, wsHandler)
 
 	return r
 }

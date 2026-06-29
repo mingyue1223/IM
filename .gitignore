@@ -2,5 +2,6 @@ uploads/
 *.exe
 *.test
 .env
+configs/config.yaml
 config.local.yaml
 .claude/worktrees/

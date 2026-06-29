@@ -1,6 +1,6 @@
-# GoIM Server Configuration
-# Copy this file and modify for your environment.
-# For E2E testing, use configs/config.test.yaml instead.
+# GoIM Server Configuration Template
+# Copy this file to configs/config.yaml and modify for your environment.
+# cp configs/config.example.yaml configs/config.yaml
 
 server:
   port: 8080              # HTTP server port
@@ -9,13 +9,13 @@ server:
 
 mysql:
   host: "localhost"
-  port: 13306
+  port: 3306              # Default MySQL port (adjust if needed)
   user: "goim"
   password: "goim123"     # CHANGE IN PRODUCTION!
   db_name: "goim"
 
 redis:
-  addr: "localhost:16379"
+  addr: "localhost:6379"
   password: ""            # Set password in production!
   db: 0                   # Redis database number (use 1 for E2E tests to avoid collision)
 
@@ -23,16 +23,16 @@ rabbitmq:
   url: "amqp://guest:guest@localhost:5672/"  # RabbitMQ AMQP URL
 
 jwt:
-  secret: "goim-dev-secret-change-in-production"  # MUST CHANGE IN PRODUCTION! Use ≥32 chars
+  secret: "CHANGE-THIS-TO-A-STRONG-RANDOM-SECRET-32-CHARS-MIN"  # MUST CHANGE IN PRODUCTION!
   access_exp_hours: 2     # Access token lifetime (hours)
   refresh_exp_days: 7     # Refresh token lifetime (days)
 
 llm:
-  provider: "deepseek"                     # LLM provider
-  api_key: "sk-51YmW8SE8Pf81fqRiUWSsQqECKX2tVDHbaPrs2FGuACx5DQj"
-  base_url: "https://api.vectorcontrol.tech"
-  model: "deepseek-v4-pro"
-  max_tokens: 2048
+  provider: "openai"               # LLM provider: "openai" or "deepseek"
+  api_key: "YOUR_API_KEY_HERE"     # API key (use env var or secret manager in production)
+  base_url: "https://api.openai.com/v1"  # API base URL (change for DeepSeek or other providers)
+  model: "gpt-4o-mini"             # Model name (e.g., "deepseek-v4-pro" for DeepSeek)
+  max_tokens: 2048                  # Max response tokens
 
 file:
   max_size_mb: 50                   # Max upload file size (MB)

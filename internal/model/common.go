@@ -42,3 +42,9 @@ type WsMessage struct {
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data"`
 }
+
+// WsError — error payload sent via WebSocket
+type WsError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}

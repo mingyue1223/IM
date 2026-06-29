@@ -39,6 +39,7 @@ type InboxMessage struct {
 	MsgType    int    `json:"msgType"`
 	Content    string `json:"content"`
 	ReadStatus int    `json:"readStatus"` // 0=unread, 1=read (private chat only)
+	GroupSeq   int64  `json:"groupSeq,omitempty"` // group sequence (group chat only)
 	Timestamp  int64  `json:"timestamp"`
 }
 
@@ -77,6 +78,29 @@ type SyncBatch struct {
 type ConvSync struct {
 	Conversations []ConvSummary   `json:"conversations"`
 	UnreadMap     map[string]int64 `json:"unreadMap"`
+}
+
+// SendMessage — incoming chat message from client over WebSocket
+type SendMessage struct {
+	ClientMsgID string `json:"msgId"`    // client-generated ID for dedup
+	ConvType    int    `json:"convType"` // 1=private, 2=group
+	ToID        int64  `json:"toId"`     // receiverID (private) or groupID (group)
+	MsgType     int    `json:"msgType"`  // 1=text, 2=image, 3=video, etc.
+	Content     string `json:"content"`
+	Timestamp   int64  `json:"timestamp"`
+}
+
+// RevokeMsgReq — client requests a message to be revoked
+type RevokeMsgReq struct {
+	ConvID      string `json:"convId"`
+	ServerMsgID int64  `json:"serverMsgId"`
+}
+
+// RevokedNotification — pushed to the other party when a message is revoked
+type RevokedNotification struct {
+	ConvID      string `json:"convId"`
+	ServerMsgID int64  `json:"serverMsgId"`
+	OperatorID  int64  `json:"operatorId"`
 }
 
 // ConvSummary — single conversation summary for conv_list ZSet

@@ -1,49 +1,41 @@
 package ws
 
+// Protocol types and encoding/decoding functions have been moved to
+// internal/protocol to break the import cycle between ws and service.
+// This file re-exports them for backward compatibility within the ws package.
+
 import (
-	"encoding/json"
-
 	"github.com/goim/goim/internal/model"
+	"github.com/goim/goim/internal/protocol"
 )
 
-// WsMessage type constants — all possible "type" values in the WebSocket envelope.
+// Re-export Type constants for backward compatibility within ws package.
 const (
-	TypeMsg            = "msg"
-	TypeServerAck      = "serverAck"
-	TypeDeliverAck     = "deliverAck"
-	TypeReadAck        = "readAck"
-	TypeSyncReq        = "syncReq"
-	TypeSyncBatch      = "syncBatch"
-	TypeConvSync       = "convSync"
-	TypeRevokeMsg      = "revokeMsg"
-	TypeMsgRevoked     = "msgRevoked"
-	TypeKick           = "kick"
-	TypeAiStream       = "aiStream"
-	TypeFriendApply    = "friendApply"
-	TypeFriendAccepted = "friendAccepted"
-	TypePresence       = "presence"
-	TypeError          = "error"
-	TypePing           = "ping"
-	TypePong           = "pong"
+	TypeMsg            = protocol.TypeMsg
+	TypeServerAck      = protocol.TypeServerAck
+	TypeDeliverAck     = protocol.TypeDeliverAck
+	TypeReadAck        = protocol.TypeReadAck
+	TypeSyncReq        = protocol.TypeSyncReq
+	TypeSyncBatch      = protocol.TypeSyncBatch
+	TypeConvSync       = protocol.TypeConvSync
+	TypeRevokeMsg      = protocol.TypeRevokeMsg
+	TypeMsgRevoked     = protocol.TypeMsgRevoked
+	TypeKick           = protocol.TypeKick
+	TypeAiStream       = protocol.TypeAiStream
+	TypeFriendApply    = protocol.TypeFriendApply
+	TypeFriendAccepted = protocol.TypeFriendAccepted
+	TypePresence       = protocol.TypePresence
+	TypeError          = protocol.TypeError
+	TypePing           = protocol.TypePing
+	TypePong           = protocol.TypePong
 )
 
-// EncodeMsg builds a WsMessage envelope and serializes it to JSON bytes.
-// msgType is one of the Type* constants; data is the payload to embed in "data".
+// EncodeMsg delegates to protocol.EncodeMsg.
 func EncodeMsg(msgType string, data interface{}) ([]byte, error) {
-	dataBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-	envelope := model.WsMessage{Type: msgType, Data: dataBytes}
-	return json.Marshal(envelope)
+	return protocol.EncodeMsg(msgType, data)
 }
 
-// DecodeMsg parses raw JSON bytes into a WsMessage envelope.
-// The caller can then inspect msg.Type and further unmarshal msg.Data.
+// DecodeMsg delegates to protocol.DecodeMsg.
 func DecodeMsg(raw []byte) (*model.WsMessage, error) {
-	var msg model.WsMessage
-	if err := json.Unmarshal(raw, &msg); err != nil {
-		return nil, err
-	}
-	return &msg, nil
+	return protocol.DecodeMsg(raw)
 }

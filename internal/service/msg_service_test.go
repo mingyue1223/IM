@@ -209,6 +209,10 @@ func (m *mockRedisRepo) ExecRevokeMsg(_ context.Context, userID int64, convID st
 	return m.revokeResult, m.revokeErr
 }
 
+func (m *mockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
+func (m *mockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
+func (m *mockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
+
 // mockMQRepo implements repository.MQRepo for testing.
 type mockMQRepo struct {
 	mu             sync.Mutex

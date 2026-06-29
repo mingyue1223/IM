@@ -55,6 +55,11 @@ type RedisRepo interface {
 	ExecGroupMsgCheck(ctx context.Context, groupID, senderID int64, clientMsgID string) (*redis.GroupMsgCheckResult, error)
 	ExecInboxMarkRead(ctx context.Context, userID int64, convID string) (int64, error)
 	ExecRevokeMsg(ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error)
+
+	// ── AI working memory (Layer 3) ──
+	SetWorkingMemory(ctx context.Context, userID int64, key string, value string, ttlSeconds int64) error
+	GetWorkingMemory(ctx context.Context, userID int64, key string) (string, error)
+	GetAllWorkingMemory(ctx context.Context, userID int64) (map[string]string, error)
 }
 
 // ──────────────────────────────────────────────────────
@@ -370,4 +375,56 @@ func (r *RedisRepoImpl) ExecInboxMarkRead(ctx context.Context, userID int64, con
 
 func (r *RedisRepoImpl) ExecRevokeMsg(ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error) {
 	return redis.ExecRevokeMsg(r.rdb, ctx, userID, convID, msgID, revokeMsgJSON, nowTimestamp)
+}
+
+// ── AI working memory (Layer 3) ──
+
+func (r *RedisRepoImpl) SetWorkingMemory(ctx context.Context, userID int64, key string, value string, ttlSeconds int64) error {
+	redisKey := fmt.Sprintf("ai_memory:%d:%s", userID, key)
+	return r.rdb.Set(ctx, redisKey, value, time.Duration(ttlSeconds)*time.Second).Err()
+}
+
+func (r *RedisRepoImpl) GetWorkingMemory(ctx context.Context, userID int64, key string) (string, error) {
+	redisKey := fmt.Sprintf("ai_memory:%d:%s", userID, key)
+	val, err := r.rdb.Get(ctx, redisKey).Result()
+	if err != nil {
+		if err == goredis.Nil {
+			return "", nil // key not found
+		}
+		return "", fmt.Errorf("GET ai_memory: %w", err)
+	}
+	return val, nil
+}
+
+func (r *RedisRepoImpl) GetAllWorkingMemory(ctx context.Context, userID int64) (map[string]string, error) {
+	pattern := fmt.Sprintf("ai_memory:%d:*", userID)
+	var result map[string]string
+	var cursor uint64
+
+	result = make(map[string]string)
+	for {
+		keys, nextCursor, err := r.rdb.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return nil, fmt.Errorf("SCAN ai_memory: %w", err)
+		}
+		if len(keys) > 0 {
+			vals, err := r.rdb.MGet(ctx, keys...).Result()
+			if err != nil {
+				return nil, fmt.Errorf("MGET ai_memory: %w", err)
+			}
+			for i, k := range keys {
+				// Strip the "ai_memory:{userID}:" prefix to return just the short key
+				prefix := fmt.Sprintf("ai_memory:%d:", userID)
+				shortKey := k[len(prefix):]
+				if vals[i] != nil {
+					result[shortKey] = vals[i].(string)
+				}
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
+	}
+	return result, nil
 }

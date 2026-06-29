@@ -188,6 +188,10 @@ func (m *MockRedisRepo) ExecRevokeMsg(ctx context.Context, userID int64, convID 
 	return false, fmt.Errorf("stub: not used by consumer")
 }
 
+func (m *MockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
+func (m *MockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
+func (m *MockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
+
 // ──────────────────────────────────────────────────────
 // Helper: create a ClientConnection without a real websocket.Conn
 // We set the fields directly to avoid the need for a real WS connection.

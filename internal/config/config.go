@@ -47,10 +47,11 @@ type JWTConfig struct {
 }
 
 type LLMConfig struct {
-	Provider string `yaml:"provider"` // "openai" or "domestic"
-	APIKey   string `yaml:"api_key"`
-	BaseURL  string `yaml:"base_url"`
-	Model    string `yaml:"model"`
+	Provider  string `yaml:"provider"`   // "openai" or "domestic"
+	APIKey    string `yaml:"api_key"`
+	BaseURL   string `yaml:"base_url"`
+	Model     string `yaml:"model"`
+	MaxTokens int    `yaml:"max_tokens"` // max tokens for LLM response (default 2048)
 }
 
 type FileConfig struct {

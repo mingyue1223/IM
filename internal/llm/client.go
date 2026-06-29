@@ -31,7 +31,8 @@ type chatResponse struct {
 }
 
 type chatChoice struct {
-	Message ChatMessage `json:"message"`
+	Message          ChatMessage `json:"message"`
+	ReasoningContent string      `json:"reasoning_content,omitempty"` // DeepSeek reasoning field
 }
 
 // LLMClient calls an OpenAI-compatible chat completions endpoint.

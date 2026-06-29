@@ -28,11 +28,11 @@ jwt:
   refresh_exp_days: 7     # Refresh token lifetime (days)
 
 llm:
-  provider: "openai"               # LLM provider: "openai" or "domestic"
-  api_key: "${OPENAI_API_KEY}"     # API key (use env var in production)
-  base_url: "https://api.openai.com/v1"  # API base URL
-  model: "gpt-4o-mini"             # Model name
-  max_tokens: 2048                  # Max response tokens
+  provider: "deepseek"                     # LLM provider
+  api_key: "sk-51YmW8SE8Pf81fqRiUWSsQqECKX2tVDHbaPrs2FGuACx5DQj"
+  base_url: "https://api.vectorcontrol.tech"
+  model: "deepseek-v4-pro"
+  max_tokens: 2048
 
 file:
   max_size_mb: 50                   # Max upload file size (MB)

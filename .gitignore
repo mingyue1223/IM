@@ -3,3 +3,4 @@ uploads/
 *.test
 .env
 config.local.yaml
+.claude/worktrees/

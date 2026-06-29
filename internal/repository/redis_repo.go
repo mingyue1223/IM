@@ -37,6 +37,7 @@ type RedisRepo interface {
 
 	// ── Group memberships ──
 	GetGroupMemberships(ctx context.Context, userID int64) ([]int64, error)
+	GetGroupMembers(ctx context.Context, groupID int64) ([]int64, error)
 
 	// ── Dedup ──
 	CheckDuplicate(ctx context.Context, userID int64, clientMsgID string) (bool, error)
@@ -251,6 +252,24 @@ func (r *RedisRepoImpl) GetGroupMemberships(ctx context.Context, userID int64) (
 		groupIDs = append(groupIDs, id)
 	}
 	return groupIDs, nil
+}
+
+func (r *RedisRepoImpl) GetGroupMembers(ctx context.Context, groupID int64) ([]int64, error) {
+	key := fmt.Sprintf("group_members:%d", groupID)
+	results, err := r.rdb.SMembers(ctx, key).Result()
+	if err != nil {
+		return nil, fmt.Errorf("SMembers group_members: %w", err)
+	}
+
+	memberIDs := make([]int64, 0, len(results))
+	for _, s := range results {
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			continue
+		}
+		memberIDs = append(memberIDs, id)
+	}
+	return memberIDs, nil
 }
 
 // ── Dedup ──

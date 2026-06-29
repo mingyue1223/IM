@@ -163,6 +163,13 @@ func (m *mockRedisRepo) GetGroupMemberships(_ context.Context, userID int64) ([]
 	return m.groupMembers[userID], nil
 }
 
+func (m *mockRedisRepo) GetGroupMembers(_ context.Context, groupID int64) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Return empty list — group member fan-out is handled by the MQ consumer, not MsgService
+	return []int64{}, nil
+}
+
 func (m *mockRedisRepo) CheckDuplicate(_ context.Context, userID int64, clientMsgID string) (bool, error) {
 	return false, nil
 }

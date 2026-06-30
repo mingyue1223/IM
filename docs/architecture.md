@@ -1,205 +1,205 @@
-# GoIM System Architecture
+# GoIM 系统架构
 
-## Overview
+## 概述
 
-GoIM is a high-concurrency instant messaging system built on a **Redis-first + MQ async persistence** pattern. The core design principle: **all reads and writes hit Redis first**, and MySQL persistence happens asynchronously via RabbitMQ consumers. This ensures sub-millisecond response times while maintaining data durability.
+GoIM 是一个基于 **Redis 优先 + MQ 异步持久化** 模式构建的高并发即时通讯系统。核心设计原则：**所有读写操作首先命中 Redis**，MySQL 持久化通过 RabbitMQ 消费者异步完成。这确保了亚毫秒级的响应时间，同时保证数据的持久性。
 
-## Architecture Diagram
+## 架构图
 
 ```
                         ┌───────────────────────────────────┐
-                        │          GoIM Server              │
+                        │          GoIM 服务器              │
                         │                                   │
-   Client ──HTTP──────▶│  ┌───────────────────────────┐   │
-   (REST API)           │  │     Gin Router             │   │──▶ MySQL (async via MQ)
-                        │  │  ├─ Public: /auth/*        │   │
-                        │  │  ├─ Protected: /friend/*   │   │
-   Client ──WS────────▶│  │  │  /group/*  /moment/*   │   │──▶ Redis (first read/write)
+   客户端 ──HTTP──────▶│  ┌───────────────────────────┐   │
+   (REST API)           │  │     Gin 路由器            │   │──▶ MySQL（通过 MQ 异步）
+                        │  │  ├─ 公开：/auth/*          │   │
+                        │  │  ├─ 受保护：/friend/*      │   │
+   客户端 ──WS────────▶│  │  │  /group/*  /moment/*   │   │──▶ Redis（首次读写）
    (WebSocket)          │  │  │  /ai/*  /msg/*  /set*  │   │
-                        │  │  ├─ WS: /ws?token=JWT      │   │──▶ RabbitMQ (async pub)
+                        │  │  ├─ WS：/ws?token=JWT      │   │──▶ RabbitMQ（异步发布）
                         │  └───────────────────────────┘   │
                         │                                   │
                         │  ┌────────────┐  ┌────────────┐  │
-                        │  │  Services  │  │ Consumers  │  │
-                        │  │ (8 total)  │  │ (3 total)  │  │
+                        │  │   服务层   │  │   消费者   │  │
+                        │  │ （共 8 个）│  │ （共 3 个）│  │
                         │  └────────────┘  └────────────┘  │
                         └───────────────────────────────────┘
 ```
 
-## Data Flow
+## 数据流
 
-### Private Chat (Push Model)
+### 私聊（推模型）
 
 ```
-Sender                          GoIM                        Receiver
+发送方                           GoIM                        接收方
   │                               │                            │
   │── WS: {type:"msg"} ────────▶│                            │
   │                               │── Lua: PrivateMsgCheck    │
-  │                               │   (friend check + dedup   │
-  │                               │    + msgID alloc + inbox) │
+  │                               │   （好友检查 + 去重      │
+  │                               │    + 消息ID分配 + 收件箱）│
   │                               │── MQ: PublishPrivateMsg   │
   │◀─ WS: {type:"serverAck"} ──│                            │
   │                               │                            │
-  │                               │── Consumer picks up msg   │
-  │                               │── WriteInbox(receiver)     │
-  │                               │── WriteInbox(sender,read=1)│
-  │                               │── UpdateConvList(both)     │
-  │                               │── IncrementUnread(receiver)│
-  │                               │── Push to online receiver  │
-  │                               │── InsertMySQL(msg)         │
+  │                               │── 消费者获取消息          │
+  │                               │── WriteInbox(接收方)       │
+  │                               │── WriteInbox(发送方,read=1)│
+  │                               │── UpdateConvList(双方)     │
+  │                               │── IncrementUnread(接收方)  │
+  │                               │── 推送给在线接收方        │
+  │                               │── InsertMySQL(消息)        │
   │                               │──▶ WS: {type:"msg"} ──────│
   │                               │                            │
 ```
 
-### Group Chat (Pull Model)
+### 群聊（拉模型）
 
 ```
-Sender                          GoIM                        Members
+发送方                           GoIM                        群成员
   │                               │                            │
   │── WS: {type:"msg"} ────────▶│                            │
   │                               │── Lua: GroupMsgCheck      │
-  │                               │   (member check + dedup   │
-  │                               │    + msgID + outbox write) │
+  │                               │   （成员检查 + 去重      │
+  │                               │    + 消息ID + 发件箱写入）│
   │                               │── MQ: PublishGroupMsg     │
   │◀─ WS: {type:"serverAck"} ──│                            │
   │                               │                            │
-  │                               │── Consumer picks up msg   │
-  │                               │── WriteOutbox(group)       │
-  │                               │── For each member:         │
+  │                               │── 消费者获取消息          │
+  │                               │── WriteOutbox(群组)        │
+  │                               │── 对每个成员：            │
   │                               │    UpdateConvList          │
   │                               │    IncrementUnread         │
-  │                               │    Push to online member   │
-  │                               │── InsertMySQL(msg)         │
-  │                               │──▶ WS: {type:"msg"} ──────│ (online members)
+  │                               │    推送给在线成员         │
+  │                               │── InsertMySQL(消息)        │
+  │                               │──▶ WS: {type:"msg"} ──────│（在线成员）
   │                               │                            │
-  │                               │ Offline member syncs later │
+  │                               │ 离线成员稍后同步          │
   │                               │── WS: {type:"syncReq"} ──▶│
-  │                               │── ReadOutbox(group) ──────▶│
+  │                               │── ReadOutbox(群组) ───────▶│
 ```
 
-### Moment Feed Fan-Out
+### 朋友圈动态流扇出
 
 ```
-Author                          GoIM                        Friends
+作者                             GoIM                        好友
   │                               │                            │
   │── POST /moment ────────────▶│                            │
-  │                               │── InsertMySQL(moment)     │
+  │                               │── InsertMySQL(朋友圈)     │
   │                               │── MQ: PublishMomentPush   │
   │◀── {moment_id: 42} ────────│                            │
   │                               │                            │
-  │                               │── Consumer picks up event │
-  │                               │── GetFriendList(author)    │
-  │                               │── For each friend:         │
+  │                               │── 消费者获取事件          │
+  │                               │── GetFriendList(作者)      │
+  │                               │── 对每个好友：            │
   │                               │    PublishMomentFeed       │
-  │                               │    (Redis timeline ZSet)   │
+  │                               │    （Redis 时间线 ZSet）   │
   │                               │                            │
-  │                               │── Friend requests feed ──▶│
+  │                               │── 好友请求动态流 ────────▶│
   │                               │── GET /moment/feed ──────▶│
-  │                               │── GetMomentFeed(timeline)  │
+  │                               │── GetMomentFeed(时间线)    │
 ```
 
-## Redis Key Schema
+## Redis 键结构
 
-| Key Pattern | Type | TTL | Purpose |
-|-------------|------|-----|---------|
-| `inbox:{userID}` | ZSet (score=timestamp) | 3 days | Private chat inbox per user |
-| `outbox:{groupID}` | ZSet (score=timestamp) | 3 days | Group chat outbox per group |
-| `conv_list:{userID}` | ZSet (score=timestamp) | 3 days | Conversation list per user |
-| `unread:{userID}` | Hash (convID→count) | — | Unread message counts |
-| `timeline:{userID}` | ZSet (score=timestamp) | 3 days | Moment feed per user |
-| `group_members:{groupID}` | Set (userID) | — | Group member cache |
-| `user_groups:{userID}` | Set (groupID) | — | User's group membership cache |
-| `msg_id_global` | String (INCR counter) | — | Global message ID generator |
-| `online:{userID}` | String "1" | 60s | Online status indicator |
-| `conn:{userID}` | String "ws:{nano}" | 60s | Active connection identifier |
-| `ai_memory:{userID}:{key}` | String (JSON) | 30min | AI working memory |
-| `dedup:{convID}:{clientMsgID}` | String "1" | 5min | Message deduplication |
+| 键模式 | 类型 | TTL | 用途 |
+|--------|------|-----|------|
+| `inbox:{userID}` | ZSet（分数=时间戳） | 3 天 | 每个用户的私聊收件箱 |
+| `outbox:{groupID}` | ZSet（分数=时间戳） | 3 天 | 每个群组的群聊发件箱 |
+| `conv_list:{userID}` | ZSet（分数=时间戳） | 3 天 | 每个用户的会话列表 |
+| `unread:{userID}` | Hash（convID→count） | — | 未读消息计数 |
+| `timeline:{userID}` | ZSet（分数=时间戳） | 3 天 | 每个用户的朋友圈动态流 |
+| `group_members:{groupID}` | Set（userID） | — | 群组成员缓存 |
+| `user_groups:{userID}` | Set（groupID） | — | 用户群组成员关系缓存 |
+| `msg_id_global` | String（INCR 计数器） | — | 全局消息 ID 生成器 |
+| `online:{userID}` | String "1" | 60 秒 | 在线状态指示器 |
+| `conn:{userID}` | String "ws:{nano}" | 60 秒 | 活跃连接标识符 |
+| `ai_memory:{userID}:{key}` | String（JSON） | 30 分钟 | AI 工作记忆 |
+| `dedup:{convID}:{clientMsgID}` | String "1" | 5 分钟 | 消息去重 |
 
-## Lua Scripts (Atomic Operations)
+## Lua 脚本（原子操作）
 
-| Script | Purpose | Keys Accessed |
-|--------|---------|---------------|
-| `privateMsgCheck` | Friend check + dedup + msgID + inbox write | friendship, dedup, msg_id_global, inbox, conv_list, unread |
-| `groupMsgCheck` | Member check + dedup + msgID + outbox write | group_members, dedup, msg_id_global, outbox, conv_list, unread |
-| `inboxMarkRead` | Clear unread count + mark inbox messages read | unread, inbox |
-| `revokeMsg` | Verify sender + mark msg revoked in inbox/outbox | inbox/outbox, check senderID |
+| 脚本 | 用途 | 访问的键 |
+|------|------|----------|
+| `privateMsgCheck` | 好友检查 + 去重 + 消息ID + 收件箱写入 | friendship, dedup, msg_id_global, inbox, conv_list, unread |
+| `groupMsgCheck` | 成员检查 + 去重 + 消息ID + 发件箱写入 | group_members, dedup, msg_id_global, outbox, conv_list, unread |
+| `inboxMarkRead` | 清除未读计数 + 标记收件箱消息已读 | unread, inbox |
+| `revokeMsg` | 验证发送者 + 标记收件箱/发件箱中消息为已撤回 | inbox/outbox, 检查 senderID |
 
-All Lua scripts execute atomically in Redis, preventing race conditions.
+所有 Lua 脚本在 Redis 中原子执行，防止竞态条件。
 
-## Message Lifecycle
+## 消息生命周期
 
-### Message ID Generation
-- Global counter: `INCR msg_id_global` (atomic, monotonic)
-- Returned as `serverMsgID` in `serverAck`
+### 消息 ID 生成
+- 全局计数器：`INCR msg_id_global`（原子、单调递增）
+- 在 `serverAck` 中以 `serverMsgID` 返回
 
-### Delivery Confirmation
-1. Sender receives `serverAck` (msg reached server)
-2. Receiver's client sends `deliverAck` (msg displayed)
-3. Receiver's client sends `readAck` (user read the conversation)
+### 送达确认
+1. 发送方收到 `serverAck`（消息到达服务器）
+2. 接收方客户端发送 `deliverAck`（消息已展示）
+3. 接收方客户端发送 `readAck`（用户已阅读该会话）
 
-### WeChat Privacy Design
-- Sender sees: message sent, delivery confirmed
-- Sender **cannot** see: whether receiver read the message
-- `readStatus` in inbox is only updated when the **receiver** sends `readAck`
+### 微信式隐私设计
+- 发送方可见：消息已发送、送达已确认
+- 发送方**无法**看到：接收方是否已读消息
+- 收件箱中的 `readStatus` 仅在**接收方**发送 `readAck` 时更新
 
-### Revocation
-- Sender can revoke within 2 minutes (configurable)
-- Lua script verifies: 1) sender owns the message, 2) within time limit
-- Both sender and receiver see `msgRevoked` notification
-- Revoked message content replaced with "Message revoked"
+### 消息撤回
+- 发送方可在 2 分钟内撤回（可配置）
+- Lua 脚本验证：1) 发送者是消息的发送者，2) 在时间限制内
+- 发送方和接收方都会看到 `msgRevoked` 通知
+- 撤回的消息内容替换为 "Message revoked"
 
-## Conversation Sync
+## 会话同步
 
-### Offline Sync (WebSocket)
+### 离线同步（WebSocket）
 
-On reconnect, client sends `syncReq` with `lastSyncTime`:
-- Server reads inbox from `lastSyncTime` onward
-- Returns `syncBatch` with messages and `hasMore` flag
-- Also returns `convSync` with conversation list + unread counts
+重连时，客户端发送 `syncReq` 并携带 `lastSyncTime`：
+- 服务端从 `lastSyncTime` 之后读取收件箱
+- 返回 `syncBatch`，包含消息和 `hasMore` 标志
+- 同时返回 `convSync`，包含会话列表和未读计数
 
-### Group Read Position
-- `group_read_pos:{userID}:{groupID}` = last read groupSeq
-- Used to calculate unread count for group conversations
+### 群聊阅读位置
+- `group_read_pos:{userID}:{groupID}` = 最后阅读的 groupSeq
+- 用于计算群聊会话的未读计数
 
-## Cleanup (3-Day TTL)
+## 清理（3 天 TTL）
 
-Background goroutine runs every 1 hour:
-- `ZREMRANGEBYSCORE inbox:* 0 {3_days_ago}` — remove messages older than 3 days
-- `ZREMRANGEBYRANK inbox:* 0 -(max-1000)` — cap inbox at 1000 messages
-- `ZREMRANGEBYRANK outbox:* 0 -(max-500)` — cap outbox at 500 messages
-- `ZREMRANGEBYRANK timeline:* 0 -(max-100)` — cap timeline at 100 moments
-- Similar trimming for conv_list keys
+后台 goroutine 每 1 小时运行一次：
+- `ZREMRANGEBYSCORE inbox:* 0 {3天前}` — 删除超过 3 天的消息
+- `ZREMRANGEBYRANK inbox:* 0 -(max-1000)` — 收件箱上限为 1000 条消息
+- `ZREMRANGEBYRANK outbox:* 0 -(max-500)` — 发件箱上限为 500 条消息
+- `ZREMRANGEBYRANK timeline:* 0 -(max-100)` — 时间线上限为 100 条朋友圈
+- 对 conv_list 键执行类似的裁剪
 
-## AI 4-Layer Memory
+## AI 四层记忆
 
 ```
-Layer 0: Raw Messages (MySQL private_messages)
+第 0 层：原始消息（MySQL private_messages）
     ↓ AIService.GenerateSummary()
-Layer 1: Structured Summary (MySQL ai_summaries)
+第 1 层：结构化摘要（MySQL ai_summaries）
     topic, key_points, conclusion, user_intent
-    ↓ Profile extraction
-Layer 2: Confidence-Graded Profile (MySQL ai_user_profiles)
+    ↓ 画像提取
+第 2 层：置信度评分的用户画像（MySQL ai_user_profiles）
     field_name, value, confidence (0-1), source
     ON DUPLICATE KEY UPDATE confidence
-    ↓ Load into working memory
-Layer 3: Redis Working Memory (ai_memory:{userID}:{key})
-    TTL = 30 minutes, auto-refresh on use
+    ↓ 加载到工作记忆
+第 3 层：Redis 工作记忆（ai_memory:{userID}:{key}）
+    TTL = 30 分钟，使用后自动刷新
 ```
 
-AI message flow:
-1. User sends `{type:"aiStream", data:{content:"..."}}`
-2. Load working memory from Redis (Layer 3)
-3. If missing, load profile from MySQL (Layer 2)
-4. Call LLM with context + memory
-5. Parse response, extract profile items
-6. Update Layer 2 (MySQL) and Layer 3 (Redis)
-7. Return AI response to user
+AI 消息流程：
+1. 用户发送 `{type:"aiStream", data:{content:"..."}}`
+2. 从 Redis 加载工作记忆（第 3 层）
+3. 如果缺失，从 MySQL 加载用户画像（第 2 层）
+4. 调用 LLM，附带上下文 + 记忆
+5. 解析响应，提取画像信息
+6. 更新第 2 层（MySQL）和第 3 层（Redis）
+7. 向用户返回 AI 响应
 
-## Security
+## 安全
 
-- **JWT Authentication**: Access token (2h) + Refresh token (7d)
-- **bcrypt Password Hashing**: Cost factor 10
-- **Single-Device Policy**: New connection kicks old one
-- **Message Dedup**: Client-generated msgId + Redis SETNX with 5min TTL
-- **Sender Authorization**: Revoke Lua script checks senderID matches
-- **Friend/Member Verification**: Private/group msg Lua scripts verify relationship exists
+- **JWT 认证**：访问令牌（2 小时）+ 刷新令牌（7 天）
+- **bcrypt 密码哈希**：成本因子 10
+- **单设备策略**：新连接会踢出旧连接
+- **消息去重**：客户端生成的 msgId + Redis SETNX，TTL 5 分钟
+- **发送者授权**：撤回 Lua 脚本检查 senderID 是否匹配
+- **好友/成员验证**：私聊/群聊消息 Lua 脚本验证关系是否存在

@@ -1,43 +1,43 @@
 -- private_msg_check.lua
--- Atomic check: friendship + online + blacklist + dedup + message ID allocation
--- KEYS[1] = senderID
--- KEYS[2] = receiverID
--- KEYS[3] = clientMsgID
--- Returns: {err_code, msgID, isOnline, isFriend, isBlocked}
---   err_code: 0=ok, 1=not_friend, 2=blocked, 3=duplicate
---   msgID: allocated global message ID (0 if error)
---   isOnline: receiver online status (1=online, 0=offline)
---   isFriend: friendship status (1=friend, 0=not friend)
---   isBlocked: blacklist status (1=blocked, 0=not blocked)
+-- 原子性检查：好友关系 + 在线状态 + 黑名单 + 去重 + 消息ID分配
+-- KEYS[1] = 发送者ID
+-- KEYS[2] = 接收者ID
+-- KEYS[3] = 客户端消息ID
+-- 返回：{错误码, 消息ID, 是否在线, 是否好友, 是否被拉黑}
+--   错误码：0=正常, 1=非好友, 2=被拉黑, 3=重复消息
+--   消息ID：分配的全局消息ID（错误时为0）
+--   是否在线：接收者在线状态（1=在线, 0=离线）
+--   是否好友：好友关系状态（1=是好友, 0=非好友）
+--   是否被拉黑：黑名单状态（1=被拉黑, 0=未被拉黑）
 
 local senderID = KEYS[1]
 local receiverID = KEYS[2]
 local clientMsgID = KEYS[3]
 
--- 1. Friendship check (bidirectional)
+-- 1. 好友关系检查（双向）
 local friend1 = redis.call('EXISTS', 'friend:' .. senderID .. ':' .. receiverID)
 local friend2 = redis.call('EXISTS', 'friend:' .. receiverID .. ':' .. senderID)
 if friend1 == 0 or friend2 == 0 then
     return {1, 0, 0, 0, 0}
 end
 
--- 2. Blacklist check (receiver blocked sender?)
+-- 2. 黑名单检查（接收者是否拉黑了发送者？）
 local isBlocked = redis.call('SISMEMBER', 'blacklist:' .. receiverID, senderID)
 if isBlocked == 1 then
     return {2, 0, 0, 1, 1}
 end
 
--- 3. Message dedup
+-- 3. 消息去重
 local dedupKey = 'msg_dedup:' .. senderID .. ':' .. clientMsgID
 local dedup = redis.call('SET', dedupKey, '1', 'EX', 300, 'NX')
 if dedup == false then
     return {3, 0, 0, 0, 0}
 end
 
--- 4. Online status check
+-- 4. 在线状态检查
 local isOnline = redis.call('EXISTS', 'online:' .. receiverID)
 
--- 5. Allocate global message ID (atomic INCR)
+-- 5. 分配全局消息ID（原子INCR）
 local msgID = redis.call('INCR', 'msg_id_global')
 
 return {0, msgID, isOnline, 1, 0}

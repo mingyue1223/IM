@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Message type constants
+// 消息类型常量
 const (
 	MsgTypeText    = 1
 	MsgTypeImage   = 2
@@ -24,9 +24,9 @@ const (
 	AI_SYSTEM_ID = 0
 )
 
-// BuildConvID generates conversation ID:
-//   private: p_{smallerID}_{largerID}
-//   group:   g_{groupID}
+// BuildConvID 生成会话 ID：
+//   private: p_{较小ID}_{较大ID}
+//   group:   g_{群组ID}
 func BuildConvID(convType int, id1, id2 int64) string {
 	if convType == ConvTypeGroup {
 		return fmt.Sprintf("g_%d", id1)
@@ -37,13 +37,13 @@ func BuildConvID(convType int, id1, id2 int64) string {
 	return fmt.Sprintf("p_%d_%d", id1, id2)
 }
 
-// WsMessage — universal WebSocket message envelope
+// WsMessage WebSocket 通用消息封装
 type WsMessage struct {
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data"`
 }
 
-// WsError — error payload sent via WebSocket
+// WsError 通过 WebSocket 发送的错误负载
 type WsError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`

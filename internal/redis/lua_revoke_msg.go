@@ -14,7 +14,7 @@ local msgID = tonumber(KEYS[3])
 local revokeMsgJSON = ARGV[1]
 local nowTimestamp = tonumber(ARGV[2])
 
--- Determine if this is a private or group conversation
+-- 判断是私聊还是群聊
 local isGroup = false
 if string.sub(convID, 1, 2) == 'g_' then
     isGroup = true
@@ -22,47 +22,46 @@ end
 
 local zsetKey
 if isGroup then
-    -- Group: outbox:{groupID}
+    -- 群聊：outbox:{groupID}
     local groupID = string.sub(convID, 3)
     zsetKey = 'outbox:' .. groupID
 else
-    -- Private: inbox:{userID}
+    -- 私聊：inbox:{userID}
     zsetKey = 'inbox:' .. userID
 end
 
--- Scan the ZSet to find the message by msgID
+-- 扫描 ZSet 根据 msgID 查找消息
 local msgs = redis.call('ZRANGE', zsetKey, 0, -1)
 for i, msg in ipairs(msgs) do
     local decoded = cjson.decode(msg)
     if decoded.msgId == msgID then
-        -- Authorization: only the original sender can revoke
+        -- 授权：只有原始发送者才能撤回
         if decoded.fromId ~= tonumber(userID) then
-            return 0 -- Not authorized: requester is not the sender
+            return 0 -- 未授权：请求者不是消息发送者
         end
 
-        -- Check 2-minute window
+        -- 检查 2 分钟撤回窗口
         if nowTimestamp - decoded.timestamp > 120000 then
-            return 0 -- Too late, cannot revoke
+            return 0 -- 已超时，无法撤回
         end
 
-        -- ZREM the original message
+        -- ZREM 删除原消息
         redis.call('ZREM', zsetKey, msg)
 
-        -- ZADD the revoked replacement (same score to preserve position)
+        -- ZADD 添加撤回替换消息（保持相同分数以保留位置）
         redis.call('ZADD', zsetKey, decoded.timestamp, revokeMsgJSON)
 
-        return 1 -- Success
+        return 1 -- 成功
     end
 end
 
-return 0 -- Message not found
+return 0 -- 未找到消息
 `
 
-// ExecRevokeMsg atomically revokes a message within 2 minutes.
-// It finds the message by msgID in the inbox/outbox ZSet, checks the
-// 2-minute timestamp window, and replaces the original message with a
-// revoked version (msgType=6). Returns true if successful, false if
-// the message was not found or the 2-minute window has expired.
+// ExecRevokeMsg 在 2 分钟内原子性地撤回消息。
+// 它在收件箱/发件箱 ZSet 中根据 msgID 查找消息，检查
+// 2 分钟时间戳窗口，并用撤回版本（msgType=6）替换原消息。
+// 成功返回 true，未找到消息或超出 2 分钟窗口返回 false。
 func ExecRevokeMsg(rdb *goredis.Client, ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error) {
 	keys := []string{
 		strconv.FormatInt(userID, 10),

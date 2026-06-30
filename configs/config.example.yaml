@@ -1,40 +1,40 @@
-# GoIM Server Configuration Template
-# Copy this file to configs/config.yaml and modify for your environment.
+# GoIM 服务器配置模板
+# 复制此文件到 configs/config.yaml 并根据你的环境进行修改。
 # cp configs/config.example.yaml configs/config.yaml
 
 server:
-  port: 8080              # HTTP server port
-  ws_path: "/ws"          # WebSocket endpoint path
-  upload_dir: "./uploads" # File upload directory
+  port: 8080              # HTTP 服务器端口
+  ws_path: "/ws"          # WebSocket 端点路径
+  upload_dir: "./uploads" # 文件上传目录
 
 mysql:
   host: "localhost"
-  port: 3306              # Default MySQL port (adjust if needed)
+  port: 3306              # 默认 MySQL 端口（根据实际情况调整）
   user: "goim"
-  password: "goim123"     # CHANGE IN PRODUCTION!
+  password: "goim123"     # 生产环境中请修改！
   db_name: "goim"
 
 redis:
   addr: "localhost:6379"
-  password: ""            # Set password in production!
-  db: 0                   # Redis database number (use 1 for E2E tests to avoid collision)
+  password: ""            # 生产环境中请设置密码！
+  db: 0                   # Redis 数据库编号（E2E 测试使用 1，避免冲突）
 
 rabbitmq:
-  url: "amqp://guest:guest@localhost:5672/"  # RabbitMQ AMQP URL
+  url: "amqp://guest:guest@localhost:5672/"  # RabbitMQ AMQP 地址
 
 jwt:
-  secret: "CHANGE-THIS-TO-A-STRONG-RANDOM-SECRET-32-CHARS-MIN"  # MUST CHANGE IN PRODUCTION!
-  access_exp_hours: 2     # Access token lifetime (hours)
-  refresh_exp_days: 7     # Refresh token lifetime (days)
+  secret: "CHANGE-THIS-TO-A-STRONG-RANDOM-SECRET-32-CHARS-MIN"  # 生产环境中务必修改！
+  access_exp_hours: 2     # 访问令牌有效期（小时）
+  refresh_exp_days: 7     # 刷新令牌有效期（天）
 
 llm:
-  provider: "openai"               # LLM provider: "openai" or "deepseek"
-  api_key: "YOUR_API_KEY_HERE"     # API key (use env var or secret manager in production)
-  base_url: "https://api.openai.com/v1"  # API base URL (change for DeepSeek or other providers)
-  model: "gpt-4o-mini"             # Model name (e.g., "deepseek-v4-pro" for DeepSeek)
-  max_tokens: 2048                  # Max response tokens
+  provider: "openai"               # LLM 提供商："openai" 或 "deepseek"
+  api_key: "YOUR_API_KEY_HERE"     # API 密钥（生产环境请使用环境变量或密钥管理器）
+  base_url: "https://api.openai.com/v1"  # API 基础地址（DeepSeek 或其他提供商需修改）
+  model: "gpt-4o-mini"             # 模型名称（例如 DeepSeek 使用 "deepseek-v4-pro"）
+  max_tokens: 2048                  # 最大响应 token 数
 
 file:
-  max_size_mb: 50                   # Max upload file size (MB)
-  allowed_exts: ["jpg", "png", "gif", "mp4"]  # Allowed file extensions
-  upload_dir: "./uploads"           # Upload storage directory
+  max_size_mb: 50                   # 最大上传文件大小（MB）
+  allowed_exts: ["jpg", "png", "gif", "mp4"]  # 允许的文件扩展名
+  upload_dir: "./uploads"           # 上传文件存储目录

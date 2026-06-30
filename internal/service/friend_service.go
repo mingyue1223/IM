@@ -10,27 +10,26 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── Friend service error constants ──
+// ── 好友服务错误常量 ──
 
 const (
-	ErrSelfRequest      = "cannot send friend request to yourself"
-	ErrAlreadyFriends   = "already friends with this user"
-	ErrFriendBlocked    = "you have blocked this user or they have blocked you"
-	ErrDuplicateRequest = "a pending friend request already exists"
-	ErrRequestNotFound  = "friend request not found"
-	ErrNotRequestTarget = "you are not the target of this friend request"
-	ErrAlreadyBlocked   = "you have already blocked this user"
+	ErrSelfRequest      = "不能给自己发送好友请求"
+	ErrAlreadyFriends   = "已经是该用户的好友"
+	ErrFriendBlocked    = "你已拉黑该用户或已被该用户拉黑"
+	ErrDuplicateRequest = "已存在待处理的好友请求"
+	ErrRequestNotFound  = "好友请求未找到"
+	ErrNotRequestTarget = "你不是该好友请求的接收者"
+	ErrAlreadyBlocked   = "你已经拉黑了该用户"
 )
 
-// FriendService handles friend-related business logic: sending/accepting/rejecting
-// friend requests, managing friendships, and blocking/unblocking users.
+// FriendService 处理好友相关的业务逻辑：发送/接受/拒绝好友请求、管理好友关系以及拉黑/取消拉黑用户。
 type FriendService struct {
 	mysqlRepo repository.MySQLRepo
 	redisRepo repository.RedisRepo
 	logger    *zap.Logger
 }
 
-// NewFriendService creates a FriendService with all required dependencies.
+// NewFriendService 创建一个包含所有必要依赖的 FriendService。
 func NewFriendService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, logger *zap.Logger) *FriendService {
 	return &FriendService{
 		mysqlRepo: mysqlRepo,
@@ -39,67 +38,67 @@ func NewFriendService(mysqlRepo repository.MySQLRepo, redisRepo repository.Redis
 	}
 }
 
-// SendFriendRequest creates a friend request after validating:
-// - not self-request
-// - not already friends
-// - not blocked (either direction)
-// - no duplicate pending request
+// SendFriendRequest 创建好友请求，并进行以下验证：
+// - 不能给自己发请求
+// - 不能已经是好友
+// - 未被拉黑（任一方向）
+// - 不存在重复的待处理请求
 func (s *FriendService) SendFriendRequest(ctx context.Context, fromUserID, toUserID int64, message string) (*model.FriendRequest, error) {
-	// 1. Not self-request
+	// 1. 不能给自己发请求
 	if fromUserID == toUserID {
 		return nil, fmt.Errorf(ErrSelfRequest)
 	}
 
-	// 2. Not already friends
+	// 2. 不能已经是好友
 	isFriend, err := s.mysqlRepo.IsFriend(ctx, fromUserID, toUserID)
 	if err != nil {
-		return nil, fmt.Errorf("check friendship: %w", err)
+		return nil, fmt.Errorf("检查好友关系: %w", err)
 	}
 	if isFriend {
 		return nil, fmt.Errorf(ErrAlreadyFriends)
 	}
 
-	// 3. Not blocked (check both directions)
+	// 3. 未被拉黑（检查双向）
 	blockedBySender, err := s.mysqlRepo.IsBlocked(ctx, fromUserID, toUserID)
 	if err != nil {
-		return nil, fmt.Errorf("check blocked by sender: %w", err)
+		return nil, fmt.Errorf("检查发送者是否被拉黑: %w", err)
 	}
 	if blockedBySender {
 		return nil, fmt.Errorf(ErrFriendBlocked)
 	}
 	blockedByTarget, err := s.mysqlRepo.IsBlocked(ctx, toUserID, fromUserID)
 	if err != nil {
-		return nil, fmt.Errorf("check blocked by target: %w", err)
+		return nil, fmt.Errorf("检查接收者是否被拉黑: %w", err)
 	}
 	if blockedByTarget {
 		return nil, fmt.Errorf(ErrFriendBlocked)
 	}
 
-	// 4. No duplicate pending request
+	// 4. 不存在重复的待处理请求
 	existingRequests, err := s.mysqlRepo.GetFriendRequestsByUser(ctx, fromUserID)
 	if err != nil {
-		return nil, fmt.Errorf("check existing requests: %w", err)
+		return nil, fmt.Errorf("检查已有请求: %w", err)
 	}
 	for _, req := range existingRequests {
-		if req.Status == 0 && // pending
+		if req.Status == 0 && // 待处理
 			((req.FromUserID == fromUserID && req.ToUserID == toUserID) ||
 				(req.FromUserID == toUserID && req.ToUserID == fromUserID)) {
 			return nil, fmt.Errorf(ErrDuplicateRequest)
 		}
 	}
 
-	// 5. Create the friend request
+	// 5. 创建好友请求
 	req := &model.FriendRequest{
 		FromUserID: fromUserID,
 		ToUserID:   toUserID,
 		Message:    message,
-		Status:     0, // pending
+		Status:     0, // 待处理
 	}
 	if err := s.mysqlRepo.CreateFriendRequest(ctx, req); err != nil {
-		return nil, fmt.Errorf("create friend request: %w", err)
+		return nil, fmt.Errorf("创建好友请求: %w", err)
 	}
 
-	s.logger.Debug("friend request sent",
+	s.logger.Debug("好友请求已发送",
 		zap.Int64("fromUserID", fromUserID),
 		zap.Int64("toUserID", toUserID),
 		zap.Int64("requestID", req.ID),
@@ -108,41 +107,41 @@ func (s *FriendService) SendFriendRequest(ctx context.Context, fromUserID, toUse
 	return req, nil
 }
 
-// AcceptFriendRequest accepts a friend request. It validates:
-// - the request exists
-// - the calling user is the target (toUserID) of the request
-// Then it updates the request status to accepted (1) and creates a bidirectional Friendship.
+// AcceptFriendRequest 接受好友请求。验证：
+// - 请求存在
+// - 调用者是请求的接收者（toUserID）
+// 然后更新请求状态为已接受（1）并创建双向好友关系。
 func (s *FriendService) AcceptFriendRequest(ctx context.Context, userID, requestID int64) (*model.Friendship, error) {
-	// 1. Get the request
+	// 1. 获取请求
 	req, err := s.mysqlRepo.GetFriendRequestByID(ctx, requestID)
 	if err != nil {
-		return nil, fmt.Errorf("get friend request: %w", err)
+		return nil, fmt.Errorf("获取好友请求: %w", err)
 	}
 	if req == nil {
 		return nil, fmt.Errorf(ErrRequestNotFound)
 	}
 
-	// 2. Validate the calling user is the target
+	// 2. 验证调用者是请求的接收者
 	if req.ToUserID != userID {
 		return nil, fmt.Errorf(ErrNotRequestTarget)
 	}
 
-	// 3. Update request status to accepted
+	// 3. 更新请求状态为已接受
 	req.Status = 1
 	if err := s.mysqlRepo.UpdateFriendRequest(ctx, req); err != nil {
-		return nil, fmt.Errorf("accept friend request: %w", err)
+		return nil, fmt.Errorf("接受好友请求: %w", err)
 	}
 
-	// 4. Create bidirectional Friendship
+	// 4. 创建双向好友关系
 	fs := &model.Friendship{
 		UserID:   req.FromUserID,
 		FriendID: req.ToUserID,
 	}
 	if err := s.mysqlRepo.CreateFriendship(ctx, fs); err != nil {
-		return nil, fmt.Errorf("create friendship: %w", err)
+		return nil, fmt.Errorf("创建好友关系: %w", err)
 	}
 
-	s.logger.Debug("friend request accepted",
+	s.logger.Debug("好友请求已接受",
 		zap.Int64("userID", userID),
 		zap.Int64("requestID", requestID),
 	)
@@ -150,32 +149,32 @@ func (s *FriendService) AcceptFriendRequest(ctx context.Context, userID, request
 	return fs, nil
 }
 
-// RejectFriendRequest rejects a friend request. It validates:
-// - the request exists
-// - the calling user is the target (toUserID) of the request
-// Then it updates the request status to rejected (2).
+// RejectFriendRequest 拒绝好友请求。验证：
+// - 请求存在
+// - 调用者是请求的接收者（toUserID）
+// 然后更新请求状态为已拒绝（2）。
 func (s *FriendService) RejectFriendRequest(ctx context.Context, userID, requestID int64) error {
-	// 1. Get the request
+	// 1. 获取请求
 	req, err := s.mysqlRepo.GetFriendRequestByID(ctx, requestID)
 	if err != nil {
-		return fmt.Errorf("get friend request: %w", err)
+		return fmt.Errorf("获取好友请求: %w", err)
 	}
 	if req == nil {
 		return fmt.Errorf(ErrRequestNotFound)
 	}
 
-	// 2. Validate the calling user is the target
+	// 2. 验证调用者是请求的接收者
 	if req.ToUserID != userID {
 		return fmt.Errorf(ErrNotRequestTarget)
 	}
 
-	// 3. Update request status to rejected
+	// 3. 更新请求状态为已拒绝
 	req.Status = 2
 	if err := s.mysqlRepo.UpdateFriendRequest(ctx, req); err != nil {
-		return fmt.Errorf("reject friend request: %w", err)
+		return fmt.Errorf("拒绝好友请求: %w", err)
 	}
 
-	s.logger.Debug("friend request rejected",
+	s.logger.Debug("好友请求已拒绝",
 		zap.Int64("userID", userID),
 		zap.Int64("requestID", requestID),
 	)
@@ -183,38 +182,38 @@ func (s *FriendService) RejectFriendRequest(ctx context.Context, userID, request
 	return nil
 }
 
-// GetFriendRequests returns all friend requests involving the given user.
+// GetFriendRequests 返回涉及指定用户的所有好友请求。
 func (s *FriendService) GetFriendRequests(ctx context.Context, userID int64) ([]model.FriendRequest, error) {
 	requests, err := s.mysqlRepo.GetFriendRequestsByUser(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("get friend requests: %w", err)
+		return nil, fmt.Errorf("获取好友请求: %w", err)
 	}
 	return requests, nil
 }
 
-// FriendListItem enriches a Friendship with user profile data.
+// FriendListItem 使用用户个人资料数据丰富 Friendship 信息。
 type FriendListItem struct {
 	model.Friendship
 	Nickname  string `json:"nickname"`
 	AvatarURL string `json:"avatar_url"`
 }
 
-// GetFriendList returns the user's friends enriched with nickname and avatar.
+// GetFriendList 返回用户的好友列表，包含昵称和头像。
 func (s *FriendService) GetFriendList(ctx context.Context, userID int64) ([]FriendListItem, error) {
 	friendships, err := s.mysqlRepo.GetFriendList(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("get friend list: %w", err)
+		return nil, fmt.Errorf("获取好友列表: %w", err)
 	}
 
 	items := make([]FriendListItem, 0, len(friendships))
 	for _, fs := range friendships {
 		user, err := s.mysqlRepo.GetUserByID(ctx, fs.FriendID)
 		if err != nil {
-			s.logger.Warn("failed to get friend profile",
+			s.logger.Warn("获取好友个人资料失败",
 				zap.Int64("friendID", fs.FriendID),
 				zap.Error(err),
 			)
-			// Still include the friendship, just without profile info
+			// 仍然包含好友关系，只是没有个人资料信息
 			items = append(items, FriendListItem{Friendship: fs})
 			continue
 		}
@@ -232,13 +231,13 @@ func (s *FriendService) GetFriendList(ctx context.Context, userID int64) ([]Frie
 	return items, nil
 }
 
-// DeleteFriend removes a bidirectional friendship between the two users.
+// DeleteFriend 删除两个用户之间的双向好友关系。
 func (s *FriendService) DeleteFriend(ctx context.Context, userID, friendID int64) error {
 	if err := s.mysqlRepo.DeleteFriendship(ctx, userID, friendID); err != nil {
-		return fmt.Errorf("delete friendship: %w", err)
+		return fmt.Errorf("删除好友关系: %w", err)
 	}
 
-	s.logger.Debug("friend deleted",
+	s.logger.Debug("好友已删除",
 		zap.Int64("userID", userID),
 		zap.Int64("friendID", friendID),
 	)
@@ -246,12 +245,12 @@ func (s *FriendService) DeleteFriend(ctx context.Context, userID, friendID int64
 	return nil
 }
 
-// BlockUser adds a user to the calling user's blacklist.
+// BlockUser 将用户添加到调用者的黑名单中。
 func (s *FriendService) BlockUser(ctx context.Context, userID, blockedID int64) error {
-	// Check if already blocked
+	// 检查是否已经拉黑
 	isBlocked, err := s.mysqlRepo.IsBlocked(ctx, userID, blockedID)
 	if err != nil {
-		return fmt.Errorf("check already blocked: %w", err)
+		return fmt.Errorf("检查是否已拉黑: %w", err)
 	}
 	if isBlocked {
 		return fmt.Errorf(ErrAlreadyBlocked)
@@ -262,10 +261,10 @@ func (s *FriendService) BlockUser(ctx context.Context, userID, blockedID int64) 
 		BlockedID: blockedID,
 	}
 	if err := s.mysqlRepo.CreateBlacklist(ctx, bl); err != nil {
-		return fmt.Errorf("create blacklist: %w", err)
+		return fmt.Errorf("创建黑名单记录: %w", err)
 	}
 
-	s.logger.Debug("user blocked",
+	s.logger.Debug("用户已拉黑",
 		zap.Int64("userID", userID),
 		zap.Int64("blockedID", blockedID),
 	)
@@ -273,13 +272,13 @@ func (s *FriendService) BlockUser(ctx context.Context, userID, blockedID int64) 
 	return nil
 }
 
-// UnblockUser removes a user from the calling user's blacklist.
+// UnblockUser 将用户从调用者的黑名单中移除。
 func (s *FriendService) UnblockUser(ctx context.Context, userID, blockedID int64) error {
 	if err := s.mysqlRepo.DeleteBlacklist(ctx, userID, blockedID); err != nil {
-		return fmt.Errorf("delete blacklist: %w", err)
+		return fmt.Errorf("删除黑名单记录: %w", err)
 	}
 
-	s.logger.Debug("user unblocked",
+	s.logger.Debug("用户已取消拉黑",
 		zap.Int64("userID", userID),
 		zap.Int64("blockedID", blockedID),
 	)
@@ -287,18 +286,17 @@ func (s *FriendService) UnblockUser(ctx context.Context, userID, blockedID int64
 	return nil
 }
 
-// IsBlocked checks whether the calling user has blocked the given user.
+// IsBlocked 检查调用者是否已拉黑指定用户。
 func (s *FriendService) IsBlocked(ctx context.Context, userID, blockedID int64) (bool, error) {
 	isBlocked, err := s.mysqlRepo.IsBlocked(ctx, userID, blockedID)
 	if err != nil {
-		return false, fmt.Errorf("check is_blocked: %w", err)
+		return false, fmt.Errorf("检查是否已拉黑: %w", err)
 	}
 	return isBlocked, nil
 }
 
-// HandleFriendApply processes a friend application via WebSocket.
-// This is kept as a placeholder for the WS MessageDispatcher — the HTTP
-// handlers are the primary interface for friend operations.
+// HandleFriendApply 通过 WebSocket 处理好友申请。
+// 此方法作为 WS MessageDispatcher 的占位符保留——HTTP 处理器是好友操作的主要接口。
 func (s *FriendService) HandleFriendApply(userID int64, data []byte) {
-	// TODO: implement WS-based friend apply if needed; HTTP handlers are preferred
+	// TODO: 如有需要，实现基于 WebSocket 的好友申请；HTTP 处理器是首选方式
 }

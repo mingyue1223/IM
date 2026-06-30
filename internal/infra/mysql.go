@@ -10,7 +10,7 @@ import (
 	"github.com/goim/goim/internal/config"
 )
 
-// NewMySQLPool creates a configured MySQL connection pool.
+// NewMySQLPool 创建并配置一个 MySQL 连接池。
 func NewMySQLPool(cfg *config.MySQLConfig) (*sql.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=true",
 		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName)

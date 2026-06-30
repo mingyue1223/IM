@@ -27,7 +27,7 @@ func TestServeWebSocket_MissingToken(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
-	assert.Contains(t, w.Body.String(), "missing token")
+	assert.Contains(t, w.Body.String(), "缺少令牌")
 }
 
 func TestServeWebSocket_InvalidToken(t *testing.T) {
@@ -44,19 +44,19 @@ func TestServeWebSocket_InvalidToken(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
-	assert.Contains(t, w.Body.String(), "invalid token")
+	assert.Contains(t, w.Body.String(), "无效令牌")
 }
 
 func TestServeWebSocket_ValidToken_Upgrades(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// Generate a valid JWT token
+	// 生成一个有效的 JWT 令牌
 	token, err := middleware.GenerateAccessToken(1, "testuser", "test-secret", 2)
 	assert.NoError(t, err)
 
-	// Create a test HTTP server that handles WS upgrade
+	// 创建一个处理 WebSocket 升级的测试 HTTP 服务器
 	cm := conn.NewConnectionManager()
-	msgHandler := func(c *conn.ClientConnection, data []byte) {} // noop handler
+	msgHandler := func(c *conn.ClientConnection, data []byte) {} // 空操作处理器
 	handler := ServeWebSocket("test-secret", nil, cm, msgHandler)
 
 	r := gin.New()
@@ -65,22 +65,22 @@ func TestServeWebSocket_ValidToken_Upgrades(t *testing.T) {
 	server := httptest.NewServer(r)
 	defer server.Close()
 
-	// Connect as a WebSocket client
+	// 作为 WebSocket 客户端连接
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?token=" + token
 	wsClient, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
-		// In some test environments, the WebSocket upgrade may not succeed
-		// due to timing or goroutine issues — skip rather than silently pass
-		t.Skipf("WebSocket client dial error (skipping): %v", err)
+		// 在某些测试环境中，WebSocket 升级可能因时序或协程问题而失败
+		// —— 跳过测试，而不是静默通过
+		t.Skipf("WebSocket 客户端拨号错误（跳过）: %v", err)
 	}
 	defer wsClient.Close()
 
-	// Successfully upgraded
+	// 成功升级
 	assert.NotNil(t, wsClient)
 
-	// Verify connection was registered in ConnectionManager
-	// Registration happens in a goroutine that may not have completed immediately,
-	// so we retry with a short timeout to avoid a flaky race condition.
+	// 验证连接已在 ConnectionManager 中注册
+	// 注册发生在协程中，可能不会立即完成，
+	// 因此我们通过短暂超时重试来避免不稳定的竞态条件。
 	var clientConn *conn.ClientConnection
 	var ok bool
 	for i := 0; i < 10; i++ {
@@ -90,6 +90,6 @@ func TestServeWebSocket_ValidToken_Upgrades(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	assert.True(t, ok, "expected connection for user 1 to be registered in ConnectionManager")
+	assert.True(t, ok, "期望用户 1 的连接已注册到 ConnectionManager 中")
 	assert.NotNil(t, clientConn)
 }

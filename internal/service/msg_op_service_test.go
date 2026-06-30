@@ -15,21 +15,21 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Mock MySQLRepo for msg_op tests
+// Mock MySQLRepo，用于 msg_op 测试
 // ──────────────────────────────────────────────────────
 
 type mockMsgOpRepo struct {
 	mu sync.Mutex
 
-	// Stored revoked messages keyed by msgID
+	// 存储已撤回消息，按 msgID 索引
 	revokedMsgs map[int64]*model.MsgRevoked
-	// Stored private messages for search
+	// 存储私聊消息，用于搜索
 	privateMsgs map[int64]*model.PrivateMessage
-	// Search error override
+	// 搜索错误覆盖
 	searchErr error
-	// InsertMsgRevoked error override
+	// InsertMsgRevoked 错误覆盖
 	insertRevokedErr error
-	// Next auto-increment ID
+	// 下一个自增 ID
 	nextRevokedID int64
 }
 
@@ -41,7 +41,7 @@ func newMockMsgOpRepo() *mockMsgOpRepo {
 	}
 }
 
-// ── Msg-op-specific methods ──
+// ── Msg-op 专用方法 ──
 
 func (m *mockMsgOpRepo) InsertMsgRevoked(_ context.Context, revoked *model.MsgRevoked) error {
 	m.mu.Lock()

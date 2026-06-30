@@ -17,14 +17,14 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Mock implementations
+// Mock 实现
 // ──────────────────────────────────────────────────────
 
-// mockRedisRepo implements repository.RedisRepo for testing.
+// mockRedisRepo 实现 repository.RedisRepo 接口，用于测试。
 type mockRedisRepo struct {
 	mu sync.Mutex
 
-	// Configurable return values for Lua scripts
+	// Lua 脚本的可配置返回值
 	privateCheckResult *redislua.PrivateMsgCheckResult
 	privateCheckErr    error
 	groupCheckResult   *redislua.GroupMsgCheckResult
@@ -34,15 +34,15 @@ type mockRedisRepo struct {
 	revokeResult       bool
 	revokeErr          error
 
-	// Captured data
-	inboxMessages  map[int64][]model.InboxMessage // userID -> messages
-	outboxMessages map[int64][]model.InboxMessage // groupID -> messages
-	groupMembers   map[int64][]int64              // userID -> groupIDs
+	// 捕获的数据
+	inboxMessages  map[int64][]model.InboxMessage // userID -> 消息列表
+	outboxMessages map[int64][]model.InboxMessage // groupID -> 消息列表
+	groupMembers   map[int64][]int64              // userID -> groupID 列表
 	groupReadPos   map[string]int64               // "userID:convID" -> seq
-	unreadMap      map[string]int64               // convID -> count
-	convList       map[int64][]model.ConvSummary  // userID -> conv summaries
+	unreadMap      map[string]int64               // convID -> 计数
+	convList       map[int64][]model.ConvSummary  // userID -> 会话摘要列表
 
-	// Method call tracking
+	// 方法调用追踪
 	privateCheckCalled bool
 	groupCheckCalled   bool
 	publishCalled      bool
@@ -166,7 +166,7 @@ func (m *mockRedisRepo) GetGroupMemberships(_ context.Context, userID int64) ([]
 func (m *mockRedisRepo) GetGroupMembers(_ context.Context, groupID int64) ([]int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// Return empty list — group member fan-out is handled by the MQ consumer, not MsgService
+		// 返回空列表 — 群成员推送由 MQ 消费者处理，而非 MsgService
 	return []int64{}, nil
 }
 
@@ -223,7 +223,7 @@ func (m *mockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _
 func (m *mockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
 func (m *mockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 
-// mockMQRepo implements repository.MQRepo for testing.
+// mockMQRepo 实现 repository.MQRepo 接口，用于测试。
 type mockMQRepo struct {
 	mu             sync.Mutex
 	privateMsgs    []*model.PrivateMessage
@@ -258,7 +258,7 @@ func (m *mockMQRepo) PublishMomentPush(_ context.Context, _ *model.Moment) error
 }
 
 // ──────────────────────────────────────────────────────
-// Helpers
+	// 辅助函数
 // ──────────────────────────────────────────────────────
 
 func testLogger() *zap.Logger {
@@ -266,7 +266,7 @@ func testLogger() *zap.Logger {
 	return l
 }
 
-// drainSendCh reads one message from a client's SendCh with a timeout.
+// drainSendCh 从客户端的 SendCh 读取一条消息，带超时。
 func drainSendCh(client *conn.ClientConnection) ([]byte, bool) {
 	select {
 	case msg := <-client.SendCh:
@@ -276,13 +276,13 @@ func drainSendCh(client *conn.ClientConnection) ([]byte, bool) {
 	}
 }
 
-// decodeWsMessage parses raw bytes into a WsMessage envelope.
+// decodeWsMessage 将原始字节解析为 WsMessage 信封。
 func decodeWsMessage(raw []byte) (*model.WsMessage, error) {
 	return protocol.DecodeMsg(raw)
 }
 
 // ──────────────────────────────────────────────────────
-// Tests
+// 测试用例
 // ──────────────────────────────────────────────────────
 
 func TestPrivateMsgSend_Success(t *testing.T) {
@@ -298,7 +298,7 @@ func TestPrivateMsgSend_Success(t *testing.T) {
 	cm := conn.NewConnectionManager()
 	logger := testLogger()
 
-	// Register sender and receiver connections
+	// 注册发送方和接收方的连接
 	sender := conn.NewClientConnection(1, nil)
 	receiver := conn.NewClientConnection(2, nil)
 	cm.Register(1, sender)
@@ -306,7 +306,7 @@ func TestPrivateMsgSend_Success(t *testing.T) {
 
 	svc := NewMsgService(redisMock, mqMock, cm, logger)
 
-	// Build request
+	// 构建请求
 	req := model.SendMessage{
 		ClientMsgID: "client-msg-1",
 		ConvType:    model.ConvTypePrivate,
@@ -319,10 +319,10 @@ func TestPrivateMsgSend_Success(t *testing.T) {
 
 	svc.HandleSendMessage(1, data)
 
-	// Verify: Lua check was called
+	// 验证：Lua 检查已被调用
 	assert.True(t, redisMock.privateCheckCalled)
 
-	// Verify: MQ publish was called
+	// 验证：MQ 发布已被调用
 	assert.True(t, mqMock.publishPrivate)
 	assert.Len(t, mqMock.privateMsgs, 1)
 	assert.Equal(t, int64(1001), mqMock.privateMsgs[0].ID)
@@ -330,9 +330,9 @@ func TestPrivateMsgSend_Success(t *testing.T) {
 	assert.Equal(t, int64(2), mqMock.privateMsgs[0].ReceiverID)
 	assert.Equal(t, "hello", mqMock.privateMsgs[0].Content)
 
-	// Verify: serverAck was sent to sender
+	// 验证：serverAck 已发送给发送方
 	msg, ok := drainSendCh(sender)
-	assert.True(t, ok, "expected serverAck on sender SendCh")
+	assert.True(t, ok, "期望在发送方 SendCh 上收到 serverAck")
 	wsMsg, err := decodeWsMessage(msg)
 	assert.NoError(t, err)
 	assert.Equal(t, protocol.TypeServerAck, wsMsg.Type)
@@ -342,9 +342,9 @@ func TestPrivateMsgSend_Success(t *testing.T) {
 	assert.Equal(t, "client-msg-1", ack.ClientMsgID)
 	assert.Equal(t, int64(1001), ack.ServerMsgID)
 
-	// Verify: message was pushed to receiver (isOnline=true)
+	// 验证：消息已推送给接收方（isOnline=true）
 	msg, ok = drainSendCh(receiver)
-	assert.True(t, ok, "expected message push on receiver SendCh")
+	assert.True(t, ok, "期望在接收方 SendCh 上收到消息推送")
 	wsMsg, err = decodeWsMessage(msg)
 	assert.NoError(t, err)
 	assert.Equal(t, protocol.TypeMsg, wsMsg.Type)
@@ -389,7 +389,7 @@ func TestPrivateMsgSend_NotFriend(t *testing.T) {
 
 	svc.HandleSendMessage(1, data)
 
-	// Verify: error was sent to sender
+	// 验证：错误已发送给发送方
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, err := decodeWsMessage(msg)
@@ -401,7 +401,7 @@ func TestPrivateMsgSend_NotFriend(t *testing.T) {
 	assert.Equal(t, redislua.CodePMNotFriend, wsErr.Code)
 	assert.Equal(t, ErrNotFriend, wsErr.Message)
 
-	// Verify: MQ publish was NOT called
+	// 验证：MQ 发布未被调用
 	assert.False(t, mqMock.publishPrivate)
 }
 
@@ -487,7 +487,7 @@ func TestPrivateMsgSend_ReceiverOffline(t *testing.T) {
 	redisMock.privateCheckResult = &redislua.PrivateMsgCheckResult{
 		ErrCode:   redislua.PMErrOK,
 		MsgID:     2001,
-		IsOnline:  false, // receiver offline
+		IsOnline:  false, // 接收方离线
 		IsFriend:  true,
 		IsBlocked: false,
 	}
@@ -497,7 +497,7 @@ func TestPrivateMsgSend_ReceiverOffline(t *testing.T) {
 
 	sender := conn.NewClientConnection(1, nil)
 	cm.Register(1, sender)
-	// No receiver registered in cm (offline)
+	// cm 中未注册接收方（离线）
 
 	svc := NewMsgService(redisMock, mqMock, cm, logger)
 
@@ -513,13 +513,13 @@ func TestPrivateMsgSend_ReceiverOffline(t *testing.T) {
 
 	svc.HandleSendMessage(1, data)
 
-	// Verify: serverAck sent to sender
+	// 验证：serverAck 已发送给发送方
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
 	assert.Equal(t, protocol.TypeServerAck, wsMsg.Type)
 
-	// Verify: MQ still published (will be delivered via sync when receiver comes online)
+	// 验证：MQ 仍然发布（当接收方上线时通过同步投递）
 	assert.True(t, mqMock.publishPrivate)
 }
 
@@ -548,7 +548,7 @@ func TestPrivateMsgSend_LuaError(t *testing.T) {
 
 	svc.HandleSendMessage(1, data)
 
-	// Verify: internal error sent to sender
+	// 验证：内部错误已发送给发送方
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
@@ -580,7 +580,7 @@ func TestGroupMsgSend_Success(t *testing.T) {
 	req := model.SendMessage{
 		ClientMsgID: "client-msg-group-1",
 		ConvType:    model.ConvTypeGroup,
-		ToID:        100, // groupID
+		ToID:        100, // 群组ID
 		MsgType:     model.MsgTypeText,
 		Content:     "group hello",
 		Timestamp:   1000000,
@@ -589,17 +589,17 @@ func TestGroupMsgSend_Success(t *testing.T) {
 
 	svc.HandleSendMessage(1, data)
 
-	// Verify: Lua check was called
+	// 验证：Lua 检查已被调用
 	assert.True(t, redisMock.groupCheckCalled)
 
-	// Verify: MQ publish was called
+	// 验证：MQ 发布已被调用
 	assert.True(t, mqMock.publishGroup)
 	assert.Len(t, mqMock.groupMsgs, 1)
 	assert.Equal(t, int64(3001), mqMock.groupMsgs[0].ID)
 	assert.Equal(t, int64(100), mqMock.groupMsgs[0].GroupID)
 	assert.Equal(t, int64(10), mqMock.groupMsgs[0].GroupSeq)
 
-	// Verify: serverAck with groupSeq sent to sender
+	// 验证：serverAck 携带 groupSeq 发送给发送方
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, err := decodeWsMessage(msg)
@@ -704,9 +704,9 @@ func TestDeliverAck(t *testing.T) {
 	ack := model.DeliverAck{ServerMsgID: 1001}
 	data, _ := json.Marshal(ack)
 
-	// DeliverAck is informational — just verify it doesn't panic
+	// DeliverAck 是信息性的 — 仅验证它不会 panic
 	svc.HandleDeliverAck(1, data)
-	// No error should be sent, no state change expected
+	// 不应发送错误，不应有状态变更
 }
 
 func TestReadAck_Success(t *testing.T) {
@@ -723,7 +723,7 @@ func TestReadAck_Success(t *testing.T) {
 
 	svc.HandleReadAck(1, data)
 
-	// Verify: Lua mark read was called
+	// 验证：Lua 标记已读已被调用
 	assert.True(t, redisMock.markReadCalled)
 }
 
@@ -738,10 +738,10 @@ func TestReadAck_InvalidFormat(t *testing.T) {
 
 	svc := NewMsgService(redisMock, mqMock, cm, logger)
 
-	// Send invalid JSON
+	// 发送无效的 JSON
 	svc.HandleReadAck(1, []byte("invalid json"))
 
-	// Verify: error was sent
+	// 验证：错误已发送
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
@@ -750,20 +750,20 @@ func TestReadAck_InvalidFormat(t *testing.T) {
 
 func TestSyncReq_WithMessages(t *testing.T) {
 	redisMock := newMockRedisRepo()
-	// Pre-populate inbox for user 1
+	// 为用户 1 预填充收件箱
 	redisMock.inboxMessages[1] = []model.InboxMessage{
 		{MsgID: 1, ConvID: "p_1_2", ConvType: 1, FromID: 2, ToID: 1, Content: "hi", Timestamp: 1100000},
 		{MsgID: 2, ConvID: "p_1_2", ConvType: 1, FromID: 2, ToID: 1, Content: "there", Timestamp: 1200000},
 	}
-	// User 1 is in group 100
+	// 用户 1 在群组 100 中
 	redisMock.groupMembers[1] = []int64{100}
-	// Group outbox for group 100
+	// 群组 100 的发件箱
 	redisMock.outboxMessages[100] = []model.InboxMessage{
 		{MsgID: 3, ConvID: "g_100", ConvType: 2, FromID: 5, ToID: 100, Content: "group msg", Timestamp: 1300000, GroupSeq: 5},
 	}
-	// User 1's read position for g_100 is seq 3
+	// 用户 1 在 g_100 的已读位置是 seq 3
 	redisMock.groupReadPos["g_100"] = 3
-	// Unread map
+	// 未读映射表
 	redisMock.unreadMap = map[string]int64{"p_1_2": 2, "g_100": 1}
 
 	mqMock := newMockMQRepo()
@@ -780,29 +780,29 @@ func TestSyncReq_WithMessages(t *testing.T) {
 
 	svc.HandleSyncReq(1, data)
 
-	// Should receive two messages: SyncBatch and ConvSync
+	// 应该收到两条消息：SyncBatch 和 ConvSync
 	msg1, ok := drainSendCh(client)
-	assert.True(t, ok, "expected SyncBatch on SendCh")
+	assert.True(t, ok, "期望在 SendCh 上收到 SyncBatch")
 	wsMsg1, err := decodeWsMessage(msg1)
 	assert.NoError(t, err)
 	assert.Equal(t, protocol.TypeSyncBatch, wsMsg1.Type)
 
 	var batch model.SyncBatch
 	assert.NoError(t, json.Unmarshal(wsMsg1.Data, &batch))
-	// Should include inbox messages + group messages where groupSeq > lastReadSeq
-	assert.True(t, len(batch.Messages) >= 2) // at least the 2 private + 1 group message
+	// 应包含收件箱消息 + 满足 groupSeq > lastReadSeq 的群组消息
+	assert.True(t, len(batch.Messages) >= 2) // 至少 2 条私聊 + 1 条群组消息
 
-	// Verify the group message with groupSeq=5 > lastReadSeq=3 was included
+	// 验证 groupSeq=5 > lastReadSeq=3 的群组消息已被包含
 	groupFound := false
 	for _, m := range batch.Messages {
 		if m.ConvID == "g_100" && m.GroupSeq == 5 {
 			groupFound = true
 		}
 	}
-	assert.True(t, groupFound, "group message with groupSeq > lastReadSeq should be included")
+	assert.True(t, groupFound, "满足 groupSeq > lastReadSeq 的群组消息应被包含")
 
 	msg2, ok := drainSendCh(client)
-	assert.True(t, ok, "expected ConvSync on SendCh")
+	assert.True(t, ok, "期望在 SendCh 上收到 ConvSync")
 	wsMsg2, _ := decodeWsMessage(msg2)
 	assert.Equal(t, protocol.TypeConvSync, wsMsg2.Type)
 
@@ -822,13 +822,13 @@ func TestSyncReq_DefaultBatchSize(t *testing.T) {
 
 	svc := NewMsgService(redisMock, mqMock, cm, logger)
 
-	// Send SyncReq with batchSize=0 (should default to 50)
+	// 发送 batchSize=0 的 SyncReq（应默认使用 50）
 	req := model.SyncReq{LastSyncTime: 0, BatchSize: 0}
 	data, _ := json.Marshal(req)
 
 	svc.HandleSyncReq(1, data)
 
-	// Should still receive SyncBatch
+	// 仍然应收到 SyncBatch
 	msg, ok := drainSendCh(client)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
@@ -836,8 +836,8 @@ func TestSyncReq_DefaultBatchSize(t *testing.T) {
 
 	var batch model.SyncBatch
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &batch))
-	// When no messages, syncTime is set to current server time (non-zero)
-	assert.True(t, batch.SyncTime > 0, "syncTime should be non-zero even with no messages")
+	// 当没有消息时，syncTime 设置为当前服务器时间（非零）
+	assert.True(t, batch.SyncTime > 0, "即使没有消息，syncTime 也应为非零值")
 	assert.False(t, batch.HasMore)
 }
 
@@ -860,10 +860,10 @@ func TestRevokeMsg_Success_Private(t *testing.T) {
 
 	svc.HandleRevokeMsg(1, data)
 
-	// Verify: Lua revoke was called
+	// 验证：Lua 撤回已被调用
 	assert.True(t, redisMock.revokeCalled)
 
-	// Verify: sender got msgRevoked notification
+	// 验证：发送方收到了 msgRevoked 通知
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
@@ -875,7 +875,7 @@ func TestRevokeMsg_Success_Private(t *testing.T) {
 	assert.Equal(t, int64(1001), notif.ServerMsgID)
 	assert.Equal(t, int64(1), notif.OperatorID)
 
-	// Verify: receiver got msgRevoked notification too
+	// 验证：接收方也收到了 msgRevoked 通知
 	msg, ok = drainSendCh(receiver)
 	assert.True(t, ok)
 	wsMsg, _ = decodeWsMessage(msg)
@@ -884,7 +884,7 @@ func TestRevokeMsg_Success_Private(t *testing.T) {
 
 func TestRevokeMsg_Fail(t *testing.T) {
 	redisMock := newMockRedisRepo()
-	redisMock.revokeResult = false // 2-minute window expired or not authorized
+	redisMock.revokeResult = false // 2 分钟窗口已过期或未授权
 	mqMock := newMockMQRepo()
 	cm := conn.NewConnectionManager()
 	logger := testLogger()
@@ -899,7 +899,7 @@ func TestRevokeMsg_Fail(t *testing.T) {
 
 	svc.HandleRevokeMsg(1, data)
 
-	// Verify: error was sent
+	// 验证：错误已发送
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
@@ -928,16 +928,16 @@ func TestRevokeMsg_Group(t *testing.T) {
 
 	svc.HandleRevokeMsg(1, data)
 
-	// Verify: Lua revoke was called
+	// 验证：Lua 撤回已被调用
 	assert.True(t, redisMock.revokeCalled)
 
-	// Verify: sender got msgRevoked notification
+	// 验证：发送方收到了 msgRevoked 通知
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
 	assert.Equal(t, protocol.TypeMsgRevoked, wsMsg.Type)
 
-	// For group chat, no direct push to other members (they discover via sync)
+	// 对于群聊，不直接推送给其他成员（他们通过同步发现）
 }
 
 func TestRevokeMsg_InvalidConvID(t *testing.T) {
@@ -956,7 +956,7 @@ func TestRevokeMsg_InvalidConvID(t *testing.T) {
 
 	svc.HandleRevokeMsg(1, data)
 
-	// Verify: error was sent
+	// 验证：错误已发送
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
@@ -965,7 +965,7 @@ func TestRevokeMsg_InvalidConvID(t *testing.T) {
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
 	assert.Equal(t, 400, wsErr.Code)
-	assert.Equal(t, "invalid convId format", wsErr.Message)
+	assert.Equal(t, "无效的 convId 格式", wsErr.Message)
 }
 
 func TestHandleSendMessage_InvalidJSON(t *testing.T) {
@@ -1004,7 +1004,7 @@ func TestHandleSendMessage_UnknownConvType(t *testing.T) {
 
 	req := model.SendMessage{
 		ClientMsgID: "client-msg-unknown",
-		ConvType:    99, // unknown
+		ConvType:    99, // 未知类型
 		ToID:        2,
 		MsgType:     1,
 		Content:     "hello",
@@ -1022,7 +1022,7 @@ func TestHandleSendMessage_UnknownConvType(t *testing.T) {
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
 	assert.Equal(t, 400, wsErr.Code)
-	assert.Equal(t, "unknown convType", wsErr.Message)
+	assert.Equal(t, "未知的 convType", wsErr.Message)
 }
 
 func TestPrivateMsgSend_MQPublishFail(t *testing.T) {
@@ -1056,7 +1056,7 @@ func TestPrivateMsgSend_MQPublishFail(t *testing.T) {
 
 	svc.HandleSendMessage(1, data)
 
-	// Verify: error was sent to sender
+	// 验证：错误已发送给发送方
 	msg, ok := drainSendCh(sender)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)
@@ -1065,15 +1065,15 @@ func TestPrivateMsgSend_MQPublishFail(t *testing.T) {
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
 	assert.Equal(t, 500, wsErr.Code)
-	assert.Equal(t, "message publish failed", wsErr.Message)
+	assert.Equal(t, "消息发布失败", wsErr.Message)
 }
 
 func TestGetOtherPartyID(t *testing.T) {
 	assert.Equal(t, int64(2), getOtherPartyID("p_1_2", 1))
 	assert.Equal(t, int64(1), getOtherPartyID("p_1_2", 2))
-	assert.Equal(t, int64(0), getOtherPartyID("g_100", 1))     // group convID returns 0
-	assert.Equal(t, int64(0), getOtherPartyID("invalid", 1))    // invalid format
-	assert.Equal(t, int64(0), getOtherPartyID("p_1", 1))        // missing second ID
+	assert.Equal(t, int64(0), getOtherPartyID("g_100", 1))     // 群组 convID 返回 0
+	assert.Equal(t, int64(0), getOtherPartyID("invalid", 1))    // 无效格式
+	assert.Equal(t, int64(0), getOtherPartyID("p_1", 1))        // 缺少第二个 ID
 }
 
 func TestReadAck_LuaError(t *testing.T) {
@@ -1093,7 +1093,7 @@ func TestReadAck_LuaError(t *testing.T) {
 
 	svc.HandleReadAck(1, data)
 
-	// Verify: error was sent
+	// 验证：错误已发送
 	msg, ok := drainSendCh(client)
 	assert.True(t, ok)
 	wsMsg, _ := decodeWsMessage(msg)

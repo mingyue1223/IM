@@ -19,24 +19,24 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// MockRedisRepo — implements repository.RedisRepo for testing
+// MockRedisRepo — 实现 repository.RedisRepo 接口，用于测试
 // ──────────────────────────────────────────────────────
 
 type MockRedisRepo struct {
 	mu sync.Mutex
 
-	// Captured data for verification
-	inboxWrites      map[int64][]*model.InboxMessage // userID -> messages
-	outboxWrites     map[int64][]*model.InboxMessage // groupID -> messages
-	convListUpdates  map[int64][]convListEntry        // userID -> entries
-	unreadIncrements map[string]int                   // "userID:convID" -> count
-	groupMembers     map[int64][]int64                // groupID -> memberIDs
+	// 捕获的数据，用于验证
+	inboxWrites      map[int64][]*model.InboxMessage // userID -> 消息列表
+	outboxWrites     map[int64][]*model.InboxMessage // groupID -> 消息列表
+	convListUpdates  map[int64][]convListEntry        // userID -> 条目列表
+	unreadIncrements map[string]int                   // "userID:convID" -> 计数
+	groupMembers     map[int64][]int64                // groupID -> 成员ID列表
 
-	// Track which users/groups had trim called
+	// 记录哪些用户/群组被调用了裁剪
 	trimmedInboxUsers   []int64
 	trimmedOutboxGroups []int64
 
-	// Control: inject errors
+	// 控制：注入错误
 	writeInboxErr       error
 	writeOutboxErr      error
 	getGroupMembersErr  error
@@ -79,11 +79,11 @@ func (m *MockRedisRepo) WriteOutbox(ctx context.Context, groupID int64, msg *mod
 }
 
 func (m *MockRedisRepo) ReadInbox(ctx context.Context, userID int64, lastSyncTime int64, batchSize int) ([]model.InboxMessage, error) {
-	return nil, fmt.Errorf("stub: not used by consumer")
+	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) ReadOutbox(ctx context.Context, groupID int64, lastSyncTime int64, limit int) ([]model.InboxMessage, error) {
-	return nil, fmt.Errorf("stub: not used by consumer")
+	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) UpdateConvList(ctx context.Context, userID int64, convID string, summary string, timestamp int64) error {
@@ -98,7 +98,7 @@ func (m *MockRedisRepo) UpdateConvList(ctx context.Context, userID int64, convID
 }
 
 func (m *MockRedisRepo) GetConvList(ctx context.Context, userID int64) ([]model.ConvSummary, error) {
-	return nil, fmt.Errorf("stub: not used by consumer")
+	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) IncrementUnread(ctx context.Context, userID int64, convID string) error {
@@ -110,23 +110,23 @@ func (m *MockRedisRepo) IncrementUnread(ctx context.Context, userID int64, convI
 }
 
 func (m *MockRedisRepo) ClearUnread(ctx context.Context, userID int64, convID string) error {
-	return fmt.Errorf("stub: not used by consumer")
+	return fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) GetUnreadMap(ctx context.Context, userID int64) (map[string]int64, error) {
-	return nil, fmt.Errorf("stub: not used by consumer")
+	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) SetGroupReadPos(ctx context.Context, userID int64, convID string, seq int64) error {
-	return fmt.Errorf("stub: not used by consumer")
+	return fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) GetGroupReadPos(ctx context.Context, userID int64, convID string) (int64, error) {
-	return 0, fmt.Errorf("stub: not used by consumer")
+	return 0, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) GetGroupMemberships(ctx context.Context, userID int64) ([]int64, error) {
-	return nil, fmt.Errorf("stub: not used by consumer")
+	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) GetGroupMembers(ctx context.Context, groupID int64) ([]int64, error) {
@@ -139,7 +139,7 @@ func (m *MockRedisRepo) GetGroupMembers(ctx context.Context, groupID int64) ([]i
 }
 
 func (m *MockRedisRepo) CheckDuplicate(ctx context.Context, userID int64, clientMsgID string) (bool, error) {
-	return false, fmt.Errorf("stub: not used by consumer")
+	return false, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) TrimInbox(ctx context.Context, userID int64, maxCount int) error {
@@ -157,35 +157,35 @@ func (m *MockRedisRepo) TrimOutbox(ctx context.Context, groupID int64, maxCount 
 }
 
 func (m *MockRedisRepo) TrimInboxByTime(ctx context.Context, userID int64, beforeTimestamp int64) error {
-	return fmt.Errorf("stub: not used by consumer")
+	return fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) TrimOutboxByTime(ctx context.Context, groupID int64, beforeTimestamp int64) error {
-	return fmt.Errorf("stub: not used by consumer")
+	return fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) TrimConvListByTime(ctx context.Context, userID int64, beforeTimestamp int64) error {
-	return fmt.Errorf("stub: not used by consumer")
+	return fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) TrimTimelineByTime(ctx context.Context, userID int64, beforeTimestamp int64) error {
-	return fmt.Errorf("stub: not used by consumer")
+	return fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) ExecPrivateMsgCheck(ctx context.Context, senderID, receiverID int64, clientMsgID string) (*redislua.PrivateMsgCheckResult, error) {
-	return nil, fmt.Errorf("stub: not used by consumer")
+	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) ExecGroupMsgCheck(ctx context.Context, groupID, senderID int64, clientMsgID string) (*redislua.GroupMsgCheckResult, error) {
-	return nil, fmt.Errorf("stub: not used by consumer")
+	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) ExecInboxMarkRead(ctx context.Context, userID int64, convID string) (int64, error) {
-	return 0, fmt.Errorf("stub: not used by consumer")
+	return 0, fmt.Errorf("存根：消费者未使用")
 }
 
 func (m *MockRedisRepo) ExecRevokeMsg(ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error) {
-	return false, fmt.Errorf("stub: not used by consumer")
+	return false, fmt.Errorf("存根：消费者未使用")
 }
 func (m *MockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
 func (m *MockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
@@ -199,14 +199,14 @@ func (m *MockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (
 func (m *MockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 
 // ──────────────────────────────────────────────────────
-// Helper: create a ClientConnection without a real websocket.Conn
-// We set the fields directly to avoid the need for a real WS connection.
+// 辅助函数：创建一个不带真实 websocket.Conn 的 ClientConnection
+// 我们直接设置字段，避免依赖真实的 WebSocket 连接。
 // ──────────────────────────────────────────────────────
 
 func makeTestClientConnection(userID int64) *conn.ClientConnection {
 	return &conn.ClientConnection{
 		UserID:   userID,
-		Conn:     nil, // nil — we only use SendCh in tests
+		Conn:     nil, // nil — 测试中仅使用 SendCh
 		SendCh:   make(chan []byte, 256),
 		CloseCh:  make(chan struct{}),
 		LastPing: time.Now(),
@@ -214,7 +214,7 @@ func makeTestClientConnection(userID int64) *conn.ClientConnection {
 }
 
 // ──────────────────────────────────────────────────────
-// Tests for PrivateMsgConsumer
+// PrivateMsgConsumer 测试
 // ──────────────────────────────────────────────────────
 
 func TestPrivateMsgConsumer_Process(t *testing.T) {
@@ -222,7 +222,7 @@ func TestPrivateMsgConsumer_Process(t *testing.T) {
 	redisRepo := newMockRedisRepo()
 	realCM := conn.NewConnectionManager()
 
-	// Register receiver as online (sender 100 doesn't need to be online for the consumer)
+	// 注册接收者为在线状态（发送者 100 不需要对消费者在线）
 	receiverClient := makeTestClientConnection(200)
 	realCM.Register(200, receiverClient)
 
@@ -235,7 +235,7 @@ func TestPrivateMsgConsumer_Process(t *testing.T) {
 
 	consumer := &PrivateMsgConsumer{
 		ch:        nil,
-		mysqlRepo: nil, // MySQL will fail — we verify Redis ops before that point
+		mysqlRepo: nil, // MySQL 将失败 — 我们在此点之前验证 Redis 操作
 		redisRepo: redisRepo,
 		cm:        realCM,
 		logger:    logger,
@@ -252,53 +252,53 @@ func TestPrivateMsgConsumer_Process(t *testing.T) {
 
 	ctx := context.Background()
 
-	// process() will fail at MySQL insert since db is nil,
-	// but all Redis operations should succeed before that point.
+	// process() 会在 MySQL 插入处失败，因为 db 为 nil，
+	// 但在此之前所有 Redis 操作都应该成功。
 	err := consumer.process(ctx, msg)
-	require.NoError(t, err, "process should succeed even with nil mysqlRepo")
+	require.NoError(t, err, "即使 mysqlRepo 为 nil，process 也应该成功")
 
-	// Verify Redis operations happened before the MySQL failure
+	// 验证 Redis 操作在 MySQL 失败之前已发生
 	redisRepo.mu.Lock()
 
-	// 1. Receiver inbox should have message with readStatus=0
+	// 1. 接收者收件箱中应有 readStatus=0 的消息
 	receiverInbox := redisRepo.inboxWrites[200]
-	assert.Len(t, receiverInbox, 1, "receiver should have 1 inbox message")
-	assert.Equal(t, 0, receiverInbox[0].ReadStatus, "receiver's message should be unread")
+	assert.Len(t, receiverInbox, 1, "接收者应有 1 条收件箱消息")
+	assert.Equal(t, 0, receiverInbox[0].ReadStatus, "接收者的消息应为未读")
 	assert.Equal(t, int64(1001), receiverInbox[0].MsgID)
 	assert.Equal(t, "p_100_200", receiverInbox[0].ConvID)
 
-	// 2. Sender inbox should have message with readStatus=1
+	// 2. 发送者收件箱中应有 readStatus=1 的消息
 	senderInbox := redisRepo.inboxWrites[100]
-	assert.Len(t, senderInbox, 1, "sender should have 1 inbox message")
-	assert.Equal(t, 1, senderInbox[0].ReadStatus, "sender's message should be read")
+	assert.Len(t, senderInbox, 1, "发送者应有 1 条收件箱消息")
+	assert.Equal(t, 1, senderInbox[0].ReadStatus, "发送者的消息应为已读")
 	assert.Equal(t, int64(1001), senderInbox[0].MsgID)
 
-	// 3. conv_list should be updated for both users
-	assert.Len(t, redisRepo.convListUpdates[100], 1, "sender conv_list updated")
-	assert.Len(t, redisRepo.convListUpdates[200], 1, "receiver conv_list updated")
+	// 3. 双方用户的 conv_list 都应更新
+	assert.Len(t, redisRepo.convListUpdates[100], 1, "发送者 conv_list 已更新")
+	assert.Len(t, redisRepo.convListUpdates[200], 1, "接收者 conv_list 已更新")
 	assert.Equal(t, "p_100_200", redisRepo.convListUpdates[100][0].convID)
 	assert.Equal(t, "p_100_200", redisRepo.convListUpdates[200][0].convID)
 
-	// 4. Unread counter should be incremented for receiver only
+	// 4. 仅接收者的未读计数器应递增
 	key := "200:p_100_200"
-	assert.Equal(t, 1, redisRepo.unreadIncrements[key], "receiver unread incremented")
+	assert.Equal(t, 1, redisRepo.unreadIncrements[key], "接收者未读数已递增")
 	senderKey := "100:p_100_200"
-	assert.Equal(t, 0, redisRepo.unreadIncrements[senderKey], "sender unread NOT incremented")
+	assert.Equal(t, 0, redisRepo.unreadIncrements[senderKey], "发送者未读数未递增")
 
-	// 5. Both inboxes should be trimmed
+	// 5. 双方收件箱都应被裁剪
 	assert.Contains(t, redisRepo.trimmedInboxUsers, int64(200))
 	assert.Contains(t, redisRepo.trimmedInboxUsers, int64(100))
 
 	redisRepo.mu.Unlock()
 
-	// 6. Verify WebSocket push to receiver
+	// 6. 验证 WebSocket 推送给接收者
 	time.Sleep(50 * time.Millisecond)
-	assert.Len(t, pushedMsgs, 1, "receiver should receive 1 WS push")
+	assert.Len(t, pushedMsgs, 1, "接收者应收到 1 条 WS 推送")
 	if len(pushedMsgs) > 0 {
 		var wsMsg model.WsMessage
 		err := json.Unmarshal([]byte(pushedMsgs[0]), &wsMsg)
 		require.NoError(t, err)
-		assert.Equal(t, protocol.TypeMsg, wsMsg.Type, "push should be type 'msg'")
+		assert.Equal(t, protocol.TypeMsg, wsMsg.Type, "推送类型应为 'msg'")
 
 		var inboxMsg model.InboxMessage
 		err = json.Unmarshal(wsMsg.Data, &inboxMsg)
@@ -327,14 +327,14 @@ func TestPrivateMsgConsumer_Deserialize(t *testing.T) {
 	assert.Equal(t, int64(1), parsed.SenderID)
 	assert.Equal(t, int64(2), parsed.ReceiverID)
 
-	// Test invalid message (missing receiverID)
+	// 测试无效消息（缺少 receiverID）
 	invalidMsg := &model.PrivateMessage{SenderID: 1, ReceiverID: 0}
 	invalidBody, err := json.Marshal(invalidMsg)
 	require.NoError(t, err)
 	_, err = deserializePrivateMsg(invalidBody)
-	assert.Error(t, err, "should reject message with zero receiverID")
+	assert.Error(t, err, "应拒绝 receiverID 为零的消息")
 
-	// Test malformed JSON
+	// 测试格式错误的 JSON
 	_, err = deserializePrivateMsg([]byte("not json"))
 	assert.Error(t, err)
 }
@@ -342,7 +342,7 @@ func TestPrivateMsgConsumer_Deserialize(t *testing.T) {
 func TestPrivateMsgConsumer_WriteInboxFailure(t *testing.T) {
 	logger := zap.NewNop()
 	redisRepo := newMockRedisRepo()
-	redisRepo.writeInboxErr = fmt.Errorf("Redis connection error")
+	redisRepo.writeInboxErr = fmt.Errorf("Redis 连接错误")
 	realCM := conn.NewConnectionManager()
 
 	consumer := &PrivateMsgConsumer{
@@ -365,28 +365,28 @@ func TestPrivateMsgConsumer_WriteInboxFailure(t *testing.T) {
 	ctx := context.Background()
 	err := consumer.process(ctx, msg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "write receiver inbox")
+	assert.Contains(t, err.Error(), "写入接收者收件箱失败")
 }
 
 func TestPrivateMsgConsumer_HandleDelivery_Malformed(t *testing.T) {
-	// Test that a malformed body fails deserialization
+	// 测试格式错误的消息体在反序列化时失败
 	_, err := deserializePrivateMsg([]byte("bad json"))
-	assert.Error(t, err, "malformed body should fail deserialization")
+	assert.Error(t, err, "格式错误的消息体在反序列化时应失败")
 }
 
 // ──────────────────────────────────────────────────────
-// Tests for GroupMsgConsumer
+// GroupMsgConsumer 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroupMsgConsumer_Process(t *testing.T) {
 	logger := zap.NewNop()
 	redisRepo := newMockRedisRepo()
-	// Set up group members: group 5 has members [1, 2, 3]
+	// 设置群组成员：群 5 有成员 [1, 2, 3]
 	redisRepo.groupMembers[5] = []int64{1, 2, 3}
 
 	realCM := conn.NewConnectionManager()
 
-	// Make member 2 and 3 online (sender 1 does not receive push)
+	// 让成员 2 和 3 在线（发送者 1 不接收推送）
 	client2 := makeTestClientConnection(2)
 	realCM.Register(2, client2)
 
@@ -408,7 +408,7 @@ func TestGroupMsgConsumer_Process(t *testing.T) {
 
 	consumer := &GroupMsgConsumer{
 		ch:        nil,
-		mysqlRepo: nil, // MySQL will fail
+		mysqlRepo: nil, // MySQL 将失败
 		redisRepo: redisRepo,
 		cm:        realCM,
 		logger:    logger,
@@ -426,40 +426,40 @@ func TestGroupMsgConsumer_Process(t *testing.T) {
 
 	ctx := context.Background()
 	err := consumer.process(ctx, msg)
-	require.NoError(t, err, "process should succeed even with nil mysqlRepo")
+	require.NoError(t, err, "即使 mysqlRepo 为 nil，process 也应该成功")
 
-	// Verify Redis operations happened before the MySQL failure
+	// 验证 Redis 操作在 MySQL 失败之前已发生
 	redisRepo.mu.Lock()
 
-	// 1. Group outbox should have the message
+	// 1. 群组发件箱中应有该消息
 	outboxWrites := redisRepo.outboxWrites[5]
-	assert.Len(t, outboxWrites, 1, "group outbox should have 1 message")
+	assert.Len(t, outboxWrites, 1, "群组发件箱应有 1 条消息")
 	assert.Equal(t, int64(2001), outboxWrites[0].MsgID)
 	assert.Equal(t, model.ConvTypeGroup, outboxWrites[0].ConvType)
 	assert.Equal(t, int64(10), outboxWrites[0].GroupSeq)
 	assert.Equal(t, "g_5", outboxWrites[0].ConvID)
 
-	// 2. conv_list should be updated for all 3 members
-	assert.Len(t, redisRepo.convListUpdates[1], 1, "sender conv_list updated")
-	assert.Len(t, redisRepo.convListUpdates[2], 1, "member2 conv_list updated")
-	assert.Len(t, redisRepo.convListUpdates[3], 1, "member3 conv_list updated")
+	// 2. 所有 3 个成员的 conv_list 都应更新
+	assert.Len(t, redisRepo.convListUpdates[1], 1, "发送者 conv_list 已更新")
+	assert.Len(t, redisRepo.convListUpdates[2], 1, "成员2 conv_list 已更新")
+	assert.Len(t, redisRepo.convListUpdates[3], 1, "成员3 conv_list 已更新")
 	assert.Equal(t, "g_5", redisRepo.convListUpdates[1][0].convID)
 	assert.Equal(t, "g_5", redisRepo.convListUpdates[2][0].convID)
 
-	// 3. Unread should be incremented for members 2 and 3 only (not sender 1)
-	assert.Equal(t, 1, redisRepo.unreadIncrements["2:g_5"], "member2 unread incremented")
-	assert.Equal(t, 1, redisRepo.unreadIncrements["3:g_5"], "member3 unread incremented")
-	assert.Equal(t, 0, redisRepo.unreadIncrements["1:g_5"], "sender unread NOT incremented")
+	// 3. 仅成员 2 和 3 的未读数应递增（发送者 1 不递增）
+	assert.Equal(t, 1, redisRepo.unreadIncrements["2:g_5"], "成员2 未读数已递增")
+	assert.Equal(t, 1, redisRepo.unreadIncrements["3:g_5"], "成员3 未读数已递增")
+	assert.Equal(t, 0, redisRepo.unreadIncrements["1:g_5"], "发送者未读数未递增")
 
-	// 4. Outbox should be trimmed
+	// 4. 发件箱应被裁剪
 	assert.Contains(t, redisRepo.trimmedOutboxGroups, int64(5))
 
 	redisRepo.mu.Unlock()
 
-	// 5. Verify WebSocket pushes — only members 2 and 3, not sender 1
+	// 5. 验证 WebSocket 推送 — 仅成员 2 和 3，不含发送者 1
 	time.Sleep(50 * time.Millisecond)
-	assert.Len(t, pushed2, 1, "member 2 should receive 1 WS push")
-	assert.Len(t, pushed3, 1, "member 3 should receive 1 WS push")
+	assert.Len(t, pushed2, 1, "成员 2 应收到 1 条 WS 推送")
+	assert.Len(t, pushed3, 1, "成员 3 应收到 1 条 WS 推送")
 
 	if len(pushed2) > 0 {
 		var wsMsg model.WsMessage
@@ -479,7 +479,7 @@ func TestGroupMsgConsumer_Process(t *testing.T) {
 func TestGroupMsgConsumer_Process_NoMembers(t *testing.T) {
 	logger := zap.NewNop()
 	redisRepo := newMockRedisRepo()
-	// Group 10 has no members
+	// 群 10 没有成员
 	redisRepo.groupMembers[10] = []int64{}
 
 	realCM := conn.NewConnectionManager()
@@ -504,18 +504,18 @@ func TestGroupMsgConsumer_Process_NoMembers(t *testing.T) {
 
 	ctx := context.Background()
 	err := consumer.process(ctx, msg)
-	require.NoError(t, err, "process should succeed even with nil mysqlRepo")
+	require.NoError(t, err, "即使 mysqlRepo 为 nil，process 也应该成功")
 
-	// Verify outbox was still written (outbox persists even with no members)
+	// 验证发件箱仍然写入（即使没有成员，发件箱也会持久化）
 	redisRepo.mu.Lock()
-	assert.Len(t, redisRepo.outboxWrites[10], 1, "outbox should be written even with no members")
+	assert.Len(t, redisRepo.outboxWrites[10], 1, "即使没有成员，发件箱也应写入")
 	redisRepo.mu.Unlock()
 }
 
 func TestGroupMsgConsumer_GetMembersFailure(t *testing.T) {
 	logger := zap.NewNop()
 	redisRepo := newMockRedisRepo()
-	redisRepo.getGroupMembersErr = fmt.Errorf("Redis unavailable")
+	redisRepo.getGroupMembersErr = fmt.Errorf("Redis 不可用")
 
 	realCM := conn.NewConnectionManager()
 
@@ -540,7 +540,7 @@ func TestGroupMsgConsumer_GetMembersFailure(t *testing.T) {
 	ctx := context.Background()
 	err := consumer.process(ctx, msg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "get group members")
+	assert.Contains(t, err.Error(), "获取群组成员失败")
 }
 
 func TestGroupMsgConsumer_Deserialize(t *testing.T) {
@@ -563,28 +563,28 @@ func TestGroupMsgConsumer_Deserialize(t *testing.T) {
 	assert.Equal(t, int64(5), parsed.GroupID)
 	assert.Equal(t, int64(10), parsed.GroupSeq)
 
-	// Test invalid message (missing groupID)
+	// 测试无效消息（缺少 groupID）
 	invalidMsg := &model.GroupMessage{GroupID: 0, SenderID: 1}
 	invalidBody, err := json.Marshal(invalidMsg)
 	require.NoError(t, err)
 	_, err = deserializeGroupMsg(invalidBody)
-	assert.Error(t, err, "should reject message with zero groupID")
+	assert.Error(t, err, "应拒绝 groupID 为零的消息")
 
-	// Test malformed JSON
+	// 测试格式错误的 JSON
 	_, err = deserializeGroupMsg([]byte("not json"))
 	assert.Error(t, err)
 }
 
 // ──────────────────────────────────────────────────────
-// Tests for shared helpers
+// 共享辅助函数测试
 // ──────────────────────────────────────────────────────
 
 func TestTruncateContent(t *testing.T) {
 	assert.Equal(t, "hello", truncateContent("hello", 50))
 	assert.Equal(t, "a very long message that needs...", truncateContent("a very long message that needs truncation", 30))
-	// Short multiline content is not truncated (total len <= maxLen)
+	// 短的多行内容不会被截断（总长度 <= maxLen）
 	assert.Equal(t, "first line\nsecond line", truncateContent("first line\nsecond line", 50))
-	// Long multiline content where first line itself exceeds maxLen: truncate first line only
+	// 长多行内容中，第一行本身就超过 maxLen：仅截断第一行
 	assert.Equal(t, "a very long first line that ex...", truncateContent("a very long first line that exceeds max\nsecond line", 30))
 }
 
@@ -633,16 +633,16 @@ func TestPushToConnection_Offline(t *testing.T) {
 	logger := zap.NewNop()
 	cm := conn.NewConnectionManager()
 
-	// User 999 is not online — push should be silently dropped
+	// 用户 999 不在线 — 推送应被静默丢弃
 	pushToConnection(cm, logger, 999, protocol.TypeMsg, &model.InboxMessage{MsgID: 1})
-	// No panic, no error — just silently dropped
+	// 无 panic，无错误 — 仅静默丢弃
 }
 
 func TestPushToConnection_Online(t *testing.T) {
 	logger := zap.NewNop()
 	cm := conn.NewConnectionManager()
 
-	// Create a client connection manually (without a real websocket.Conn)
+	// 手动创建一个客户端连接（不带真实的 websocket.Conn）
 	client := makeTestClientConnection(100)
 	cm.Register(100, client)
 
@@ -670,21 +670,21 @@ func TestPushToConnection_BufferFull(t *testing.T) {
 	logger := zap.NewNop()
 	cm := conn.NewConnectionManager()
 
-	// Create a client with a small SendCh buffer
+	// 创建一个 SendCh 缓冲区很小的客户端
 	client := &conn.ClientConnection{
 		UserID:   100,
 		Conn:     nil,
-		SendCh:   make(chan []byte, 2), // tiny buffer
+		SendCh:   make(chan []byte, 2), // 微小缓冲区
 		CloseCh:  make(chan struct{}),
 		LastPing: time.Now(),
 	}
 	cm.Register(100, client)
 
-	// Fill the buffer
+	// 填满缓冲区
 	client.SendCh <- []byte("msg1")
 	client.SendCh <- []byte("msg2")
 
-	// This push should be dropped (buffer full) — no panic
+	// 此推送应被丢弃（缓冲区已满）— 无 panic
 	pushToConnection(cm, logger, 100, protocol.TypeMsg, &model.InboxMessage{MsgID: 99})
-	// No panic — just logged and dropped
+	// 无 panic — 仅记录日志并丢弃
 }

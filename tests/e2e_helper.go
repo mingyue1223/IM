@@ -1,11 +1,11 @@
 //go:build e2e
 
-// Package e2e contains end-to-end integration tests for the GoIM server.
-// These tests exercise the full stack: HTTP API, WebSocket, MQ consumers,
-// Redis, MySQL, and RabbitMQ. They require Docker services to be running
-// (as configured in configs/config.test.yaml).
+// Package e2e 包含 GoIM 服务器的端到端集成测试。
+// 这些测试覆盖完整技术栈：HTTP API、WebSocket、MQ 消费者、
+// Redis、MySQL 和 RabbitMQ。测试要求 Docker 服务处于运行状态
+//（按 configs/config.test.yaml 中的配置）。
 //
-// Run with: go test ./tests/... -v -tags e2e -timeout 120s
+// 运行命令：go test ./tests/... -v -tags e2e -timeout 120s
 package e2e
 
 import (
@@ -21,7 +21,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// ── Response DTOs ──
+// ── 响应 DTO ──
 
 type authRegisterResp struct {
 	UserID   int64  `json:"user_id"`
@@ -80,9 +80,9 @@ type sendMsgData struct {
 	Timestamp   int64  `json:"timestamp"`
 }
 
-// ── HTTP helpers ──
+// ── HTTP 辅助函数 ──
 
-// doRequest performs an HTTP request and returns the response body + status code.
+// doRequest 执行一个 HTTP 请求并返回响应体及状态码。
 func doRequest(t *testing.T, method, baseURL, path string, body interface{}, token string) (statusCode int, responseBody []byte) {
 	t.Helper()
 
@@ -90,14 +90,14 @@ func doRequest(t *testing.T, method, baseURL, path string, body interface{}, tok
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			t.Fatalf("marshal request body: %v", err)
+			t.Fatalf("序列化请求体: %v", err)
 		}
 		bodyReader = bytes.NewReader(b)
 	}
 
 	req, err := http.NewRequest(method, baseURL+path, bodyReader)
 	if err != nil {
-		t.Fatalf("create request: %v", err)
+		t.Fatalf("创建请求: %v", err)
 	}
 
 	if body != nil {
@@ -109,98 +109,98 @@ func doRequest(t *testing.T, method, baseURL, path string, body interface{}, tok
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("do request: %v", err)
+		t.Fatalf("执行请求: %v", err)
 	}
 	defer resp.Body.Close()
 
 	statusCode = resp.StatusCode
 	responseBody, err = io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("read response body: %v", err)
+		t.Fatalf("读取响应体: %v", err)
 	}
 
 	return statusCode, responseBody
 }
 
-// doAuthedRequest performs an authenticated HTTP request.
+// doAuthedRequest 执行一个带认证的 HTTP 请求。
 func doAuthedRequest(t *testing.T, method, baseURL, path string, body interface{}, token string) (int, []byte) {
 	t.Helper()
 	return doRequest(t, method, baseURL, path, body, token)
 }
 
-// registerUser registers a new user and returns userID.
+// registerUser 注册一个新用户并返回 userID。
 func registerUser(t *testing.T, baseURL, username, password string) int64 {
 	t.Helper()
 	status, body := doRequest(t, http.MethodPost, baseURL, "/api/v1/auth/register",
 		map[string]string{"username": username, "password": password}, "")
 	if status != http.StatusCreated {
-		t.Fatalf("register user: status=%d body=%s", status, body)
+		t.Fatalf("注册用户: status=%d body=%s", status, body)
 	}
 	var resp authRegisterResp
 	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("unmarshal register response: %v", err)
+		t.Fatalf("反序列化注册响应: %v", err)
 	}
 	return resp.UserID
 }
 
-// loginUser logs in a user and returns the access token.
+// loginUser 登录一个用户并返回访问令牌。
 func loginUser(t *testing.T, baseURL, username, password string) string {
 	t.Helper()
 	status, body := doRequest(t, http.MethodPost, baseURL, "/api/v1/auth/login",
 		map[string]string{"username": username, "password": password}, "")
 	if status != http.StatusOK {
-		t.Fatalf("login user: status=%d body=%s", status, body)
+		t.Fatalf("登录用户: status=%d body=%s", status, body)
 	}
 	var resp authLoginResp
 	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("unmarshal login response: %v", err)
+		t.Fatalf("反序列化登录响应: %v", err)
 	}
 	return resp.AccessToken
 }
 
-// loginUserFull logs in a user and returns full login response (access + refresh tokens).
+// loginUserFull 登录一个用户并返回完整的登录响应（访问令牌 + 刷新令牌）。
 func loginUserFull(t *testing.T, baseURL, username, password string) authLoginResp {
 	t.Helper()
 	status, body := doRequest(t, http.MethodPost, baseURL, "/api/v1/auth/login",
 		map[string]string{"username": username, "password": password}, "")
 	if status != http.StatusOK {
-		t.Fatalf("login user: status=%d body=%s", status, body)
+		t.Fatalf("登录用户: status=%d body=%s", status, body)
 	}
 	var resp authLoginResp
 	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("unmarshal login response: %v", err)
+		t.Fatalf("反序列化登录响应: %v", err)
 	}
 	return resp
 }
 
-// refreshToken refreshes an access token using a refresh token.
+// refreshToken 使用刷新令牌来刷新访问令牌。
 func refreshToken(t *testing.T, baseURL, refreshTokenStr string) authRefreshResp {
 	t.Helper()
 	status, body := doRequest(t, http.MethodPost, baseURL, "/api/v1/auth/refresh",
 		map[string]string{"refresh_token": refreshTokenStr}, "")
 	if status != http.StatusOK {
-		t.Fatalf("refresh token: status=%d body=%s", status, body)
+		t.Fatalf("刷新令牌: status=%d body=%s", status, body)
 	}
 	var resp authRefreshResp
 	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("unmarshal refresh response: %v", err)
+		t.Fatalf("反序列化刷新响应: %v", err)
 	}
 	return resp
 }
 
-// ── WebSocket helpers ──
+// ── WebSocket 辅助函数 ──
 
-// connectWS establishes a WebSocket connection with the given JWT token.
+// connectWS 使用给定的 JWT 令牌建立 WebSocket 连接。
 func connectWS(t *testing.T, baseURL, token string) *websocket.Conn {
 	t.Helper()
 
-	// Convert http:// to ws://
+	// 将 http:// 转换为 ws://
 	wsURL := strings.Replace(baseURL, "http://", "ws://", 1)
 	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
 
 	u, err := url.Parse(wsURL + "/ws")
 	if err != nil {
-		t.Fatalf("parse ws url: %v", err)
+		t.Fatalf("解析 ws url: %v", err)
 	}
 	q := u.Query()
 	q.Set("token", token)
@@ -208,29 +208,29 @@ func connectWS(t *testing.T, baseURL, token string) *websocket.Conn {
 
 	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		t.Fatalf("ws dial: %v", err)
+		t.Fatalf("ws 拨号: %v", err)
 	}
 	return conn
 }
 
-// sendWSMessage sends a typed WebSocket message envelope.
+// sendWSMessage 发送一个带类型的 WebSocket 消息信封。
 func sendWSMessage(t *testing.T, conn *websocket.Conn, msgType string, data interface{}) {
 	t.Helper()
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
-		t.Fatalf("marshal ws data: %v", err)
+		t.Fatalf("序列化 ws 数据: %v", err)
 	}
 	envelope := wsEnvelope{Type: msgType, Data: dataBytes}
 	msg, err := json.Marshal(envelope)
 	if err != nil {
-		t.Fatalf("marshal ws envelope: %v", err)
+		t.Fatalf("序列化 ws 信封: %v", err)
 	}
 	if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-		t.Fatalf("write ws message: %v", err)
+		t.Fatalf("写入 ws 消息: %v", err)
 	}
 }
 
-// readWSMessage reads a WebSocket message envelope with timeout.
+// readWSMessage 带超时地读取一个 WebSocket 消息信封。
 func readWSMessage(t *testing.T, conn *websocket.Conn, timeout time.Duration) wsEnvelope {
 	t.Helper()
 	msgChan := make(chan wsEnvelope, 1)
@@ -254,17 +254,17 @@ func readWSMessage(t *testing.T, conn *websocket.Conn, timeout time.Duration) ws
 	case msg := <-msgChan:
 		return msg
 	case err := <-errChan:
-		t.Fatalf("read ws message: %v", err)
+		t.Fatalf("读取 ws 消息: %v", err)
 		return wsEnvelope{}
 	case <-time.After(timeout):
-		t.Fatalf("read ws message: timeout after %v", timeout)
+		t.Fatalf("读取 ws 消息: 超时 %v", timeout)
 		return wsEnvelope{}
 	}
 }
 
-// readWSMessageType reads a WS message and filters by expected type.
-// Returns only when a message of the expected type is received, skipping
-// other types (e.g., pong, kick).
+// readWSMessageType 读取 WS 消息并按预期类型过滤。
+// 只有在收到预期类型的消息时才返回，跳过
+// 其他类型（例如 pong、kick）。
 func readWSMessageType(t *testing.T, conn *websocket.Conn, expectedType string, timeout time.Duration) wsEnvelope {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -273,18 +273,18 @@ func readWSMessageType(t *testing.T, conn *websocket.Conn, expectedType string, 
 		if msg.Type == expectedType {
 			return msg
 		}
-		// Skip non-target messages (pong, presence, etc.)
+		// 跳过非目标消息（pong、presence 等）
 	}
-	t.Fatalf("read ws message type %s: timeout after %v", expectedType, timeout)
+	t.Fatalf("读取 ws 消息类型 %s: 超时 %v", expectedType, timeout)
 	return wsEnvelope{}
 }
 
-// closeWS closes a WebSocket connection gracefully.
+// closeWS 优雅地关闭一个 WebSocket 连接。
 func closeWS(t *testing.T, conn *websocket.Conn) {
 	t.Helper()
 	if err := conn.WriteMessage(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
-		// Connection may already be closed
+		// 连接可能已经关闭
 		return
 	}
 	conn.Close()

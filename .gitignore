@@ -5,3 +5,4 @@ uploads/
 configs/config.yaml
 config.local.yaml
 .claude/worktrees/
+.superpowers/

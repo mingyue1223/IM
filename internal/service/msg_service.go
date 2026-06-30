@@ -17,19 +17,19 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── Error messages for Lua check results ──
+// ── Lua 检查结果的错误消息 ──
 
 const (
-	ErrNotFriend  = "not friends with receiver"
-	ErrBlocked    = "receiver has blocked you"
-	ErrDuplicate  = "duplicate message"
-	ErrNotMember  = "not a member of this group"
-	ErrMuted      = "you are muted in this group"
-	ErrRevokeFail = "cannot revoke this message"
+	ErrNotFriend  = "不是好友"
+	ErrBlocked    = "你已被对方拉黑"
+	ErrDuplicate  = "消息重复"
+	ErrNotMember  = "不是该群组的成员"
+	ErrMuted      = "你已被禁言"
+	ErrRevokeFail = "无法撤回此消息"
 )
 
-// MsgService handles all message-related WebSocket operations: send,
-// deliver ack, read ack, offline sync, and message revoke.
+// MsgService 处理所有与消息相关的 WebSocket 操作：发送、
+// 送达确认、已读确认、离线同步以及消息撤回。
 type MsgService struct {
 	redisRepo repository.RedisRepo
 	mqRepo    repository.MQRepo
@@ -37,7 +37,7 @@ type MsgService struct {
 	logger    *zap.Logger
 }
 
-// NewMsgService creates a MsgService with all required dependencies.
+// NewMsgService 创建一个具有所有必要依赖项的 MsgService。
 func NewMsgService(redisRepo repository.RedisRepo, mqRepo repository.MQRepo, cm *conn.ConnectionManager, logger *zap.Logger) *MsgService {
 	return &MsgService{
 		redisRepo: redisRepo,
@@ -51,14 +51,14 @@ func NewMsgService(redisRepo repository.RedisRepo, mqRepo repository.MQRepo, cm 
 // HandleSendMessage
 // ──────────────────────────────────────────────────────
 
-// HandleSendMessage processes an incoming chat message from a client.
-// Private chat (convType=1) uses the inbox push model.
-// Group chat (convType=2) uses the outbox pull model.
+// HandleSendMessage 处理来自客户端的聊天消息。
+// 私聊（convType=1）使用收件箱推送模式。
+// 群聊（convType=2）使用发件箱拉取模式。
 func (s *MsgService) HandleSendMessage(userID int64, data []byte) {
 	var req model.SendMessage
 	if err := json.Unmarshal(data, &req); err != nil {
-		s.logger.Warn("failed to parse SendMessage", zap.Error(err))
-		s.sendError(userID, 400, "invalid message format")
+		s.logger.Warn("解析 SendMessage 失败", zap.Error(err))
+		s.sendError(userID, 400, "消息格式无效")
 		return
 	}
 
@@ -70,23 +70,23 @@ func (s *MsgService) HandleSendMessage(userID int64, data []byte) {
 	case model.ConvTypeGroup:
 		s.handleGroupMsg(ctx, userID, &req)
 	default:
-		s.sendError(userID, 400, "unknown convType")
+		s.sendError(userID, 400, "未知的会话类型")
 	}
 }
 
-// handlePrivateMsg processes a private (1-to-1) message.
-// Flow: Lua check → build InboxMessage → publish MQ → send serverAck
+// handlePrivateMsg 处理私聊（一对一）消息。
+// 流程：Lua 检查 → 构建 InboxMessage → 发布到 MQ → 发送 serverAck
 func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *model.SendMessage) {
 	checkResult, err := s.redisRepo.ExecPrivateMsgCheck(ctx, senderID, req.ToID, req.ClientMsgID)
 	if err != nil {
-		s.logger.Error("ExecPrivateMsgCheck failed", zap.Error(err))
-		s.sendError(senderID, 500, "internal server error")
+		s.logger.Error("ExecPrivateMsgCheck 执行失败", zap.Error(err))
+		s.sendError(senderID, 500, "服务器内部错误")
 		return
 	}
 
 	switch checkResult.ErrCode {
 	case redislua.PMErrOK:
-		// proceed below
+		// 继续执行
 	case redislua.PMErrNotFriend:
 		s.sendError(senderID, redislua.CodePMNotFriend, ErrNotFriend)
 		return
@@ -97,14 +97,14 @@ func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *
 		s.sendError(senderID, redislua.CodePMDuplicate, ErrDuplicate)
 		return
 	default:
-		s.sendError(senderID, redislua.MapLuaErrToClientCode(checkResult.ErrCode), "unknown error")
+		s.sendError(senderID, redislua.MapLuaErrToClientCode(checkResult.ErrCode), "未知错误")
 		return
 	}
 
-	// Build conversation ID
+	// 构建会话 ID
 	convID := model.BuildConvID(model.ConvTypePrivate, senderID, req.ToID)
 
-	// Build InboxMessage (will be persisted to inbox by MQ consumer)
+	// 构建 InboxMessage（将由 MQ 消费者持久化到收件箱）
 	inboxMsg := model.InboxMessage{
 		MsgID:      checkResult.MsgID,
 		ConvID:     convID,
@@ -117,7 +117,7 @@ func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *
 		Timestamp:  req.Timestamp,
 	}
 
-	// Build PrivateMessage for MQ publish
+	// 构建 PrivateMessage 用于 MQ 发布
 	pm := &model.PrivateMessage{
 		ID:         checkResult.MsgID,
 		SenderID:   senderID,
@@ -127,20 +127,20 @@ func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *
 		CreatedAt:  time.UnixMilli(req.Timestamp),
 	}
 
-	// Publish to MQ
+	// 发布到 MQ
 	if err := s.mqRepo.PublishPrivateMsg(ctx, pm); err != nil {
-		s.logger.Error("PublishPrivateMsg failed", zap.Error(err))
-		s.sendError(senderID, 500, "message publish failed")
+		s.logger.Error("PublishPrivateMsg 发布失败", zap.Error(err))
+		s.sendError(senderID, 500, "消息发布失败")
 		return
 	}
 
-	s.logger.Debug("private message published",
+	s.logger.Debug("私聊消息已发布",
 		zap.Int64("msgID", checkResult.MsgID),
 		zap.Int64("senderID", senderID),
 		zap.Int64("receiverID", req.ToID),
 	)
 
-	// Send serverAck to sender
+	// 向发送方发送 serverAck
 	ack := &model.ServerAck{
 		ClientMsgID: req.ClientMsgID,
 		ServerMsgID: checkResult.MsgID,
@@ -148,25 +148,25 @@ func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *
 	}
 	s.pushToUser(senderID, protocol.TypeServerAck, ack)
 
-	// If receiver is online, push the InboxMessage directly for real-time delivery
+	// 如果接收方在线，直接推送 InboxMessage 实现实时送达
 	if checkResult.IsOnline {
 		s.pushToUser(req.ToID, protocol.TypeMsg, inboxMsg)
 	}
 }
 
-// handleGroupMsg processes a group message.
-// Flow: Lua check → build InboxMessage → publish MQ → send serverAck with groupSeq
+// handleGroupMsg 处理群聊消息。
+// 流程：Lua 检查 → 构建 InboxMessage → 发布到 MQ → 发送带有 groupSeq 的 serverAck
 func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *model.SendMessage) {
 	checkResult, err := s.redisRepo.ExecGroupMsgCheck(ctx, req.ToID, senderID, req.ClientMsgID)
 	if err != nil {
-		s.logger.Error("ExecGroupMsgCheck failed", zap.Error(err))
-		s.sendError(senderID, 500, "internal server error")
+		s.logger.Error("ExecGroupMsgCheck 执行失败", zap.Error(err))
+		s.sendError(senderID, 500, "服务器内部错误")
 		return
 	}
 
 	switch checkResult.ErrCode {
 	case redislua.GMErrOK:
-		// proceed below
+		// 继续执行
 	case redislua.GMErrNotMember:
 		s.sendError(senderID, redislua.CodeGMNotMember, ErrNotMember)
 		return
@@ -177,11 +177,11 @@ func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *mo
 		s.sendError(senderID, redislua.CodeGMDuplicate, ErrDuplicate)
 		return
 	default:
-		s.sendError(senderID, redislua.MapGroupLuaErrToClientCode(checkResult.ErrCode), "unknown error")
+		s.sendError(senderID, redislua.MapGroupLuaErrToClientCode(checkResult.ErrCode), "未知错误")
 		return
 	}
 
-	// Build GroupMessage for MQ publish
+	// 构建 GroupMessage 用于 MQ 发布
 	gm := &model.GroupMessage{
 		ID:        checkResult.MsgID,
 		GroupID:   req.ToID,
@@ -192,20 +192,20 @@ func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *mo
 		CreatedAt: time.UnixMilli(req.Timestamp),
 	}
 
-	// Publish to MQ
+	// 发布到 MQ
 	if err := s.mqRepo.PublishGroupMsg(ctx, gm); err != nil {
-		s.logger.Error("PublishGroupMsg failed", zap.Error(err))
-		s.sendError(senderID, 500, "message publish failed")
+		s.logger.Error("PublishGroupMsg 发布失败", zap.Error(err))
+		s.sendError(senderID, 500, "消息发布失败")
 		return
 	}
 
-	s.logger.Debug("group message published",
+	s.logger.Debug("群聊消息已发布",
 		zap.Int64("msgID", checkResult.MsgID),
 		zap.Int64("groupID", req.ToID),
 		zap.Int64("groupSeq", checkResult.GroupSeq),
 	)
 
-	// Send serverAck to sender (includes groupSeq)
+	// 向发送方发送 serverAck（包含 groupSeq）
 	ack := &model.ServerAck{
 		ClientMsgID: req.ClientMsgID,
 		ServerMsgID: checkResult.MsgID,
@@ -219,16 +219,16 @@ func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *mo
 // HandleDeliverAck
 // ──────────────────────────────────────────────────────
 
-// HandleDeliverAck processes a delivery acknowledgement from a client.
-// This is informational — the client confirms it received a message.
+// HandleDeliverAck 处理来自客户端的送达确认。
+// 此操作用于通知——客户端确认已收到消息。
 func (s *MsgService) HandleDeliverAck(userID int64, data []byte) {
 	var ack model.DeliverAck
 	if err := json.Unmarshal(data, &ack); err != nil {
-		s.logger.Warn("failed to parse DeliverAck", zap.Error(err))
+		s.logger.Warn("解析 DeliverAck 失败", zap.Error(err))
 		return
 	}
 
-	s.logger.Debug("delivery ack received",
+	s.logger.Debug("收到送达确认",
 		zap.Int64("userID", userID),
 		zap.Int64("serverMsgID", ack.ServerMsgID),
 	)
@@ -238,14 +238,14 @@ func (s *MsgService) HandleDeliverAck(userID int64, data []byte) {
 // HandleReadAck
 // ──────────────────────────────────────────────────────
 
-// HandleReadAck processes a read acknowledgement from a client.
-// It atomically marks all unread messages in the specified conversation as read
-// and clears the unread counter via Lua script.
+// HandleReadAck 处理来自客户端的已读确认。
+// 它通过 Lua 脚本原子性地将指定会话中所有未读消息标记为已读，
+// 并清除未读计数器。
 func (s *MsgService) HandleReadAck(userID int64, data []byte) {
 	var req model.ReadAck
 	if err := json.Unmarshal(data, &req); err != nil {
-		s.logger.Warn("failed to parse ReadAck", zap.Error(err))
-		s.sendError(userID, 400, "invalid readAck format")
+		s.logger.Warn("解析 ReadAck 失败", zap.Error(err))
+		s.sendError(userID, 400, "readAck 格式无效")
 		return
 	}
 
@@ -253,16 +253,16 @@ func (s *MsgService) HandleReadAck(userID int64, data []byte) {
 
 	count, err := s.redisRepo.ExecInboxMarkRead(ctx, userID, req.ConvID)
 	if err != nil {
-		s.logger.Error("ExecInboxMarkRead failed",
+		s.logger.Error("ExecInboxMarkRead 执行失败",
 			zap.Int64("userID", userID),
 			zap.String("convID", req.ConvID),
 			zap.Error(err),
 		)
-		s.sendError(userID, 500, "mark read failed")
+		s.sendError(userID, 500, "标记已读失败")
 		return
 	}
 
-	s.logger.Debug("inbox marked read",
+	s.logger.Debug("收件箱已标记为已读",
 		zap.Int64("userID", userID),
 		zap.String("convID", req.ConvID),
 		zap.Int64("count", count),
@@ -273,36 +273,36 @@ func (s *MsgService) HandleReadAck(userID int64, data []byte) {
 // HandleSyncReq
 // ──────────────────────────────────────────────────────
 
-// HandleSyncReq processes an offline sync request from a client.
-// It pulls new messages from the user's inbox (private) and group outboxes,
-// merges and sorts them, then pushes a SyncBatch and ConvSync via WebSocket.
+// HandleSyncReq 处理来自客户端的离线同步请求。
+// 它从用户的收件箱（私聊）和群发件箱中拉取新消息，
+// 合并排序后，通过 WebSocket 推送 SyncBatch 和 ConvSync。
 func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 	var req model.SyncReq
 	if err := json.Unmarshal(data, &req); err != nil {
-		s.logger.Warn("failed to parse SyncReq", zap.Error(err))
-		s.sendError(userID, 400, "invalid syncReq format")
+		s.logger.Warn("解析 SyncReq 失败", zap.Error(err))
+		s.sendError(userID, 400, "syncReq 格式无效")
 		return
 	}
 
 	if req.BatchSize <= 0 {
-		req.BatchSize = 50 // default batch size
+		req.BatchSize = 50 // 默认批量大小
 	}
 
 	ctx := context.Background()
 
-	// ── 1. Pull private messages from inbox ──
+	// ── 1. 从收件箱拉取私聊消息 ──
 	privateMsgs, err := s.redisRepo.ReadInbox(ctx, userID, req.LastSyncTime, req.BatchSize+1)
 	if err != nil {
-		s.logger.Error("ReadInbox failed", zap.Error(err))
-		s.sendError(userID, 500, "sync failed")
+		s.logger.Error("ReadInbox 读取失败", zap.Error(err))
+		s.sendError(userID, 500, "同步失败")
 		return
 	}
 
-	// ── 2. Pull group messages from group outboxes ──
+	// ── 2. 从群发件箱拉取群聊消息 ──
 	groupIDs, err := s.redisRepo.GetGroupMemberships(ctx, userID)
 	if err != nil {
-		s.logger.Error("GetGroupMemberships failed", zap.Error(err))
-		// Continue with just private messages
+		s.logger.Error("GetGroupMemberships 查询失败", zap.Error(err))
+		// 只使用私聊消息继续执行
 	}
 
 	var groupMsgs []model.InboxMessage
@@ -310,12 +310,12 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 		convID := model.BuildConvID(model.ConvTypeGroup, gid, 0)
 		lastReadSeq, _ := s.redisRepo.GetGroupReadPos(ctx, userID, convID)
 
-		// Over-fetch by 3x batchSize to compensate for groupSeq filtering.
-		// Many outbox entries may fall below lastReadSeq and be discarded,
-		// so requesting batchSize+1 is insufficient for reliable hasMore detection.
+		// 多拉取 3 倍 batchSize 以弥补 groupSeq 过滤带来的损耗。
+		// 许多发件箱条目可能因低于 lastReadSeq 而被丢弃，
+		// 因此仅请求 batchSize+1 条不足以可靠地检测 hasMore。
 		outboxMsgs, err := s.redisRepo.ReadOutbox(ctx, gid, req.LastSyncTime, req.BatchSize*3)
 		if err != nil {
-			s.logger.Warn("ReadOutbox failed", zap.Int64("groupID", gid), zap.Error(err))
+			s.logger.Warn("ReadOutbox 读取失败", zap.Int64("groupID", gid), zap.Error(err))
 			continue
 		}
 
@@ -326,22 +326,22 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 		}
 	}
 
-	// ── 3. Merge and sort all messages ──
+	// ── 3. 合并并排序所有消息 ──
 	allMsgs := append(privateMsgs, groupMsgs...)
 	sort.Slice(allMsgs, func(i, j int) bool {
 		return allMsgs[i].Timestamp < allMsgs[j].Timestamp
 	})
 
-	// ── 4. Determine hasMore ──
-	// If the qualifying message count >= batchSize, there may be more messages
-	// in future pages. This handles the case where group filtering reduces the
-	// count below batchSize even though more qualifying entries exist.
+	// ── 4. 判断 hasMore ──
+	// 如果符合条件的消息数量 >= batchSize，则后续可能还有更多消息。
+	// 这处理了群聊过滤导致数量低于 batchSize 的情况，
+	// 即使实际上还有更多符合条件的条目存在。
 	hasMore := len(allMsgs) >= req.BatchSize
 	if hasMore {
 		allMsgs = allMsgs[:req.BatchSize]
 	}
 
-	// ── 5. Determine syncTime ──
+	// ── 5. 确定 syncTime ──
 	var syncTime int64
 	if len(allMsgs) > 0 {
 		syncTime = allMsgs[len(allMsgs)-1].Timestamp
@@ -349,7 +349,7 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 		syncTime = time.Now().UnixMilli()
 	}
 
-	// ── 6. Push SyncBatch ──
+	// ── 6. 推送 SyncBatch ──
 	batch := &model.SyncBatch{
 		Messages: allMsgs,
 		HasMore:  hasMore,
@@ -357,7 +357,7 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 	}
 	s.pushToUser(userID, protocol.TypeSyncBatch, batch)
 
-	// ── 7. Update group read positions ──
+	// ── 7. 更新群组已读位置 ──
 	for _, gid := range groupIDs {
 		convID := model.BuildConvID(model.ConvTypeGroup, gid, 0)
 		maxSeq := int64(0)
@@ -368,20 +368,20 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 		}
 		if maxSeq > 0 {
 			if err := s.redisRepo.SetGroupReadPos(ctx, userID, convID, maxSeq); err != nil {
-				s.logger.Warn("SetGroupReadPos failed", zap.Error(err))
+				s.logger.Warn("SetGroupReadPos 执行失败", zap.Error(err))
 			}
 		}
 	}
 
-	// ── 8. Push ConvSync ──
+	// ── 8. 推送 ConvSync ──
 	convList, err := s.redisRepo.GetConvList(ctx, userID)
 	if err != nil {
-		s.logger.Warn("GetConvList failed", zap.Error(err))
+		s.logger.Warn("GetConvList 查询失败", zap.Error(err))
 	}
 
 	unreadMap, err := s.redisRepo.GetUnreadMap(ctx, userID)
 	if err != nil {
-		s.logger.Warn("GetUnreadMap failed", zap.Error(err))
+		s.logger.Warn("GetUnreadMap 查询失败", zap.Error(err))
 	}
 
 	convSync := &model.ConvSync{
@@ -390,7 +390,7 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 	}
 	s.pushToUser(userID, protocol.TypeConvSync, convSync)
 
-	s.logger.Debug("sync completed",
+	s.logger.Debug("同步完成",
 		zap.Int64("userID", userID),
 		zap.Int("msgCount", len(allMsgs)),
 		zap.Bool("hasMore", hasMore),
@@ -401,32 +401,31 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 // HandleRevokeMsg
 // ──────────────────────────────────────────────────────
 
-// HandleRevokeMsg processes a message revoke request from a client.
-// It atomically replaces the original message with a "revoked" version
-// (msgType=6) in the inbox/outbox ZSet via Lua script, then pushes a
-// msgRevoked notification to the other party.
+// HandleRevokeMsg 处理来自客户端的消息撤回请求。
+// 它通过 Lua 脚本原子性地将收件箱/发件箱 ZSet 中的原始消息替换为"已撤回"版本
+//（msgType=6），然后向对方推送 msgRevoked 通知。
 func (s *MsgService) HandleRevokeMsg(userID int64, data []byte) {
 	var req model.RevokeMsgReq
 	if err := json.Unmarshal(data, &req); err != nil {
-		s.logger.Warn("failed to parse RevokeMsgReq", zap.Error(err))
-		s.sendError(userID, 400, "invalid revokeMsg format")
+		s.logger.Warn("解析 RevokeMsgReq 失败", zap.Error(err))
+		s.sendError(userID, 400, "revokeMsg 格式无效")
 		return
 	}
 
 	ctx := context.Background()
 
-	// Determine convType from convID prefix
+	// 根据 convID 前缀确定会话类型
 	var convType int
 	if strings.HasPrefix(req.ConvID, "p_") {
 		convType = model.ConvTypePrivate
 	} else if strings.HasPrefix(req.ConvID, "g_") {
 		convType = model.ConvTypeGroup
 	} else {
-		s.sendError(userID, 400, "invalid convId format")
+		s.sendError(userID, 400, "convId 格式无效")
 		return
 	}
 
-	// Build the revoked replacement message
+	// 构建已撤回的替换消息
 	now := time.Now().UnixMilli()
 	revokedMsg := model.InboxMessage{
 		MsgID:     req.ServerMsgID,
@@ -434,21 +433,21 @@ func (s *MsgService) HandleRevokeMsg(userID int64, data []byte) {
 		ConvType:  convType,
 		FromID:    userID,
 		MsgType:   model.MsgTypeRevoked,
-		Content:   "Message revoked",
+		Content:   "消息已撤回",
 		Timestamp: now,
 	}
 	revokeMsgJSON, err := json.Marshal(revokedMsg)
 	if err != nil {
-		s.logger.Error("marshal revoked message failed", zap.Error(err))
-		s.sendError(userID, 500, "internal server error")
+		s.logger.Error("序列化撤回消息失败", zap.Error(err))
+		s.sendError(userID, 500, "服务器内部错误")
 		return
 	}
 
-	// Execute Lua revoke script
+	// 执行 Lua 撤回脚本
 	ok, err := s.redisRepo.ExecRevokeMsg(ctx, userID, req.ConvID, req.ServerMsgID, string(revokeMsgJSON), now)
 	if err != nil {
-		s.logger.Error("ExecRevokeMsg failed", zap.Error(err))
-		s.sendError(userID, 500, "revoke failed")
+		s.logger.Error("ExecRevokeMsg 执行失败", zap.Error(err))
+		s.sendError(userID, 500, "撤回失败")
 		return
 	}
 
@@ -457,71 +456,71 @@ func (s *MsgService) HandleRevokeMsg(userID int64, data []byte) {
 		return
 	}
 
-	s.logger.Debug("message revoked",
+	s.logger.Debug("消息已撤回",
 		zap.Int64("userID", userID),
 		zap.String("convID", req.ConvID),
 		zap.Int64("msgID", req.ServerMsgID),
 	)
 
-	// Push msgRevoked notification
+	// 推送 msgRevoked 通知
 	notification := &model.RevokedNotification{
 		ConvID:      req.ConvID,
 		ServerMsgID: req.ServerMsgID,
 		OperatorID:  userID,
 	}
 
-	// Notify sender for confirmation
+	// 通知发送方以确认
 	s.pushToUser(userID, protocol.TypeMsgRevoked, notification)
 
-	// For private chat, push to the other party
+	// 私聊情况下，推送给对方
 	if convType == model.ConvTypePrivate {
 		otherID := getOtherPartyID(req.ConvID, userID)
 		if otherID > 0 {
 			s.pushToUser(otherID, protocol.TypeMsgRevoked, notification)
 		}
 	}
-	// For group chat, members discover revoke via sync or MQ consumer fan-out
+	// 群聊情况下，成员通过同步或 MQ 消费者广播发现撤回
 }
 
 // ──────────────────────────────────────────────────────
-// Helpers
+// 辅助方法
 // ──────────────────────────────────────────────────────
 
-// sendError pushes a WsError to the given user via WebSocket.
+// sendError 通过 WebSocket 向指定用户推送 WsError。
 func (s *MsgService) sendError(userID int64, code int, message string) {
 	wsErr := &model.WsError{Code: code, Message: message}
 	s.pushToUser(userID, protocol.TypeError, wsErr)
 }
 
-// pushToUser encodes a message and pushes it to the user's WebSocket SendCh.
-// If the user is not online, the message is silently dropped (they'll get it via sync).
+// pushToUser 编码消息并将其推送到用户的 WebSocket SendCh。
+// 如果用户不在线，消息将被静默丢弃（用户将通过同步获取）。
 func (s *MsgService) pushToUser(userID int64, msgType string, data interface{}) {
 	encoded, err := protocol.EncodeMsg(msgType, data)
 	if err != nil {
-		s.logger.Error("EncodeMsg failed", zap.String("type", msgType), zap.Error(err))
+		s.logger.Error("EncodeMsg 编码失败", zap.String("type", msgType), zap.Error(err))
 		return
 	}
 
 	client, ok := s.cm.Get(userID)
 	if !ok {
-		// User not online — they'll get it via sync
+		// 用户不在线——将通过同步获取消息
 		return
 	}
 
 	select {
 	case client.SendCh <- encoded:
-		// sent successfully
+		// 发送成功
 	default:
-		// buffer full — drop message (user will sync later)
-		s.logger.Warn("SendCh buffer full, dropping message",
+		// 缓冲区已满——丢弃消息（用户稍后会同步）
+		s.logger.Warn("SendCh 缓冲区已满，丢弃消息",
 			zap.Int64("userID", userID),
 			zap.String("type", msgType),
 		)
 	}
 }
 
-// getOtherPartyID extracts the other user's ID from a private conversation ID.
-// convID format for private: "p_{smallerID}_{largerID}"
+// getOtherPartyID 从私聊会话 ID 中提取对方的用户 ID。
+// 私聊 convID 格式："p_{较小的ID}_{较大的ID}"
 func getOtherPartyID(convID string, userID int64) int64 {
 	if !strings.HasPrefix(convID, "p_") {
 		return 0

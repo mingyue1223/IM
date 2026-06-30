@@ -14,13 +14,13 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Helper: create a test Redis client
+// 辅助函数：创建测试 Redis 客户端
 // ──────────────────────────────────────────────────────
 
 func newTestRedisClient(t *testing.T) *redis.Client {
 	cfg, err := config.LoadConfig("../../configs/config.test.yaml")
 	if err != nil {
-		t.Skip("cannot load test config")
+		t.Skip("无法加载测试配置")
 	}
 
 	rdb, err := NewRedisClient(&cfg.Redis)
@@ -28,14 +28,14 @@ func newTestRedisClient(t *testing.T) *redis.Client {
 
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
 		rdb.Close()
-		t.Skip("Redis not available for integration test")
+		t.Skip("Redis 不可用，跳过集成测试")
 	}
 
 	return rdb
 }
 
 // ──────────────────────────────────────────────────────
-// extractIDFromKey tests (unit, no Redis needed)
+// extractIDFromKey 测试（单元测试，不需要 Redis）
 // ──────────────────────────────────────────────────────
 
 func TestExtractIDFromKey(t *testing.T) {
@@ -74,7 +74,7 @@ func TestMaxEntriesForPrefix(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// Integration tests (require Redis, skipped if unavailable)
+// 集成测试（需要 Redis，不可用时跳过）
 // ──────────────────────────────────────────────────────
 
 func TestCleanupExpiredData_RemovesOldInboxEntries(t *testing.T) {
@@ -88,7 +88,7 @@ func TestCleanupExpiredData_RemovesOldInboxEntries(t *testing.T) {
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
 	now := time.Now().Unix()
 
-	// Seed: 10 old entries (5 days ago) + 10 recent entries
+	// 种子数据：10 条旧记录（5 天前）+ 10 条新记录
 	for i := 0; i < 10; i++ {
 		oldTS := now - int64(5*24*3600) + int64(i*3600)
 		rdb.ZAdd(ctx, inboxKey, redis.Z{Score: float64(oldTS), Member: fmt.Sprintf("old_msg_%d", i)})
@@ -122,7 +122,7 @@ func TestCleanupExpiredData_TrimsInboxByMaxCount(t *testing.T) {
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
 	now := time.Now().Unix()
 
-	// Seed: 1200 recent entries — time trim won't remove them
+	// 种子数据：1200 条近期记录 — 时间裁剪不会移除它们
 	for i := 0; i < 1200; i++ {
 		ts := now - int64(i)
 		rdb.ZAdd(ctx, inboxKey, redis.Z{Score: float64(ts), Member: fmt.Sprintf("msg_%d", i)})
@@ -306,7 +306,7 @@ func TestCleanupExpiredData_ScanFindsMultipleKeys(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().Unix()
 
-	// Create inbox keys for multiple users
+	// 为多个用户创建收件箱键
 	for _, uid := range []int64{90010, 90011, 90012} {
 		key := fmt.Sprintf("inbox:%d", uid)
 		for i := 0; i < 5; i++ {
@@ -322,7 +322,7 @@ func TestCleanupExpiredData_ScanFindsMultipleKeys(t *testing.T) {
 		key := fmt.Sprintf("inbox:%d", uid)
 		card, err := rdb.ZCard(ctx, key).Result()
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), card, "user %d inbox should have 1 entry after cleanup", uid)
+		assert.Equal(t, int64(1), card, "用户 %d 的收件箱清理后应有 1 条记录", uid)
 		rdb.Del(ctx, key)
 	}
 }
@@ -338,9 +338,9 @@ func TestCleanupExpiredData_ConvListNoRankTrim(t *testing.T) {
 	convKey := fmt.Sprintf("conv_list:%d", userID)
 	now := time.Now().Unix()
 
-	// Add 50 recent conv_list entries — conv_list has no rank cap, so all should remain
+	// 添加 50 条近期 conv_list 记录 — conv_list 无排名上限，因此全部保留
 	for i := 0; i < 50; i++ {
-		ts := now - int64(i*60) // all recent
+		ts := now - int64(i*60) // 全部为近期
 		rdb.ZAdd(ctx, convKey, redis.Z{Score: float64(ts), Member: fmt.Sprintf("conv_%d", i)})
 	}
 
@@ -352,13 +352,13 @@ func TestCleanupExpiredData_ConvListNoRankTrim(t *testing.T) {
 
 	cardAfter, err := rdb.ZCard(ctx, convKey).Result()
 	require.NoError(t, err)
-	assert.Equal(t, int64(50), cardAfter, "conv_list should not be trimmed by rank")
+	assert.Equal(t, int64(50), cardAfter, "conv_list 不应被排名裁剪")
 
 	rdb.Del(ctx, convKey)
 }
 
 // ──────────────────────────────────────────────────────
-// StartCleanupTask test — verify it doesn't block
+// StartCleanupTask 测试 — 验证它不会阻塞
 // ──────────────────────────────────────────────────────
 
 func TestStartCleanupTask_DoesNotBlock(t *testing.T) {
@@ -375,8 +375,8 @@ func TestStartCleanupTask_DoesNotBlock(t *testing.T) {
 
 	select {
 	case <-done:
-		// StartCleanupTask returned immediately — correct
+		// StartCleanupTask 立即返回 — 正确
 	case <-time.After(2 * time.Second):
-		t.Fatal("StartCleanupTask blocked — should return immediately")
+		t.Fatal("StartCleanupTask 阻塞了 — 应立即返回")
 	}
 }

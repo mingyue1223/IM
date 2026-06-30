@@ -12,13 +12,13 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── Constants ──
+// ── 常量 ──
 
 const momentPushQueue = "moment_push"
 
-// MomentFeedConsumer processes messages from the moment_push queue.
-// For each moment publish event, it fan-outs to all friends' timeline ZSets
-// and adds the moment to the author's own timeline.
+// MomentFeedConsumer 处理来自 moment_push 队列的消息。
+// 对于每条动态发布事件，它将动态分发到所有好友的时间线 ZSet 中，
+// 并将动态添加到作者自己的时间线中。
 type MomentFeedConsumer struct {
 	ch        *amqp.Channel
 	mysqlRepo repository.MySQLRepo
@@ -26,7 +26,7 @@ type MomentFeedConsumer struct {
 	logger    *zap.Logger
 }
 
-// NewMomentFeedConsumer creates a new MomentFeedConsumer.
+// NewMomentFeedConsumer 创建一个新的 MomentFeedConsumer。
 func NewMomentFeedConsumer(ch *amqp.Channel, mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, logger *zap.Logger) *MomentFeedConsumer {
 	return &MomentFeedConsumer{
 		ch:        ch,
@@ -36,52 +36,52 @@ func NewMomentFeedConsumer(ch *amqp.Channel, mysqlRepo repository.MySQLRepo, red
 	}
 }
 
-// Start begins consuming messages from the moment_push queue.
-// Runs in a goroutine; blocks until the channel closes or context is cancelled.
+// Start 开始从 moment_push 队列消费消息。
+// 在 goroutine 中运行；阻塞直到通道关闭或上下文被取消。
 func (c *MomentFeedConsumer) Start(ctx context.Context) error {
 	deliveries, err := c.ch.Consume(
 		momentPushQueue,
-		"goim-moment-feed-consumer", // consumer tag
-		false,                        // autoAck — we ack manually
-		false,                        // exclusive
+		"goim-moment-feed-consumer", // 消费者标签
+		false,                        // autoAck — 手动确认
+		false,                        // exclusive 排他
 		false,                        // noLocal
 		false,                        // noWait
-		nil,                          // args
+		nil,                          // args 参数
 	)
 	if err != nil {
-		return fmt.Errorf("consume moment_push: %w", err)
+		return fmt.Errorf("消费 moment_push: %w", err)
 	}
 
-	c.logger.Info("moment feed consumer started")
+	c.logger.Info("动态消息消费者已启动")
 
 	go func() {
 		for d := range deliveries {
 			c.handleDelivery(ctx, d)
 		}
-		c.logger.Info("moment feed consumer deliveries channel closed")
+		c.logger.Info("动态消息消费者投递通道已关闭")
 	}()
 
 	return nil
 }
 
-// handleDelivery processes a single AMQP delivery.
-// On success: ack. On failure: nack with requeue so the message is retried.
+// handleDelivery 处理单条 AMQP 投递消息。
+// 成功：ack 确认。失败：nack 并重新入队以便重试。
 func (c *MomentFeedConsumer) handleDelivery(ctx context.Context, d amqp.Delivery) {
 	moment, err := deserializeMoment(d.Body)
 	if err != nil {
-		c.logger.Error("failed to deserialize moment", zap.Error(err))
-		// Malformed message — nack without requeue (discard)
+		c.logger.Error("反序列化动态失败", zap.Error(err))
+		// 消息格式错误 — nack 但不重新入队（丢弃）
 		d.Nack(false, false)
 		return
 	}
 
 	if err := c.process(ctx, moment); err != nil {
-		c.logger.Error("failed to process moment fan-out",
+		c.logger.Error("动态分发处理失败",
 			zap.Int64("momentID", moment.ID),
 			zap.Int64("authorID", moment.AuthorID),
 			zap.Error(err),
 		)
-		// Transient failure — nack with requeue for retry
+		// 临时性错误 — nack 并重新入队等待重试
 		d.Nack(false, true)
 		return
 	}
@@ -89,26 +89,26 @@ func (c *MomentFeedConsumer) handleDelivery(ctx context.Context, d amqp.Delivery
 	d.Ack(false)
 }
 
-// process executes the fan-out logic for a moment.
-// It adds the moment to the author's own timeline and to all friends' timelines.
+// process 执行动态的分发逻辑。
+// 它将动态添加到作者自己的时间线以及所有好友的时间线中。
 func (c *MomentFeedConsumer) process(ctx context.Context, moment *model.Moment) error {
 	timestamp := moment.CreatedAt.UnixMilli()
 
-	// ── 1. Add to author's own timeline ──
+	// ── 1. 添加到作者自己的时间线 ──
 	if err := c.redisRepo.PublishMomentFeed(ctx, moment.AuthorID, moment.ID, timestamp); err != nil {
-		c.logger.Warn("failed to add moment to author's own timeline",
+		c.logger.Warn("添加动态到作者自己的时间线失败",
 			zap.Int64("authorID", moment.AuthorID),
 			zap.Int64("momentID", moment.ID),
 			zap.Error(err),
 		)
-		// non-critical — don't fail the whole delivery
+		// 非关键错误 — 不要导致整个投递失败
 	}
 
-	// ── 2. Fan-out to friends ──
-	// Only fan-out if visibility is "all" (1) or "friends only" (2)
-	// Private moments (3) are only visible to the author
+	// ── 2. 分发给好友 ──
+	// 仅当可见性为"全部"(1) 或 "仅好友"(2) 时才进行分发
+	// 私密动态(3) 仅对作者本人可见
 	if moment.Visibility == 3 {
-		c.logger.Debug("private moment — skipping fan-out",
+		c.logger.Debug("私密动态 — 跳过分发",
 			zap.Int64("momentID", moment.ID),
 			zap.Int64("authorID", moment.AuthorID),
 		)
@@ -117,27 +117,27 @@ func (c *MomentFeedConsumer) process(ctx context.Context, moment *model.Moment) 
 
 	friends, err := c.mysqlRepo.GetFriendList(ctx, moment.AuthorID)
 	if err != nil {
-		return fmt.Errorf("get friend list for author %d: %w", moment.AuthorID, err)
+		return fmt.Errorf("获取作者 %d 的好友列表失败: %w", moment.AuthorID, err)
 	}
 
 	for _, fs := range friends {
 		friendID := fs.FriendID
 		if friendID == moment.AuthorID {
-			// Skip self (already added to own timeline above)
+			// 跳过自己（已在上面添加到自己的时间线）
 			continue
 		}
 
 		if err := c.redisRepo.PublishMomentFeed(ctx, friendID, moment.ID, timestamp); err != nil {
-			c.logger.Warn("failed to add moment to friend's timeline",
+			c.logger.Warn("添加动态到好友时间线失败",
 				zap.Int64("friendID", friendID),
 				zap.Int64("momentID", moment.ID),
 				zap.Error(err),
 			)
-			// non-critical for one friend — continue with remaining friends
+			// 单个好友失败是非关键错误 — 继续处理剩余好友
 		}
 	}
 
-	c.logger.Debug("moment fan-out completed",
+	c.logger.Debug("动态分发完成",
 		zap.Int64("momentID", moment.ID),
 		zap.Int64("authorID", moment.AuthorID),
 		zap.Int("friendCount", len(friends)),
@@ -146,16 +146,16 @@ func (c *MomentFeedConsumer) process(ctx context.Context, moment *model.Moment) 
 	return nil
 }
 
-// ── Helpers ──
+// ── 辅助函数 ──
 
-// deserializeMoment parses AMQP body into a Moment.
+// deserializeMoment 将 AMQP 消息体解析为 Moment 结构体。
 func deserializeMoment(body []byte) (*model.Moment, error) {
 	var moment model.Moment
 	if err := json.Unmarshal(body, &moment); err != nil {
-		return nil, fmt.Errorf("unmarshal moment: %w", err)
+		return nil, fmt.Errorf("反序列化动态: %w", err)
 	}
 	if moment.AuthorID == 0 || moment.ID == 0 {
-		return nil, fmt.Errorf("invalid moment: authorID=%d, id=%d", moment.AuthorID, moment.ID)
+		return nil, fmt.Errorf("无效的动态: authorID=%d, id=%d", moment.AuthorID, moment.ID)
 	}
 	return &moment, nil
 }

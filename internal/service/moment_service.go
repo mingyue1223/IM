@@ -11,18 +11,18 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── Validation / business-error constants ──
+// ── 验证/业务错误常量 ──
 
 const (
-	ErrMomentContentEmpty = "moment content cannot be empty"
-	ErrMomentNotFound     = "moment not found"
-	ErrNotCommentOwner    = "not the owner of this comment"
-	ErrInvalidVisibility  = "visibility must be 1 (all), 2 (friends), or 3 (private)"
-	ErrAlreadyLiked       = "already liked this moment"
-	ErrCommentNotFound    = "comment not found"
+	ErrMomentContentEmpty = "动态内容不能为空"
+	ErrMomentNotFound     = "动态未找到"
+	ErrNotCommentOwner    = "不是该评论的所有者"
+	ErrInvalidVisibility  = "可见性必须为 1（全部）、2（好友）或 3（私密）"
+	ErrAlreadyLiked       = "已经赞过该动态"
+	ErrCommentNotFound    = "评论未找到"
 )
 
-// MomentService handles moment publishing, like/comment operations, and feed retrieval.
+// MomentService 处理动态发布、点赞/评论操作以及动态流获取。
 type MomentService struct {
 	mysqlRepo repository.MySQLRepo
 	redisRepo repository.RedisRepo
@@ -30,7 +30,7 @@ type MomentService struct {
 	logger    *zap.Logger
 }
 
-// NewMomentService creates a MomentService with all required dependencies.
+// NewMomentService 使用所有必需的依赖项创建一个 MomentService。
 func NewMomentService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, mqRepo repository.MQRepo, logger *zap.Logger) *MomentService {
 	return &MomentService{
 		mysqlRepo: mysqlRepo,
@@ -40,8 +40,8 @@ func NewMomentService(mysqlRepo repository.MySQLRepo, redisRepo repository.Redis
 	}
 }
 
-// PublishMoment creates a moment in MySQL and publishes to MQ for feed fan-out.
-// Returns the created moment's ID on success.
+// PublishMoment 在 MySQL 中创建动态并发布到 MQ 以进行动态流扇出。
+// 成功时返回所创建动态的 ID。
 func (s *MomentService) PublishMoment(ctx context.Context, userID int64, content string, mediaUrls *string, visibility int) (int64, error) {
 	if content == "" {
 		return 0, fmt.Errorf(ErrMomentContentEmpty)
@@ -60,27 +60,27 @@ func (s *MomentService) PublishMoment(ctx context.Context, userID int64, content
 	}
 
 	if err := s.mysqlRepo.CreateMoment(ctx, moment); err != nil {
-		return 0, fmt.Errorf("create moment: %w", err)
+		return 0, fmt.Errorf("创建动态: %w", err)
 	}
 
-	// Publish to MQ for fan-out to friends' timelines
+	// 发布到 MQ 以扇出到好友的时间线
 	if err := s.mqRepo.PublishMomentPush(ctx, moment); err != nil {
-		s.logger.Error("PublishMomentPush failed",
+		s.logger.Error("PublishMomentPush 失败",
 			zap.Int64("momentID", moment.ID),
 			zap.Int64("authorID", userID),
 			zap.Error(err),
 		)
-		// Non-critical: moment is persisted in MySQL, feed fan-out will be retried
+		// 非关键：动态已持久化到 MySQL，动态流扇出将会重试
 	}
 
 	return moment.ID, nil
 }
 
-// GetMoment returns a single moment by ID.
+// GetMoment 根据 ID 返回单条动态。
 func (s *MomentService) GetMoment(ctx context.Context, momentID int64) (*model.Moment, error) {
 	moment, err := s.mysqlRepo.GetMomentByID(ctx, momentID)
 	if err != nil {
-		return nil, fmt.Errorf("get moment: %w", err)
+		return nil, fmt.Errorf("获取动态: %w", err)
 	}
 	if moment == nil {
 		return nil, fmt.Errorf(ErrMomentNotFound)
@@ -88,7 +88,7 @@ func (s *MomentService) GetMoment(ctx context.Context, momentID int64) (*model.M
 	return moment, nil
 }
 
-// GetUserMoments returns a paginated list of a user's own moments.
+// GetUserMoments 返回用户自己的分页动态列表。
 func (s *MomentService) GetUserMoments(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error) {
 	if limit <= 0 {
 		limit = 20
@@ -98,17 +98,17 @@ func (s *MomentService) GetUserMoments(ctx context.Context, userID int64, limit,
 	}
 	moments, err := s.mysqlRepo.GetMomentsByUser(ctx, userID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("get moments by user: %w", err)
+		return nil, fmt.Errorf("按用户获取动态: %w", err)
 	}
 	return moments, nil
 }
 
-// LikeMoment creates a like record for a moment.
+// LikeMoment 为动态创建一条点赞记录。
 func (s *MomentService) LikeMoment(ctx context.Context, userID int64, momentID int64) error {
-	// Verify moment exists
+	// 验证动态是否存在
 	moment, err := s.mysqlRepo.GetMomentByID(ctx, momentID)
 	if err != nil {
-		return fmt.Errorf("check moment: %w", err)
+		return fmt.Errorf("检查动态: %w", err)
 	}
 	if moment == nil {
 		return fmt.Errorf(ErrMomentNotFound)
@@ -120,36 +120,36 @@ func (s *MomentService) LikeMoment(ctx context.Context, userID int64, momentID i
 		CreatedAt: time.Now(),
 	}
 	if err := s.mysqlRepo.CreateMomentLike(ctx, like); err != nil {
-		// Duplicate like (unique key constraint on moment_id, user_id)
+		// 重复点赞（moment_id、user_id 上的唯一键约束）
 		return fmt.Errorf("%s: %w", ErrAlreadyLiked, err)
 	}
 	return nil
 }
 
-// UnlikeMoment removes a like record for a moment.
+// UnlikeMoment 移除动态的点赞记录。
 func (s *MomentService) UnlikeMoment(ctx context.Context, userID int64, momentID int64) error {
 	if err := s.mysqlRepo.DeleteMomentLike(ctx, momentID, userID); err != nil {
-		return fmt.Errorf("unlike moment: %w", err)
+		return fmt.Errorf("取消点赞: %w", err)
 	}
 	return nil
 }
 
-// CommentMoment creates a comment on a moment.
+// CommentMoment 在动态上创建一条评论。
 func (s *MomentService) CommentMoment(ctx context.Context, userID int64, momentID int64, content string) (int64, error) {
 	if content == "" {
 		return 0, fmt.Errorf(ErrMomentContentEmpty)
 	}
 
-	// Verify moment exists
+	// 验证动态是否存在
 	moment, err := s.mysqlRepo.GetMomentByID(ctx, momentID)
 	if err != nil {
-		return 0, fmt.Errorf("check moment: %w", err)
+		return 0, fmt.Errorf("检查动态: %w", err)
 	}
 	if moment == nil {
 		return 0, fmt.Errorf(ErrMomentNotFound)
 	}
 
-	// Generate comment ID (moment_comments uses BIGINT PK without AUTO_INCREMENT)
+	// 生成评论 ID（moment_comments 使用 BIGINT 主键，无 AUTO_INCREMENT）
 	commentID := time.Now().UnixNano()
 
 	comment := &model.MomentComment{
@@ -161,18 +161,18 @@ func (s *MomentService) CommentMoment(ctx context.Context, userID int64, momentI
 	}
 
 	if err := s.mysqlRepo.CreateMomentComment(ctx, comment); err != nil {
-		return 0, fmt.Errorf("create comment: %w", err)
+		return 0, fmt.Errorf("创建评论: %w", err)
 	}
 
 	return commentID, nil
 }
 
-// DeleteComment validates that the user owns the comment before deleting it.
+// DeleteComment 在删除评论前验证用户是否拥有该评论。
 func (s *MomentService) DeleteComment(ctx context.Context, userID int64, commentID int64) error {
-	// Fetch comment to validate ownership
+	// 获取评论以验证所有权
 	comment, err := s.mysqlRepo.GetMomentCommentByID(ctx, commentID)
 	if err != nil {
-		return fmt.Errorf("get comment: %w", err)
+		return fmt.Errorf("获取评论: %w", err)
 	}
 	if comment == nil {
 		return fmt.Errorf(ErrCommentNotFound)
@@ -182,13 +182,12 @@ func (s *MomentService) DeleteComment(ctx context.Context, userID int64, comment
 	}
 
 	if err := s.mysqlRepo.DeleteMomentComment(ctx, commentID); err != nil {
-		return fmt.Errorf("delete comment: %w", err)
+		return fmt.Errorf("删除评论: %w", err)
 	}
 	return nil
 }
 
-// GetFeed retrieves the user's moment feed from Redis timeline, then fetches
-// moment details from MySQL.
+// GetFeed 从 Redis 时间线中检索用户的动态流，然后从 MySQL 中获取动态详情。
 func (s *MomentService) GetFeed(ctx context.Context, userID int64, lastSyncTime int64, limit int) ([]model.Moment, error) {
 	if limit <= 0 {
 		limit = 20
@@ -197,26 +196,26 @@ func (s *MomentService) GetFeed(ctx context.Context, userID int64, lastSyncTime 
 		limit = 100
 	}
 
-	// Get moment IDs from Redis timeline ZSet
+	// 从 Redis 时间线 ZSet 中获取动态 ID
 	momentIDs, err := s.redisRepo.GetMomentFeed(ctx, userID, lastSyncTime, limit)
 	if err != nil {
-		return nil, fmt.Errorf("get moment feed from redis: %w", err)
+		return nil, fmt.Errorf("从 Redis 获取动态流: %w", err)
 	}
 
 	if len(momentIDs) == 0 {
 		return []model.Moment{}, nil
 	}
 
-	// Fetch moment details from MySQL
+	// 从 MySQL 中获取动态详情
 	moments := make([]model.Moment, 0, len(momentIDs))
 	for _, id := range momentIDs {
 		moment, err := s.mysqlRepo.GetMomentByID(ctx, id)
 		if err != nil {
-			s.logger.Warn("failed to fetch moment for feed",
+			s.logger.Warn("获取动态流中的动态失败",
 				zap.Int64("momentID", id),
 				zap.Error(err),
 			)
-			continue // skip moments that fail to load
+			continue // 跳过加载失败的动态
 		}
 		if moment != nil {
 			moments = append(moments, *moment)

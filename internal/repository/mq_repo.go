@@ -11,8 +11,8 @@ import (
 	"github.com/goim/goim/internal/model"
 )
 
-// MQRepo defines the MQ publish operations needed by the message service.
-// The interface allows mocking in tests.
+// MQRepo 定义了消息服务所需的 MQ 发布操作。
+// 该接口便于在测试中进行 mock。
 type MQRepo interface {
 	PublishPrivateMsg(ctx context.Context, msg *model.PrivateMessage) error
 	PublishGroupMsg(ctx context.Context, msg *model.GroupMessage) error
@@ -20,7 +20,7 @@ type MQRepo interface {
 }
 
 // ──────────────────────────────────────────────────────
-// MQRepoImpl — concrete implementation using amqp091-go
+// MQRepoImpl — 基于 amqp091-go 的具体实现
 // ──────────────────────────────────────────────────────
 
 type MQRepoImpl struct {
@@ -35,72 +35,72 @@ const mqPublishTimeout = 5 * time.Second
 
 func (m *MQRepoImpl) PublishPrivateMsg(ctx context.Context, msg *model.PrivateMessage) error {
 	if m.ch == nil {
-		return fmt.Errorf("amqp channel is nil")
+		return fmt.Errorf("amqp 通道为空")
 	}
 	body, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("marshal private message: %w", err)
+		return fmt.Errorf("marshal 私聊消息失败: %w", err)
 	}
 	publishCtx, cancel := context.WithTimeout(ctx, mqPublishTimeout)
 	defer cancel()
 	return m.ch.PublishWithContext(
 		publishCtx,
-		"",                    // exchange (default)
-		"private_msg_persist", // routing key = queue name
-		false,                 // mandatory
-		false,                 // immediate
+		"",                    // exchange（默认）
+		"private_msg_persist", // routing key = 队列名称
+		false,                 // 强制
+		false,                 // 立即
 		amqp.Publishing{
 			ContentType:  "application/json",
 			Body:         body,
-			DeliveryMode: 2, // persistent
+			DeliveryMode: 2, // 持久化
 		},
 	)
 }
 
 func (m *MQRepoImpl) PublishGroupMsg(ctx context.Context, msg *model.GroupMessage) error {
 	if m.ch == nil {
-		return fmt.Errorf("amqp channel is nil")
+		return fmt.Errorf("amqp 通道为空")
 	}
 	body, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("marshal group message: %w", err)
+		return fmt.Errorf("marshal 群聊消息失败: %w", err)
 	}
 	publishCtx, cancel := context.WithTimeout(ctx, mqPublishTimeout)
 	defer cancel()
 	return m.ch.PublishWithContext(
 		publishCtx,
-		"",                  // exchange (default)
-		"group_msg_fanout",  // routing key = queue name
-		false,               // mandatory
-		false,               // immediate
+		"",                  // exchange（默认）
+		"group_msg_fanout",  // routing key = 队列名称
+		false,               // 强制
+		false,               // 立即
 		amqp.Publishing{
 			ContentType:  "application/json",
 			Body:         body,
-			DeliveryMode: 2, // persistent
+			DeliveryMode: 2, // 持久化
 		},
 	)
 }
 
 func (m *MQRepoImpl) PublishMomentPush(ctx context.Context, moment *model.Moment) error {
 	if m.ch == nil {
-		return fmt.Errorf("amqp channel is nil")
+		return fmt.Errorf("amqp 通道为空")
 	}
 	body, err := json.Marshal(moment)
 	if err != nil {
-		return fmt.Errorf("marshal moment: %w", err)
+		return fmt.Errorf("marshal 朋友圈消息失败: %w", err)
 	}
 	publishCtx, cancel := context.WithTimeout(ctx, mqPublishTimeout)
 	defer cancel()
 	return m.ch.PublishWithContext(
 		publishCtx,
-		"",               // exchange (default)
-		"moment_push",    // routing key = queue name
-		false,            // mandatory
-		false,            // immediate
+		"",               // exchange（默认）
+		"moment_push",    // routing key = 队列名称
+		false,            // 强制
+		false,            // 立即
 		amqp.Publishing{
 			ContentType:  "application/json",
 			Body:         body,
-			DeliveryMode: 2, // persistent
+			DeliveryMode: 2, // 持久化
 		},
 	)
 }

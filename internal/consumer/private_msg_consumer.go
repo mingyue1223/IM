@@ -16,22 +16,22 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── Constants ──
+// ── 常量 ──
 
 const (
 	privateMsgQueue  = "private_msg_persist"
-	inboxMaxCount    = 2000 // max entries retained per user inbox after trim
+	inboxMaxCount    = 2000 // 每个用户收件箱在裁剪后保留的最大条目数
 )
 
-// PrivateMsgConsumer processes messages from the private_msg_persist queue.
-// For each PrivateMessage it:
-//  1. Writes to receiver's inbox (ZADD inbox:{receiverID}, readStatus=0)
-//  2. Writes to sender's inbox (ZADD inbox:{senderID}, readStatus=1 — sender "read" their own message)
-//  3. Updates conv_list for both parties
-//  4. Increments unread counter for receiver
-//  5. Pushes InboxMessage to online receiver via WebSocket
-//  6. Inserts PrivateMessage into MySQL
-//  7. Trims both inbox ZSets
+// PrivateMsgConsumer 处理来自 private_msg_persist 队列的消息。
+// 对于每条 PrivateMessage，它执行以下操作：
+//  1. 写入接收者的收件箱（ZADD inbox:{receiverID}，readStatus=0）
+//  2. 写入发送者的收件箱（ZADD inbox:{senderID}，readStatus=1 — 发送者"已读"自己的消息）
+//  3. 更新双方的 conv_list
+//  4. 增加接收者的未读计数
+//  5. 通过 WebSocket 将 InboxMessage 推送给在线的接收者
+//  6. 将 PrivateMessage 插入 MySQL
+//  7. 裁剪双方的收件箱 ZSet
 type PrivateMsgConsumer struct {
 	ch        *amqp.Channel
 	mysqlRepo repository.MySQLRepo
@@ -40,7 +40,7 @@ type PrivateMsgConsumer struct {
 	logger    *zap.Logger
 }
 
-// NewPrivateMsgConsumer creates a new PrivateMsgConsumer.
+// NewPrivateMsgConsumer 创建一个新的 PrivateMsgConsumer。
 func NewPrivateMsgConsumer(ch *amqp.Channel, mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, cm *conn.ConnectionManager, logger *zap.Logger) *PrivateMsgConsumer {
 	return &PrivateMsgConsumer{
 		ch:        ch,
@@ -51,54 +51,54 @@ func NewPrivateMsgConsumer(ch *amqp.Channel, mysqlRepo repository.MySQLRepo, red
 	}
 }
 
-// Start begins consuming messages from the private_msg_persist queue.
-// Runs in a goroutine; blocks until the channel closes or context is cancelled.
-// Uses manual acknowledgement: ack on success, nack+requeue on failure.
+// Start 开始从 private_msg_persist 队列消费消息。
+// 在 goroutine 中运行；阻塞直到 channel 关闭或 context 被取消。
+// 使用手动确认：成功时 ack，失败时 nack+requeue。
 func (c *PrivateMsgConsumer) Start(ctx context.Context) error {
 	deliveries, err := c.ch.Consume(
 		privateMsgQueue,
-		"goim-private-msg-consumer", // consumer tag
-		false,                        // autoAck — we ack manually
+		"goim-private-msg-consumer", // 消费者标签
+		false,                        // autoAck — 我们手动确认
 		false,                        // exclusive
 		false,                        // noLocal
 		false,                        // noWait
 		nil,                          // args
 	)
 	if err != nil {
-		return fmt.Errorf("consume private_msg_persist: %w", err)
+		return fmt.Errorf("消费 private_msg_persist 失败: %w", err)
 	}
 
-	c.logger.Info("private msg consumer started")
+	c.logger.Info("私聊消息消费者已启动")
 
 	go func() {
 		for d := range deliveries {
 			c.handleDelivery(ctx, d)
 		}
-		c.logger.Info("private msg consumer deliveries channel closed")
+		c.logger.Info("私聊消息消费者投递通道已关闭")
 	}()
 
 	return nil
 }
 
-// handleDelivery processes a single AMQP delivery.
-// On success: ack. On failure: nack with requeue so the message is retried.
+// handleDelivery 处理单条 AMQP 投递消息。
+// 成功时：ack。失败时：nack 并 requeue，以便消息重试。
 func (c *PrivateMsgConsumer) handleDelivery(ctx context.Context, d amqp.Delivery) {
 	msg, err := deserializePrivateMsg(d.Body)
 	if err != nil {
-		c.logger.Error("failed to deserialize private message", zap.Error(err))
-		// Malformed message — nack without requeue (discard) to avoid infinite retry
+		c.logger.Error("反序列化私聊消息失败", zap.Error(err))
+		// 格式错误的消息 — nack 不 requeue（丢弃），避免无限重试
 		d.Nack(false, false)
 		return
 	}
 
 	if err := c.process(ctx, msg); err != nil {
-		c.logger.Error("failed to process private message",
+		c.logger.Error("处理私聊消息失败",
 			zap.Int64("msgID", msg.ID),
 			zap.Int64("senderID", msg.SenderID),
 			zap.Int64("receiverID", msg.ReceiverID),
 			zap.Error(err),
 		)
-		// Transient failure — nack with requeue for retry
+		// 临时性故障 — nack 并 requeue 以重试
 		d.Nack(false, true)
 		return
 	}
@@ -106,12 +106,12 @@ func (c *PrivateMsgConsumer) handleDelivery(ctx context.Context, d amqp.Delivery
 	d.Ack(false)
 }
 
-// process executes the full fan-out logic for a private message.
+// process 执行私聊消息的完整扇出逻辑。
 func (c *PrivateMsgConsumer) process(ctx context.Context, msg *model.PrivateMessage) error {
 	convID := model.BuildConvID(model.ConvTypePrivate, msg.SenderID, msg.ReceiverID)
 	timestamp := msg.CreatedAt.UnixMilli()
 
-	// ── 1. Build InboxMessage for receiver (readStatus=0) ──
+	// ── 1. 为接收者构建 InboxMessage（readStatus=0）──
 	receiverInboxMsg := &model.InboxMessage{
 		MsgID:      msg.ID,
 		ConvID:     convID,
@@ -120,11 +120,11 @@ func (c *PrivateMsgConsumer) process(ctx context.Context, msg *model.PrivateMess
 		ToID:       msg.ReceiverID,
 		MsgType:    msg.MsgType,
 		Content:    msg.Content,
-		ReadStatus: 0, // unread for receiver
+		ReadStatus: 0, // 接收者未读
 		Timestamp:  timestamp,
 	}
 
-	// ── 2. Build InboxMessage for sender (readStatus=1) ──
+	// ── 2. 为发送者构建 InboxMessage（readStatus=1）──
 	senderInboxMsg := &model.InboxMessage{
 		MsgID:      msg.ID,
 		ConvID:     convID,
@@ -133,59 +133,59 @@ func (c *PrivateMsgConsumer) process(ctx context.Context, msg *model.PrivateMess
 		ToID:       msg.ReceiverID,
 		MsgType:    msg.MsgType,
 		Content:    msg.Content,
-		ReadStatus: 1, // sender has "read" their own message
+		ReadStatus: 1, // 发送者"已读"自己的消息
 		Timestamp:  timestamp,
 	}
 
-	// ── 3. Write to both inboxes ──
+	// ── 3. 写入双方收件箱 ──
 	if err := c.redisRepo.WriteInbox(ctx, msg.ReceiverID, receiverInboxMsg); err != nil {
-		return fmt.Errorf("write receiver inbox: %w", err)
+		return fmt.Errorf("写入接收者收件箱失败: %w", err)
 	}
 	if err := c.redisRepo.WriteInbox(ctx, msg.SenderID, senderInboxMsg); err != nil {
-		return fmt.Errorf("write sender inbox: %w", err)
+		return fmt.Errorf("写入发送者收件箱失败: %w", err)
 	}
 
-	// ── 4. Update conv_list for both parties ──
+	// ── 4. 更新双方的 conv_list ──
 	convSummary := buildPrivateConvSummary(convID, msg)
 	summaryJSON, err := json.Marshal(convSummary)
 	if err != nil {
-		c.logger.Warn("failed to marshal conv summary", zap.Error(err))
-		summaryJSON = []byte(convID) // fallback
+		c.logger.Warn("序列化会话摘要失败", zap.Error(err))
+		summaryJSON = []byte(convID) // 降级方案
 	}
 
 	if err := c.redisRepo.UpdateConvList(ctx, msg.SenderID, convID, string(summaryJSON), timestamp); err != nil {
-		c.logger.Warn("update sender conv_list failed", zap.Error(err))
-		// non-critical — don't fail the whole delivery
+		c.logger.Warn("更新发送者 conv_list 失败", zap.Error(err))
+		// 非关键操作 — 不要因此使整个投递失败
 	}
 	if err := c.redisRepo.UpdateConvList(ctx, msg.ReceiverID, convID, string(summaryJSON), timestamp); err != nil {
-		c.logger.Warn("update receiver conv_list failed", zap.Error(err))
+		c.logger.Warn("更新接收者 conv_list 失败", zap.Error(err))
 	}
 
-	// ── 5. Increment unread counter for receiver ──
+	// ── 5. 增加接收者的未读计数 ──
 	if err := c.redisRepo.IncrementUnread(ctx, msg.ReceiverID, convID); err != nil {
-		c.logger.Warn("increment unread failed", zap.Error(err))
-		// non-critical
+		c.logger.Warn("增加未读计数失败", zap.Error(err))
+		// 非关键操作
 	}
 
-	// ── 6. Push to online receiver via WebSocket ──
+	// ── 6. 通过 WebSocket 推送给在线的接收者 ──
 	pushToConnection(c.cm, c.logger, msg.ReceiverID, protocol.TypeMsg, receiverInboxMsg)
 
-	// ── 7. Insert into MySQL ──
+	// ── 7. 插入 MySQL ──
 	if c.mysqlRepo != nil {
 		if err := c.mysqlRepo.InsertPrivateMessage(ctx, msg); err != nil {
-			return fmt.Errorf("insert private message to MySQL: %w", err)
+			return fmt.Errorf("插入私聊消息到 MySQL 失败: %w", err)
 		}
 	}
 
-	// ── 8. Trim both inbox ZSets ──
+	// ── 8. 裁剪双方的收件箱 ZSet ──
 	if err := c.redisRepo.TrimInbox(ctx, msg.ReceiverID, inboxMaxCount); err != nil {
-		c.logger.Warn("trim receiver inbox failed", zap.Error(err))
+		c.logger.Warn("裁剪接收者收件箱失败", zap.Error(err))
 	}
 	if err := c.redisRepo.TrimInbox(ctx, msg.SenderID, inboxMaxCount); err != nil {
-		c.logger.Warn("trim sender inbox failed", zap.Error(err))
+		c.logger.Warn("裁剪发送者收件箱失败", zap.Error(err))
 	}
 
-	c.logger.Debug("private message processed",
+	c.logger.Debug("私聊消息处理完成",
 		zap.Int64("msgID", msg.ID),
 		zap.Int64("senderID", msg.SenderID),
 		zap.Int64("receiverID", msg.ReceiverID),
@@ -194,23 +194,23 @@ func (c *PrivateMsgConsumer) process(ctx context.Context, msg *model.PrivateMess
 	return nil
 }
 
-// ── Helpers ──
+// ── 辅助函数 ──
 
-// deserializePrivateMsg parses AMQP body into a PrivateMessage.
+// deserializePrivateMsg 将 AMQP 消息体解析为 PrivateMessage。
 func deserializePrivateMsg(body []byte) (*model.PrivateMessage, error) {
 	var msg model.PrivateMessage
 	if err := json.Unmarshal(body, &msg); err != nil {
-		return nil, fmt.Errorf("unmarshal private message: %w", err)
+		return nil, fmt.Errorf("反序列化私聊消息失败: %w", err)
 	}
 	if msg.SenderID == 0 || msg.ReceiverID == 0 {
-		return nil, fmt.Errorf("invalid private message: senderID=%d, receiverID=%d", msg.SenderID, msg.ReceiverID)
+		return nil, fmt.Errorf("无效的私聊消息: senderID=%d, receiverID=%d", msg.SenderID, msg.ReceiverID)
 	}
 	return &msg, nil
 }
 
-// buildPrivateConvSummary creates a ConvSummary for a private conversation.
-// TargetName and TargetAvatar are left empty — they'll be filled during sync
-// by the message service or by a separate user lookup.
+// buildPrivateConvSummary 为私聊会话创建 ConvSummary。
+// TargetName 和 TargetAvatar 留空 — 它们将在同步时
+// 由消息服务或单独的用户查询来填充。
 func buildPrivateConvSummary(convID string, msg *model.PrivateMessage) *model.ConvSummary {
 	return &model.ConvSummary{
 		ConvID:      convID,
@@ -221,13 +221,13 @@ func buildPrivateConvSummary(convID string, msg *model.PrivateMessage) *model.Co
 	}
 }
 
-// truncateContent shortens content to maxLen chars for conv summary display.
+// truncateContent 将内容截断到 maxLen 个字符，用于会话摘要显示。
 func truncateContent(content string, maxLen int) string {
 	if len(content) <= maxLen {
 		return content
 	}
 	if strings.Contains(content, "\n") {
-		// For multiline content, show first line + indicator
+		// 对于多行内容，显示第一行 + 指示符
 		firstLine := strings.Split(content, "\n")[0]
 		if len(firstLine) > maxLen {
 			return firstLine[:maxLen] + "..."
@@ -237,35 +237,35 @@ func truncateContent(content string, maxLen int) string {
 	return content[:maxLen] + "..."
 }
 
-// pushToConnection sends a message to an online user via WebSocket.
-// If the user is offline, the message is silently dropped (they'll get it via sync).
-// This helper is shared by both consumers.
+// pushToConnection 通过 WebSocket 向在线用户发送消息。
+// 如果用户离线，消息将被静默丢弃（用户将通过同步获取）。
+// 此辅助函数由两个消费者共享。
 func pushToConnection(cm *conn.ConnectionManager, logger *zap.Logger, userID int64, msgType string, data interface{}) {
 	encoded, err := protocol.EncodeMsg(msgType, data)
 	if err != nil {
-		logger.Error("EncodeMsg failed", zap.String("type", msgType), zap.Error(err))
+		logger.Error("EncodeMsg 编码失败", zap.String("type", msgType), zap.Error(err))
 		return
 	}
 
 	client, ok := cm.Get(userID)
 	if !ok {
-		// User offline — they'll get it via sync
+		// 用户离线 — 将通过同步获取消息
 		return
 	}
 
 	select {
 	case client.SendCh <- encoded:
-		// sent successfully
+		// 发送成功
 	default:
-		// buffer full — drop message (user will sync later)
-		logger.Warn("SendCh buffer full, dropping message",
+		// 缓冲区满 — 丢弃消息（用户稍后将同步）
+		logger.Warn("SendCh 缓冲区满，丢弃消息",
 			zap.Int64("userID", userID),
 			zap.String("type", msgType),
 		)
 	}
 }
 
-// nowUnixMilli returns current time as Unix milliseconds.
+// nowUnixMilli 返回当前时间的 Unix 毫秒数。
 func nowUnixMilli() int64 {
 	return time.Now().UnixMilli()
 }

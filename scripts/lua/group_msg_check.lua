@@ -1,26 +1,26 @@
 -- group_msg_check.lua
--- Atomic check: group membership + mute status + dedup + message ID + group sequence
--- KEYS[1] = groupID
--- KEYS[2] = senderID
--- KEYS[3] = clientMsgID
--- Returns: {err_code, msgID, groupSeq, isMember, isMuted}
---   err_code: 0=ok, 1=not_member, 2=muted, 3=duplicate
---   msgID: allocated global message ID (0 if error)
---   groupSeq: allocated group sequence number (0 if error)
---   isMember: membership status (1=member, 0=not member)
---   isMuted: mute status (1=muted, 0=not muted)
+-- 原子性检查：群成员资格 + 禁言状态 + 去重 + 消息ID + 群序列号
+-- KEYS[1] = 群ID
+-- KEYS[2] = 发送者ID
+-- KEYS[3] = 客户端消息ID
+-- 返回：{错误码, 消息ID, 群序列号, 是否成员, 是否禁言}
+--   错误码：0=正常, 1=非成员, 2=被禁言, 3=重复消息
+--   消息ID：分配的全局消息ID（错误时为0）
+--   群序列号：分配的群序列号（错误时为0）
+--   是否成员：成员状态（1=是成员, 0=非成员）
+--   是否禁言：禁言状态（1=被禁言, 0=未禁言）
 
 local groupID = KEYS[1]
 local senderID = KEYS[2]
 local clientMsgID = KEYS[3]
 
--- 1. Membership check
+-- 1. 成员资格检查
 local isMember = redis.call('SISMEMBER', 'group_members:' .. groupID, senderID)
 if isMember == 0 then
     return {1, 0, 0, 0, 0}
 end
 
--- 2. Mute status check
+-- 2. 禁言状态检查
 local memberInfo = redis.call('HGET', 'group_member_info:' .. groupID, senderID)
 if memberInfo then
     local info = cjson.decode(memberInfo)
@@ -29,17 +29,17 @@ if memberInfo then
     end
 end
 
--- 3. Message dedup
+-- 3. 消息去重
 local dedupKey = 'msg_dedup:' .. senderID .. ':' .. clientMsgID
 local dedup = redis.call('SET', dedupKey, '1', 'EX', 300, 'NX')
 if dedup == false then
     return {3, 0, 0, 0, 0}
 end
 
--- 4. Allocate global message ID
+-- 4. 分配全局消息ID
 local msgID = redis.call('INCR', 'msg_id_global')
 
--- 5. Allocate group sequence number
+-- 5. 分配群序列号
 local groupSeq = redis.call('INCR', 'group_seq:' .. groupID)
 
 return {0, msgID, groupSeq, 1, 0}

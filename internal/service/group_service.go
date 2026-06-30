@@ -10,28 +10,28 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── Group service error constants ──
+// ── 群组服务错误常量 ──
 
 const (
-	ErrNotOwnerOrAdmin    = "only owner or admin can perform this action"
-	ErrGroupNotFound      = "group not found"
-	ErrAlreadyMember      = "user is already a group member"
-	ErrGroupFull          = "group is full (max 500 members)"
-	ErrCannotRemoveOwner  = "cannot remove the group owner"
-	ErrCannotLeaveAsOwner = "owner cannot leave the group; transfer ownership or dissolve first"
-	ErrInvalidRole        = "role must be 0 (member) or 1 (admin)"
+	ErrNotOwnerOrAdmin    = "只有群主或管理员才能执行此操作"
+	ErrGroupNotFound      = "群组不存在"
+	ErrAlreadyMember      = "用户已是群组成员"
+	ErrGroupFull          = "群组已满（最多 500 人）"
+	ErrCannotRemoveOwner  = "无法移除群主"
+	ErrCannotLeaveAsOwner = "群主无法退出群组；请先转让群主身份或解散群组"
+	ErrInvalidRole        = "角色值必须为 0（普通成员）或 1（管理员）"
 )
 
 const maxGroupMembers = 500
 
-// GroupService handles group-related business logic.
+// GroupService 处理群组相关的业务逻辑。
 type GroupService struct {
 	mysqlRepo repository.MySQLRepo
 	redisRepo repository.RedisRepo
 	logger    *zap.Logger
 }
 
-// NewGroupService creates a GroupService with the given repos and logger.
+// NewGroupService 使用给定的仓库和日志记录器创建一个 GroupService。
 func NewGroupService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, logger *zap.Logger) *GroupService {
 	return &GroupService{
 		mysqlRepo: mysqlRepo,
@@ -40,8 +40,8 @@ func NewGroupService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisR
 	}
 }
 
-// CreateGroup creates a new group, adds the owner as a member with role=2 (owner),
-// and updates Redis caches. Returns the new groupID.
+// CreateGroup 创建一个新群组，将群主添加为 role=2（群主）的成员，
+// 并更新 Redis 缓存。返回新的 groupID。
 func (s *GroupService) CreateGroup(ctx context.Context, ownerID int64, name, notice string) (int64, error) {
 	group := &model.Group{
 		Name:    name,
@@ -53,25 +53,25 @@ func (s *GroupService) CreateGroup(ctx context.Context, ownerID int64, name, not
 		return 0, fmt.Errorf("create group in mysql: %w", err)
 	}
 
-	// Add owner as group member with role=2 (owner)
+	// 将群主添加为群组成员，role=2（群主）
 	ownerMember := &model.GroupMember{
 		GroupID: groupID,
 		UserID:  ownerID,
-		Role:    2, // owner
+		Role:    2, // 群主
 	}
 	if err := s.mysqlRepo.AddGroupMember(ctx, ownerMember); err != nil {
 		return 0, fmt.Errorf("add owner as group member: %w", err)
 	}
 
-	// Update Redis caches
+	// 更新 Redis 缓存
 	if err := s.redisRepo.AddGroupMemberRedis(ctx, groupID, ownerID); err != nil {
-		s.logger.Warn("failed to add owner to redis group cache", zap.Int64("groupID", groupID), zap.Int64("userID", ownerID), zap.Error(err))
+		s.logger.Warn("将群主添加到 Redis 群组缓存失败", zap.Int64("groupID", groupID), zap.Int64("userID", ownerID), zap.Error(err))
 	}
 
 	return groupID, nil
 }
 
-// UpdateGroup updates group name and notice. Only owner or admin can update.
+// UpdateGroup 更新群组名称和公告。仅群主或管理员可以更新。
 func (s *GroupService) UpdateGroup(ctx context.Context, userID, groupID int64, name, notice string) error {
 	group, err := s.mysqlRepo.GetGroupByID(ctx, groupID)
 	if err != nil {
@@ -81,7 +81,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, userID, groupID int64, n
 		return fmt.Errorf(ErrGroupNotFound)
 	}
 
-	// Validate userID is owner or admin
+	// 验证 userID 是否为群主或管理员
 	if !s.isOwnerOrAdmin(ctx, groupID, userID) {
 		return fmt.Errorf(ErrNotOwnerOrAdmin)
 	}
@@ -94,7 +94,7 @@ func (s *GroupService) UpdateGroup(ctx context.Context, userID, groupID int64, n
 	return nil
 }
 
-// GetGroupInfo returns group details by ID.
+// GetGroupInfo 通过 ID 返回群组详情。
 func (s *GroupService) GetGroupInfo(ctx context.Context, groupID int64) (*model.Group, error) {
 	group, err := s.mysqlRepo.GetGroupByID(ctx, groupID)
 	if err != nil {
@@ -106,8 +106,8 @@ func (s *GroupService) GetGroupInfo(ctx context.Context, groupID int64) (*model.
 	return group, nil
 }
 
-// AddMember adds a new member to the group. userID must be owner or admin.
-// Checks max_members cap (500) and that newMemberID is not already a member.
+// AddMember 向群组添加新成员。userID 必须是群主或管理员。
+// 检查最大成员上限（500）以及 newMemberID 是否已是成员。
 func (s *GroupService) AddMember(ctx context.Context, groupID, userID, newMemberID int64) error {
 	group, err := s.mysqlRepo.GetGroupByID(ctx, groupID)
 	if err != nil {
@@ -117,12 +117,12 @@ func (s *GroupService) AddMember(ctx context.Context, groupID, userID, newMember
 		return fmt.Errorf(ErrGroupNotFound)
 	}
 
-	// Validate userID is owner or admin
+	// 验证 userID 是否为群主或管理员
 	if !s.isOwnerOrAdmin(ctx, groupID, userID) {
 		return fmt.Errorf(ErrNotOwnerOrAdmin)
 	}
 
-	// Check group capacity
+	// 检查群组容量
 	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
 	if err != nil {
 		return fmt.Errorf("get group members: %w", err)
@@ -131,34 +131,34 @@ func (s *GroupService) AddMember(ctx context.Context, groupID, userID, newMember
 		return fmt.Errorf(ErrGroupFull)
 	}
 
-	// Check if already a member
+	// 检查是否已是成员
 	for _, m := range members {
 		if m.UserID == newMemberID {
 			return fmt.Errorf(ErrAlreadyMember)
 		}
 	}
 
-	// Add member in MySQL
+	// 在 MySQL 中添加成员
 	newMember := &model.GroupMember{
 		GroupID: groupID,
 		UserID:  newMemberID,
-		Role:    0, // regular member
+		Role:    0, // 普通成员
 	}
 	if err := s.mysqlRepo.AddGroupMember(ctx, newMember); err != nil {
 		return fmt.Errorf("add group member: %w", err)
 	}
 
-	// Update Redis caches
+	// 更新 Redis 缓存
 	if err := s.redisRepo.AddGroupMemberRedis(ctx, groupID, newMemberID); err != nil {
-		s.logger.Warn("failed to add member to redis group cache", zap.Int64("groupID", groupID), zap.Int64("userID", newMemberID), zap.Error(err))
+		s.logger.Warn("将成员添加到 Redis 群组缓存失败", zap.Int64("groupID", groupID), zap.Int64("userID", newMemberID), zap.Error(err))
 	}
 
 	return nil
 }
 
-// RemoveMember removes a member from the group.
-// userID must be owner/admin, or removeMemberID==userID (self-leave).
-// The owner cannot be removed.
+// RemoveMember 从群组中移除成员。
+// userID 必须是群主/管理员，或者 removeMemberID==userID（自行退出）。
+// 群主不能被移除。
 func (s *GroupService) RemoveMember(ctx context.Context, groupID, userID, removeMemberID int64) error {
 	group, err := s.mysqlRepo.GetGroupByID(ctx, groupID)
 	if err != nil {
@@ -168,52 +168,52 @@ func (s *GroupService) RemoveMember(ctx context.Context, groupID, userID, remove
 		return fmt.Errorf(ErrGroupNotFound)
 	}
 
-	// Self-leave is allowed
+	// 允许自行退出
 	if userID != removeMemberID {
-		// Not self-leave — must be owner or admin
+		// 非自行退出 —— 必须是群主或管理员
 		if !s.isOwnerOrAdmin(ctx, groupID, userID) {
 			return fmt.Errorf(ErrNotOwnerOrAdmin)
 		}
 	}
 
-	// Cannot remove the owner
+	// 不能移除群主
 	if removeMemberID == group.OwnerID {
 		return fmt.Errorf(ErrCannotRemoveOwner)
 	}
 
-	// Remove from MySQL
+	// 从 MySQL 中移除
 	if err := s.mysqlRepo.RemoveGroupMember(ctx, groupID, removeMemberID); err != nil {
 		return fmt.Errorf("remove group member: %w", err)
 	}
 
-	// Remove from Redis
+	// 从 Redis 中移除
 	if err := s.redisRepo.RemoveGroupMemberRedis(ctx, groupID, removeMemberID); err != nil {
-		s.logger.Warn("failed to remove member from redis group cache", zap.Int64("groupID", groupID), zap.Int64("userID", removeMemberID), zap.Error(err))
+		s.logger.Warn("从 Redis 群组缓存中移除成员失败", zap.Int64("groupID", groupID), zap.Int64("userID", removeMemberID), zap.Error(err))
 	}
 
 	return nil
 }
 
-// KickMember removes a member and sends a kick notification via WebSocket.
-// userID must be owner/admin. The owner cannot be kicked.
+// KickMember 移除成员并通过 WebSocket 发送踢出通知。
+// userID 必须是群主/管理员。群主不能被踢出。
 func (s *GroupService) KickMember(ctx context.Context, groupID, userID, kickMemberID int64, cm interface{ Get(int64) (interface{}, bool) }) error {
-	// Delegate removal logic to RemoveMember
+	// 委托移除逻辑给 RemoveMember
 	if err := s.RemoveMember(ctx, groupID, userID, kickMemberID); err != nil {
 		return err
 	}
 
-	// Send kick notification via WebSocket if the kicked user has an active connection
+	// 如果被踢出的用户有活跃连接，则通过 WebSocket 发送踢出通知
 	if cm != nil {
 		client, ok := cm.Get(kickMemberID)
 		if ok {
-			// Type assertion to access SendCh — the interface is flexible
-			// The actual ConnectionManager returns *ClientConnection
+			// 类型断言以访问 SendCh —— 接口是灵活的
+			// 实际的 ConnectionManager 返回 *ClientConnection
 			if sendCh, hasCh := tryGetSendCh(client); hasCh {
 				kickMsg := []byte(`{"type":"group_kick","group_id":` + fmt.Sprintf("%d", groupID) + `}`)
 				select {
 				case sendCh <- kickMsg:
 				default:
-					s.logger.Warn("kick notification dropped: send buffer full", zap.Int64("userID", kickMemberID))
+					s.logger.Warn("踢出通知被丢弃：发送缓冲区已满", zap.Int64("userID", kickMemberID))
 				}
 			}
 		}
@@ -222,10 +222,10 @@ func (s *GroupService) KickMember(ctx context.Context, groupID, userID, kickMemb
 	return nil
 }
 
-// tryGetSendCh attempts to extract a []byte send channel from a client connection object.
-// Returns the channel and true if extraction succeeds, nil and false otherwise.
+// tryGetSendCh 试图从客户端连接对象中提取 []byte 发送通道。
+// 如果提取成功则返回通道和 true，否则返回 nil 和 false。
 func tryGetSendCh(client interface{}) (chan []byte, bool) {
-	// We expect a struct with SendCh chan []byte
+	// 我们期望一个带有 SendCh chan []byte 的结构体
 	type sendChHolder interface {
 		GetSendCh() chan []byte
 	}
@@ -235,7 +235,7 @@ func tryGetSendCh(client interface{}) (chan []byte, bool) {
 	return nil, false
 }
 
-// GetMembers returns the list of group members.
+// GetMembers 返回群组成员列表。
 func (s *GroupService) GetMembers(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
 	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
 	if err != nil {
@@ -244,8 +244,8 @@ func (s *GroupService) GetMembers(ctx context.Context, groupID int64) ([]model.G
 	return members, nil
 }
 
-// UpdateMemberRole changes a member's role. userID must be the group owner.
-// targetUserID must not be the owner. newRole must be 0 (member) or 1 (admin).
+// UpdateMemberRole 更改成员的角色。userID 必须是群主。
+// targetUserID 不能是群主。newRole 必须为 0（普通成员）或 1（管理员）。
 func (s *GroupService) UpdateMemberRole(ctx context.Context, groupID, userID, targetUserID, newRole int64) error {
 	group, err := s.mysqlRepo.GetGroupByID(ctx, groupID)
 	if err != nil {
@@ -255,17 +255,17 @@ func (s *GroupService) UpdateMemberRole(ctx context.Context, groupID, userID, ta
 		return fmt.Errorf(ErrGroupNotFound)
 	}
 
-	// Only owner can change roles
+	// 只有群主可以更改角色
 	if userID != group.OwnerID {
 		return fmt.Errorf(ErrNotOwnerOrAdmin)
 	}
 
-	// Cannot change owner's role
+	// 不能更改群主的角色
 	if targetUserID == group.OwnerID {
 		return fmt.Errorf(ErrCannotRemoveOwner)
 	}
 
-	// Validate role value
+	// 验证角色值
 	if newRole != 0 && newRole != 1 {
 		return fmt.Errorf(ErrInvalidRole)
 	}
@@ -276,7 +276,7 @@ func (s *GroupService) UpdateMemberRole(ctx context.Context, groupID, userID, ta
 	return nil
 }
 
-// LeaveGroup allows a user to leave a group. The owner cannot leave (must transfer or dissolve).
+// LeaveGroup 允许用户退出群组。群主不能退出（必须先转让群主或解散群组）。
 func (s *GroupService) LeaveGroup(ctx context.Context, groupID, userID int64) error {
 	group, err := s.mysqlRepo.GetGroupByID(ctx, groupID)
 	if err != nil {
@@ -286,30 +286,30 @@ func (s *GroupService) LeaveGroup(ctx context.Context, groupID, userID int64) er
 		return fmt.Errorf(ErrGroupNotFound)
 	}
 
-	// Owner cannot leave
+	// 群主不能退出
 	if userID == group.OwnerID {
 		return fmt.Errorf(ErrCannotLeaveAsOwner)
 	}
 
-	// Remove from MySQL
+	// 从 MySQL 中移除
 	if err := s.mysqlRepo.RemoveGroupMember(ctx, groupID, userID); err != nil {
 		return fmt.Errorf("leave group: %w", err)
 	}
 
-	// Remove from Redis
+	// 从 Redis 中移除
 	if err := s.redisRepo.RemoveGroupMemberRedis(ctx, groupID, userID); err != nil {
-		s.logger.Warn("failed to remove member from redis group cache on leave", zap.Int64("groupID", groupID), zap.Int64("userID", userID), zap.Error(err))
+		s.logger.Warn("退出时从 Redis 群组缓存中移除成员失败", zap.Int64("groupID", groupID), zap.Int64("userID", userID), zap.Error(err))
 	}
 
 	return nil
 }
 
-// isOwnerOrAdmin checks whether the given userID has owner (role=2) or admin (role=1) status
-// in the group. Returns true if so, false otherwise.
+// isOwnerOrAdmin 检查给定的 userID 是否在群组中具有群主（role=2）或管理员（role=1）身份。
+// 如果是则返回 true，否则返回 false。
 func (s *GroupService) isOwnerOrAdmin(ctx context.Context, groupID, userID int64) bool {
 	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
 	if err != nil {
-		s.logger.Error("failed to get group members for permission check", zap.Error(err))
+		s.logger.Error("获取群组成员以进行权限检查失败", zap.Error(err))
 		return false
 	}
 	for _, m := range members {

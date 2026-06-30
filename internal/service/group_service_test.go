@@ -16,24 +16,24 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Mock MySQLRepo for group tests
+// 模拟 MySQLRepo 用于群组测试
 // ──────────────────────────────────────────────────────
 
 type mockGroupMySQLRepo struct {
 	mu sync.Mutex
 
-	// Stored groups keyed by ID
+	// 按 ID 存储的群组
 	groupsByID map[int64]*model.Group
-	// Stored group members keyed by composite "groupID:userID"
+	// 按复合键 "groupID:userID" 存储的群组成员
 	membersByKey map[string]*model.GroupMember
-	// Member lists keyed by groupID
+	// 按 groupID 存储的成员列表
 	membersByGroup map[int64][]model.GroupMember
-	// Next auto-increment group ID
+	// 下一个自增群组 ID
 	nextGroupID int64
-	// Next auto-increment member ID
+	// 下一个自增成员 ID
 	nextMemberID int64
 
-	// Error overrides
+	// 错误覆盖项
 	createGroupErr    error
 	getGroupByIDErr   error
 	addGroupMemberErr error
@@ -69,7 +69,7 @@ func (m *mockGroupMySQLRepo) UpdateGroup(_ context.Context, group *model.Group) 
 	defer m.mu.Unlock()
 	stored, ok := m.groupsByID[group.ID]
 	if !ok {
-		return fmt.Errorf("group not found")
+		return fmt.Errorf("群组未找到")
 	}
 	stored.Name = group.Name
 	stored.Notice = group.Notice
@@ -98,7 +98,7 @@ func (m *mockGroupMySQLRepo) AddGroupMember(_ context.Context, member *model.Gro
 	}
 	key := fmt.Sprintf("%d:%d", member.GroupID, member.UserID)
 	if _, exists := m.membersByKey[key]; exists {
-		return fmt.Errorf("duplicate member")
+		return fmt.Errorf("重复成员")
 	}
 	member.ID = m.nextMemberID
 	m.nextMemberID++
@@ -113,7 +113,7 @@ func (m *mockGroupMySQLRepo) RemoveGroupMember(_ context.Context, groupID, userI
 	defer m.mu.Unlock()
 	key := fmt.Sprintf("%d:%d", groupID, userID)
 	if _, exists := m.membersByKey[key]; !exists {
-		return nil // no-op if not found
+		return nil // 未找到则无操作
 	}
 	delete(m.membersByKey, key)
 	members := m.membersByGroup[groupID]
@@ -139,10 +139,10 @@ func (m *mockGroupMySQLRepo) UpdateGroupMemberRole(_ context.Context, groupID, u
 	key := fmt.Sprintf("%d:%d", groupID, userID)
 	member, ok := m.membersByKey[key]
 	if !ok {
-		return fmt.Errorf("member not found")
+		return fmt.Errorf("成员未找到")
 	}
 	member.Role = role
-	// Update in the slice too
+	// 同时更新切片中的数据
 	members := m.membersByGroup[int64(groupID)]
 	for i := range members {
 		if members[i].UserID == int64(userID) {
@@ -152,7 +152,7 @@ func (m *mockGroupMySQLRepo) UpdateGroupMemberRole(_ context.Context, groupID, u
 	return nil
 }
 
-// ── Stub out all other MySQLRepo methods ──
+// ── 存根：所有其他 MySQLRepo 方法 ──
 
 func (m *mockGroupMySQLRepo) GetUserByID(_ context.Context, _ int64) (*model.User, error)    { return nil, nil }
 func (m *mockGroupMySQLRepo) GetUserByUsername(_ context.Context, _ string) (*model.User, error) { return nil, nil }
@@ -207,18 +207,18 @@ func (m *mockGroupMySQLRepo) SearchPrivateMessages(_ context.Context, _ int64, _
 }
 
 // ──────────────────────────────────────────────────────
-// Mock RedisRepo for group tests
+// 模拟 RedisRepo 用于群组测试
 // ──────────────────────────────────────────────────────
 
 type mockGroupRedisRepo struct {
 	mu sync.Mutex
 
-	// group_members:{groupID} -> set of userID strings
+	// group_members:{groupID} -> userID 字符串集合
 	groupMembersSets map[int64]map[string]bool
-	// user_groups:{userID} -> set of groupID strings
+	// user_groups:{userID} -> groupID 字符串集合
 	userGroupsSets map[int64]map[string]bool
 
-	// Error overrides
+	// 错误覆盖项
 	addGroupMemberErr    error
 	removeGroupMemberErr error
 }
@@ -241,7 +241,7 @@ func (r *mockGroupRedisRepo) GetGroupMemberships(_ context.Context, userID int64
 	for k := range set {
 		id, _ := fmt.Sscanf(k, "%d", new(int64))
 		_ = id
-		result = append(result, 0) // simplified
+		result = append(result, 0) // 简化处理
 	}
 	return result, nil
 }
@@ -297,7 +297,7 @@ func (r *mockGroupRedisRepo) RemoveGroupMemberRedis(_ context.Context, groupID, 
 	return nil
 }
 
-// ── Stub out all other RedisRepo methods ──
+// ── 存根：所有其他 RedisRepo 方法 ──
 
 func (r *mockGroupRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
 func (r *mockGroupRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
@@ -349,14 +349,14 @@ func (r *mockGroupRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ stri
 func (r *mockGroupRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 
 // ──────────────────────────────────────────────────────
-// Helper: verify mockMySQLRepo satisfies MySQLRepo interface
+// 辅助：验证 mockMySQLRepo 满足 MySQLRepo 接口
 // ──────────────────────────────────────────────────────
 
 var _ repository.MySQLRepo = (*mockGroupMySQLRepo)(nil)
 var _ repository.RedisRepo = (*mockGroupRedisRepo)(nil)
 
 // ──────────────────────────────────────────────────────
-// Helper: new test GroupService
+// 辅助：新建测试 GroupService
 // ──────────────────────────────────────────────────────
 
 func newTestGroupService(mysqlRepo *mockGroupMySQLRepo, redisRepo *mockGroupRedisRepo) *GroupService {
@@ -365,7 +365,7 @@ func newTestGroupService(mysqlRepo *mockGroupMySQLRepo, redisRepo *mockGroupRedi
 }
 
 // ──────────────────────────────────────────────────────
-// CreateGroup tests
+// CreateGroup 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroup_CreateGroup_Success(t *testing.T) {
@@ -377,7 +377,7 @@ func TestGroup_CreateGroup_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), groupID)
 
-	// Verify group stored
+	// 验证群组已存储
 	mysqlRepo.mu.Lock()
 	group := mysqlRepo.groupsByID[1]
 	mysqlRepo.mu.Unlock()
@@ -386,7 +386,7 @@ func TestGroup_CreateGroup_Success(t *testing.T) {
 	assert.Equal(t, int64(1), group.OwnerID)
 	assert.Equal(t, 500, group.MaxMembers)
 
-	// Verify owner added as member (role=2)
+	// 验证群主已添加为成员 (role=2)
 	mysqlRepo.mu.Lock()
 	members := mysqlRepo.membersByGroup[1]
 	mysqlRepo.mu.Unlock()
@@ -394,7 +394,7 @@ func TestGroup_CreateGroup_Success(t *testing.T) {
 	assert.Equal(t, int64(1), members[0].UserID)
 	assert.Equal(t, 2, members[0].Role)
 
-	// Verify Redis cache updated
+	// 验证 Redis 缓存已更新
 	redisRepo.mu.Lock()
 	groupMembers := redisRepo.groupMembersSets[1]
 	userGroups := redisRepo.userGroupsSets[1]
@@ -404,7 +404,7 @@ func TestGroup_CreateGroup_Success(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// UpdateGroup tests
+// UpdateGroup 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroup_UpdateGroup_Success(t *testing.T) {
@@ -412,7 +412,7 @@ func TestGroup_UpdateGroup_Success(t *testing.T) {
 	redisRepo := newMockGroupRedisRepo()
 	svc := newTestGroupService(mysqlRepo, redisRepo)
 
-	// Create group first
+	// 先创建群组
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "OldName", "OldNotice")
 
 	err := svc.UpdateGroup(context.Background(), 1, groupID, "NewName", "NewNotice")
@@ -430,10 +430,10 @@ func TestGroup_UpdateGroup_NotOwner(t *testing.T) {
 	redisRepo := newMockGroupRedisRepo()
 	svc := newTestGroupService(mysqlRepo, redisRepo)
 
-	// Create group owned by user 1
+	// 创建由用户1拥有的群组
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 
-	// User 2 (regular member) tries to update
+	// 用户2（普通成员）尝试更新
 	err := svc.UpdateGroup(context.Background(), 2, groupID, "HackedName", "")
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotOwnerOrAdmin, err.Error())
@@ -454,10 +454,10 @@ func TestGroup_UpdateGroup_AdminCanUpdate(t *testing.T) {
 	redisRepo := newMockGroupRedisRepo()
 	svc := newTestGroupService(mysqlRepo, redisRepo)
 
-	// Create group owned by user 1
+	// 创建由用户1拥有的群组
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 
-	// Add user 2 as admin
+	// 将用户2添加为管理员
 	mysqlRepo.mu.Lock()
 	member := &model.GroupMember{GroupID: groupID, UserID: 2, Role: 1}
 	key := fmt.Sprintf("%d:%d", groupID, 2)
@@ -465,13 +465,13 @@ func TestGroup_UpdateGroup_AdminCanUpdate(t *testing.T) {
 	mysqlRepo.membersByGroup[groupID] = append(mysqlRepo.membersByGroup[groupID], *member)
 	mysqlRepo.mu.Unlock()
 
-	// Admin (user 2) can update
+	// 管理员（用户2）可以更新
 	err := svc.UpdateGroup(context.Background(), 2, groupID, "AdminUpdate", "AdminNotice")
 	assert.NoError(t, err)
 }
 
 // ──────────────────────────────────────────────────────
-// AddMember tests
+// AddMember 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroup_AddMember_Success(t *testing.T) {
@@ -487,7 +487,7 @@ func TestGroup_AddMember_Success(t *testing.T) {
 	mysqlRepo.mu.Lock()
 	members := mysqlRepo.membersByGroup[groupID]
 	mysqlRepo.mu.Unlock()
-	assert.Len(t, members, 2) // owner + new member
+	assert.Len(t, members, 2) // 群主 + 新成员
 }
 
 func TestGroup_AddMember_AlreadyMember(t *testing.T) {
@@ -497,7 +497,7 @@ func TestGroup_AddMember_AlreadyMember(t *testing.T) {
 
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 
-	// Owner tries to add themselves again
+	// 群主尝试再次添加自己
 	err := svc.AddMember(context.Background(), groupID, 1, 1)
 	assert.Error(t, err)
 	assert.Equal(t, ErrAlreadyMember, err.Error())
@@ -510,7 +510,7 @@ func TestGroup_AddMember_GroupFull(t *testing.T) {
 
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 
-	// Fill group to 500 members
+	// 将群组填满至500名成员
 	mysqlRepo.mu.Lock()
 	for i := int64(2); i <= 500; i++ {
 		member := model.GroupMember{GroupID: groupID, UserID: i, Role: 0}
@@ -522,7 +522,7 @@ func TestGroup_AddMember_GroupFull(t *testing.T) {
 	}
 	mysqlRepo.mu.Unlock()
 
-	// Try to add member 501
+	// 尝试添加第501名成员
 	err := svc.AddMember(context.Background(), groupID, 1, 501)
 	assert.Error(t, err)
 	assert.Equal(t, ErrGroupFull, err.Error())
@@ -535,14 +535,14 @@ func TestGroup_AddMember_NotOwnerOrAdmin(t *testing.T) {
 
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 
-	// Regular member tries to add someone
+	// 普通成员尝试添加他人
 	err := svc.AddMember(context.Background(), groupID, 3, 4)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotOwnerOrAdmin, err.Error())
 }
 
 // ──────────────────────────────────────────────────────
-// RemoveMember tests
+// RemoveMember 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroup_RemoveMember_Success(t *testing.T) {
@@ -552,7 +552,7 @@ func TestGroup_RemoveMember_Success(t *testing.T) {
 
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 
-	// Add a member first
+	// 先添加一名成员
 	svc.AddMember(context.Background(), groupID, 1, 2)
 
 	err := svc.RemoveMember(context.Background(), groupID, 1, 2)
@@ -561,7 +561,7 @@ func TestGroup_RemoveMember_Success(t *testing.T) {
 	mysqlRepo.mu.Lock()
 	members := mysqlRepo.membersByGroup[groupID]
 	mysqlRepo.mu.Unlock()
-	assert.Len(t, members, 1) // only owner left
+	assert.Len(t, members, 1) // 只剩群主
 }
 
 func TestGroup_RemoveMember_CannotRemoveOwner(t *testing.T) {
@@ -571,7 +571,7 @@ func TestGroup_RemoveMember_CannotRemoveOwner(t *testing.T) {
 
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 
-	// Try to remove the owner
+	// 尝试移除群主
 	err := svc.RemoveMember(context.Background(), groupID, 1, 1)
 	assert.Error(t, err)
 	assert.Equal(t, ErrCannotRemoveOwner, err.Error())
@@ -585,7 +585,7 @@ func TestGroup_RemoveMember_SelfLeave(t *testing.T) {
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 	svc.AddMember(context.Background(), groupID, 1, 2)
 
-	// User 2 removes themselves (self-leave)
+	// 用户2自行退出（主动离群）
 	err := svc.RemoveMember(context.Background(), groupID, 2, 2)
 	assert.NoError(t, err)
 
@@ -596,7 +596,7 @@ func TestGroup_RemoveMember_SelfLeave(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// LeaveGroup tests
+// LeaveGroup 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroup_LeaveGroup_Success(t *testing.T) {
@@ -629,7 +629,7 @@ func TestGroup_LeaveGroup_OwnerCannotLeave(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// UpdateMemberRole tests
+// UpdateMemberRole 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroup_UpdateMemberRole_Success(t *testing.T) {
@@ -640,7 +640,7 @@ func TestGroup_UpdateMemberRole_Success(t *testing.T) {
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 	svc.AddMember(context.Background(), groupID, 1, 2)
 
-	err := svc.UpdateMemberRole(context.Background(), groupID, 1, 2, 1) // promote to admin
+	err := svc.UpdateMemberRole(context.Background(), groupID, 1, 2, 1) // 提升为管理员
 	assert.NoError(t, err)
 
 	mysqlRepo.mu.Lock()
@@ -658,7 +658,7 @@ func TestGroup_UpdateMemberRole_NotOwner(t *testing.T) {
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 	svc.AddMember(context.Background(), groupID, 1, 2)
 
-	// Admin (user 2) tries to change roles — only owner can
+	// 管理员（用户2）尝试更改角色 — 仅群主有权操作
 	mysqlRepo.mu.Lock()
 	key := fmt.Sprintf("%d:%d", groupID, 2)
 	mysqlRepo.membersByKey[key].Role = 1
@@ -694,7 +694,7 @@ func TestGroup_UpdateMemberRole_InvalidRole(t *testing.T) {
 	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
 	svc.AddMember(context.Background(), groupID, 1, 2)
 
-	err := svc.UpdateMemberRole(context.Background(), groupID, 1, 2, 2) // role=2 (owner) not allowed
+	err := svc.UpdateMemberRole(context.Background(), groupID, 1, 2, 2) // role=2（群主）不允许
 	assert.Error(t, err)
 	assert.Equal(t, ErrInvalidRole, err.Error())
 }
@@ -713,7 +713,7 @@ func TestGroup_UpdateMemberRole_InvalidRoleNegative(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// GetGroupInfo tests
+// GetGroupInfo 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroup_GetGroupInfo_Success(t *testing.T) {
@@ -741,7 +741,7 @@ func TestGroup_GetGroupInfo_NotFound(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// GetMembers tests
+// GetMembers 测试
 // ──────────────────────────────────────────────────────
 
 func TestGroup_GetMembers_Success(t *testing.T) {
@@ -755,5 +755,5 @@ func TestGroup_GetMembers_Success(t *testing.T) {
 
 	members, err := svc.GetMembers(context.Background(), groupID)
 	assert.NoError(t, err)
-	assert.Len(t, members, 3) // owner + 2 members
+	assert.Len(t, members, 3) // 群主 + 2名成员
 }

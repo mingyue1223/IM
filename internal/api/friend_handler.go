@@ -9,17 +9,17 @@ import (
 	"github.com/goim/goim/internal/service"
 )
 
-// FriendHandler provides Gin HTTP handlers for friend-related endpoints.
+// FriendHandler 提供好友相关端点的 Gin HTTP 处理器。
 type FriendHandler struct {
 	friendSvc *service.FriendService
 }
 
-// NewFriendHandler creates a FriendHandler wrapping the given FriendService.
+// NewFriendHandler 创建一个 FriendHandler，封装给定的 FriendService。
 func NewFriendHandler(friendSvc *service.FriendService) *FriendHandler {
 	return &FriendHandler{friendSvc: friendSvc}
 }
 
-// ── Request / response DTOs ──
+// ── 请求 / 响应 DTO ──
 
 type sendFriendRequestReq struct {
 	ToUserID int64  `json:"to_user_id" binding:"required"`
@@ -54,9 +54,9 @@ type unblockUserReq struct {
 	BlockedID int64 `json:"blocked_id" binding:"required"`
 }
 
-// ── Handlers ──
+// ── 处理器 ──
 
-// SendFriendRequest handles POST /friend/request.
+// SendFriendRequest 处理 POST /friend/request。
 func (h *FriendHandler) SendFriendRequest(c *gin.Context) {
 	userID := c.GetInt64("userID")
 

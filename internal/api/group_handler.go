@@ -9,12 +9,12 @@ import (
 	"github.com/goim/goim/internal/service"
 )
 
-// GroupHandler provides Gin HTTP handlers for group endpoints.
+// GroupHandler 提供群组端点的 Gin HTTP 处理程序。
 type GroupHandler struct {
 	groupSvc *service.GroupService
 }
 
-// NewGroupHandler creates a GroupHandler wrapping the given GroupService.
+// NewGroupHandler 创建一个包装了给定 GroupService 的 GroupHandler。
 func NewGroupHandler(groupSvc *service.GroupService) *GroupHandler {
 	return &GroupHandler{groupSvc: groupSvc}
 }

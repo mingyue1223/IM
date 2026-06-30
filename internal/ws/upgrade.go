@@ -14,66 +14,66 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// upgrader upgrades HTTP connections to WebSocket.
-// CheckOrigin allows all origins for development purposes.
+// upgrader 将 HTTP 连接升级为 WebSocket。
+// CheckOrigin 允许所有来源，用于开发环境。
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-// ServeWebSocket returns a Gin handler that:
-//  1. Validates JWT token from query parameter (?token=...)
-//  2. Upgrades the HTTP connection to WebSocket
-//  3. Creates a ClientConnection
-//  4. Kicks any existing connection for the same user (single-device policy)
-//  5. Updates Redis online status (online:{userID} TTL=60s, conn:{userID} TTL=60s)
-//  6. Starts ReadPump and WritePump goroutines
+// ServeWebSocket 返回一个 Gin 处理函数，该处理函数执行以下操作：
+//  1. 从查询参数 (?token=...) 验证 JWT 令牌
+//  2. 将 HTTP 连接升级为 WebSocket
+//  3. 创建 ClientConnection
+//  4. 踢掉同一用户的现有连接（单设备策略）
+//  5. 更新 Redis 在线状态（online:{userID} TTL=60s, conn:{userID} TTL=60s）
+//  6. 启动 ReadPump 和 WritePump 协程
 func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionManager, msgHandler func(*conn.ClientConnection, []byte)) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// JWT auth — token comes from query parameter for WS
-		token := c.Query("token")
-		if token == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
-			return
-		}
-
-		_, claims, err := middleware.ParseToken(token, jwtSecret)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		// Upgrade to WebSocket
-		wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			log.Printf("ws upgrade error: %v", err)
-			return
-		}
-
-		// Create ClientConnection
-		client := conn.NewClientConnection(claims.UserID, wsConn)
-
-		// Kick old connection for this user (single-device policy)
-		cm.KickOld(claims.UserID, client)
-
-		// Update Redis online status (nil guard — Redis is optional in test environments)
-		if rdb != nil {
-			ctx := context.Background()
-			onlineKey := fmt.Sprintf("online:%d", claims.UserID)
-			connKey := fmt.Sprintf("conn:%d", claims.UserID)
-			if err := rdb.Set(ctx, onlineKey, "1", 60*time.Second).Err(); err != nil {
-				log.Printf("redis set online key error: %v", err)
+			// JWT 认证 — WebSocket 的令牌通过查询参数传递
+			token := c.Query("token")
+			if token == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少令牌"})
+				return
 			}
-			if err := rdb.Set(ctx, connKey, fmt.Sprintf("ws:%d", time.Now().UnixNano()), 60*time.Second).Err(); err != nil {
-				log.Printf("redis set conn key error: %v", err)
+
+			_, claims, err := middleware.ParseToken(token, jwtSecret)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的令牌"})
+				return
 			}
+
+			// 升级为 WebSocket
+			wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+			if err != nil {
+				log.Printf("WebSocket 升级错误: %v", err)
+				return
+			}
+
+			// 创建 ClientConnection
+			client := conn.NewClientConnection(claims.UserID, wsConn)
+
+			// 踢掉该用户的旧连接（单设备策略）
+			cm.KickOld(claims.UserID, client)
+
+			// 更新 Redis 在线状态（nil 保护 — Redis 在测试环境中为可选项）
+			if rdb != nil {
+				ctx := context.Background()
+				onlineKey := fmt.Sprintf("online:%d", claims.UserID)
+				connKey := fmt.Sprintf("conn:%d", claims.UserID)
+				if err := rdb.Set(ctx, onlineKey, "1", 60*time.Second).Err(); err != nil {
+					log.Printf("Redis 设置在线键错误: %v", err)
+				}
+				if err := rdb.Set(ctx, connKey, fmt.Sprintf("ws:%d", time.Now().UnixNano()), 60*time.Second).Err(); err != nil {
+					log.Printf("Redis 设置连接键错误: %v", err)
+				}
+			}
+
+			log.Printf("用户 %d (%s) 通过 WebSocket 连接", claims.UserID, claims.Username)
+
+			// 启动读写协程
+			go client.WritePump()
+			go client.ReadPump(msgHandler)
 		}
-
-		log.Printf("user %d (%s) connected via WebSocket", claims.UserID, claims.Username)
-
-		// Start pumps
-		go client.WritePump()
-		go client.ReadPump(msgHandler)
 	}
-}

@@ -5,7 +5,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// QueueNames lists all durable queues the IM system needs.
+// QueueNames 列出 IM 系统所需的所有持久队列。
 var QueueNames = []string{
 	"private_msg_persist",
 	"group_msg_fanout",
@@ -16,7 +16,7 @@ var QueueNames = []string{
 	"ai_profile_persist",
 }
 
-// NewRabbitMQConn establishes a RabbitMQ connection and opens a channel.
+// NewRabbitMQConn 建立 RabbitMQ 连接并打开一个通道。
 func NewRabbitMQConn(cfg *config.RabbitMQConfig) (*amqp.Connection, *amqp.Channel, error) {
 	conn, err := amqp.Dial(cfg.URL)
 	if err != nil {
@@ -32,7 +32,7 @@ func NewRabbitMQConn(cfg *config.RabbitMQConfig) (*amqp.Connection, *amqp.Channe
 	return conn, ch, nil
 }
 
-// DeclareQueues declares all 7 durable queues on the given channel.
+// DeclareQueues 在给定通道上声明所有 7 个持久队列。
 func DeclareQueues(ch *amqp.Channel) error {
 	for _, name := range QueueNames {
 		_, err := ch.QueueDeclare(name, true, false, false, false, nil)

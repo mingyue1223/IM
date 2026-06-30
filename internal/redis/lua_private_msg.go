@@ -7,7 +7,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-// Error codes returned by private_msg_check.lua
+// private_msg_check.lua 返回的错误码
 const (
 	PMErrOK        = 0
 	PMErrNotFriend = 1
@@ -15,17 +15,16 @@ const (
 	PMErrDuplicate = 3
 )
 
-// Client-facing error codes mapped from Lua error codes.
-// These avoid leaking raw Lua integers (1,2,3) alongside HTTP-style codes (400,500,403).
+// 从 Lua 错误码映射的面向客户端的错误码。
+// 避免将原始 Lua 整数值（1,2,3）与 HTTP 风格的状态码（400,500,403）混用。
 const (
 	CodePMNotFriend  = 4001
 	CodePMBlocked    = 4002
 	CodePMDuplicate  = 4003
 )
 
-// MapLuaErrToClientCode translates a private-message Lua error code to a
-// client-facing error code. Returns 0 for OK and the original code for
-// unrecognized Lua codes (they fall through as "unknown error").
+// MapLuaErrToClientCode 将私信 Lua 错误码转换为面向客户端的错误码。
+// 对于 OK 返回 0，对于无法识别的 Lua 错误码返回原始值（它们会作为"未知错误"传递）。
 func MapLuaErrToClientCode(luaErrCode int) int {
 	switch luaErrCode {
 	case PMErrNotFriend:
@@ -39,13 +38,13 @@ func MapLuaErrToClientCode(luaErrCode int) int {
 	}
 }
 
-// PrivateMsgCheckResult holds the result of the private message check Lua script.
+// PrivateMsgCheckResult 保存私信检查 Lua 脚本的结果。
 type PrivateMsgCheckResult struct {
-	ErrCode   int   // 0=ok, 1=not_friend, 2=blocked, 3=duplicate
-	MsgID     int64 // allocated global message ID (0 if error)
-	IsOnline  bool  // receiver online status
-	IsFriend  bool  // friendship exists
-	IsBlocked bool  // sender is in receiver's blacklist
+	ErrCode   int   // 0=正常, 1=不是好友, 2=被拉黑, 3=重复消息
+	MsgID     int64 // 分配的全局消息 ID（出错时为 0）
+	IsOnline  bool  // 接收者在线状态
+	IsFriend  bool  // 好友关系存在
+	IsBlocked bool  // 发送者在接收者的黑名单中
 }
 
 const luaPrivateMsgCheck = `
@@ -53,38 +52,38 @@ local senderID = KEYS[1]
 local receiverID = KEYS[2]
 local clientMsgID = KEYS[3]
 
--- 1. Friendship check (bidirectional)
+-- 1. 好友关系检查（双向）
 local friend1 = redis.call('EXISTS', 'friend:' .. senderID .. ':' .. receiverID)
 local friend2 = redis.call('EXISTS', 'friend:' .. receiverID .. ':' .. senderID)
 if friend1 == 0 or friend2 == 0 then
     return {1, 0, 0, 0, 0}
 end
 
--- 2. Blacklist check (receiver blocked sender?)
+-- 2. 黑名单检查（接收者是否拉黑了发送者？）
 local isBlocked = redis.call('SISMEMBER', 'blacklist:' .. receiverID, senderID)
 if isBlocked == 1 then
     return {2, 0, 0, 1, 1}
 end
 
--- 3. Message dedup
+-- 3. 消息去重
 local dedupKey = 'msg_dedup:' .. senderID .. ':' .. clientMsgID
 local dedup = redis.call('SET', dedupKey, '1', 'EX', 300, 'NX')
 if dedup == false then
     return {3, 0, 0, 0, 0}
 end
 
--- 4. Online status check
+-- 4. 在线状态检查
 local isOnline = redis.call('EXISTS', 'online:' .. receiverID)
 
--- 5. Allocate global message ID (atomic INCR)
+-- 5. 分配全局消息 ID（原子 INCR）
 local msgID = redis.call('INCR', 'msg_id_global')
 
 return {0, msgID, isOnline, 1, 0}
 `
 
-// ExecPrivateMsgCheck atomically checks friendship, blacklist, dedup,
-// allocates a message ID, and checks online status — all in a single
-// Redis Lua script execution to avoid race conditions.
+// ExecPrivateMsgCheck 原子性地检查好友关系、黑名单、消息去重、
+// 分配消息 ID 并检查在线状态——所有这些操作都在单次
+// Redis Lua 脚本执行中完成，以避免竞态条件。
 func ExecPrivateMsgCheck(rdb *goredis.Client, ctx context.Context, senderID, receiverID int64, clientMsgID string) (*PrivateMsgCheckResult, error) {
 	keys := []string{
 		strconv.FormatInt(senderID, 10),

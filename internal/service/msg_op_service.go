@@ -12,17 +12,17 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── MsgOpService error constants ──
+// ── MsgOpService 错误常量 ──
 
 const (
-	ErrMsgNotRevocable    = "message cannot be revoked (not found or too late)"
-	ErrMsgRevokeNotOwner  = "only the sender can revoke a message"
-	ErrMsgDeleteFailed    = "failed to delete message"
+	ErrMsgNotRevocable    = "消息无法撤回（未找到或已过时效）"
+	ErrMsgRevokeNotOwner  = "仅发送者可撤回消息"
+	ErrMsgDeleteFailed    = "删除消息失败"
 )
 
-// MsgOpService handles message operations: revoke, delete, and search.
-// RevokeMessage uses the Redis Lua ExecRevokeMsg for atomic revocation and
-// persists the revoke record to MySQL via InsertMsgRevoked.
+// MsgOpService 处理消息操作：撤回、删除和搜索。
+// RevokeMessage 使用 Redis Lua ExecRevokeMsg 进行原子撤回，并
+// 通过 InsertMsgRevoked 将撤回记录持久化到 MySQL。
 type MsgOpService struct {
 	mysqlRepo repository.MySQLRepo
 	redisRepo repository.RedisRepo

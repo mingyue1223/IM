@@ -1,117 +1,117 @@
-# GoIM Deployment Guide
+# GoIM 部署指南
 
-## Docker Compose (Recommended for Development)
+## Docker Compose（推荐用于开发环境）
 
-### Start Infrastructure
+### 启动基础设施
 
 ```bash
 docker-compose up -d
 ```
 
-This starts:
-- MySQL 8 on port 3306 (user: goim, password: goim123, database: goim)
-- Redis 7 on port 6379
-- RabbitMQ 3 on port 5672 (management UI on port 15672)
+这会启动：
+- MySQL 8，端口 3306（用户名：goim，密码：goim123，数据库：goim）
+- Redis 7，端口 6379
+- RabbitMQ 3，端口 5672（管理界面端口 15672）
 
-### Initialize Database
+### 初始化数据库
 
 ```bash
-# Apply all migrations in order
+# 按顺序执行所有迁移脚本
 for f in scripts/migrations/*.sql; do
   docker exec -i goim-mysql mysql -u goim -pgoim123 goim < "$f"
 done
 ```
 
-Or manually:
+或手动执行：
 ```bash
 docker exec -it goim-mysql mysql -u goim -pgoim123 goim
-# Then paste each migration SQL file content
+# 然后粘贴每个迁移 SQL 文件的内容
 ```
 
-### Start GoIM Server
+### 启动 GoIM 服务器
 
 ```bash
 go build -o goim-server ./cmd/server
 ./goim-server -c configs/config.yaml
 ```
 
-Or run directly:
+或直接运行：
 ```bash
 go run ./cmd/server -c configs/config.yaml
 ```
 
-### Verify
+### 验证
 
 ```bash
 curl http://localhost:8080/health
 # {"status":"ok","service":"goim"}
 ```
 
-### RabbitMQ Management UI
+### RabbitMQ 管理界面
 
-Access at http://localhost:15672 (guest/guest).
+通过 http://localhost:15672 访问（guest/guest）。
 
-View queues: `private_msg_persist`, `group_msg_fanout`, `moment_push`, etc.
+查看队列：`private_msg_persist`、`group_msg_fanout`、`moment_push` 等。
 
 ---
 
-## Production Deployment
+## 生产环境部署
 
-### Environment Variables
+### 环境变量
 
-Override config values via environment variables or modify `configs/config.yaml`:
+通过环境变量覆盖配置值，或修改 `configs/config.yaml`：
 
-| Config Field | Description | Production Notes |
-|-------------|-------------|------------------|
-| `jwt.secret` | JWT signing secret | **Must change!** Use a strong random string (≥32 chars) |
-| `jwt.access_exp_hours` | Access token expiry | 2 hours (default) |
-| `jwt.refresh_exp_days` | Refresh token expiry | 7 days (default) |
-| `mysql.password` | MySQL password | Use a strong password |
-| `redis.password` | Redis password | Enable in production |
-| `llm.api_key` | OpenAI API key | Set to your actual key |
-| `server.port` | HTTP server port | 8080 (default) |
+| 配置字段 | 描述 | 生产环境注意事项 |
+|----------|------|------------------|
+| `jwt.secret` | JWT 签名密钥 | **必须更改！** 使用强随机字符串（≥32 字符） |
+| `jwt.access_exp_hours` | 访问令牌过期时间 | 2 小时（默认） |
+| `jwt.refresh_exp_days` | 刷新令牌过期时间 | 7 天（默认） |
+| `mysql.password` | MySQL 密码 | 使用强密码 |
+| `redis.password` | Redis 密码 | 在生产环境中启用 |
+| `llm.api_key` | OpenAI API 密钥 | 设置为您的实际密钥 |
+| `server.port` | HTTP 服务器端口 | 8080（默认） |
 
-### Scaling Considerations
+### 扩展考量
 
-#### Horizontal Scaling
+#### 水平扩展
 
-GoIM supports multiple server instances with shared Redis + MySQL + RabbitMQ:
+GoIM 支持多个服务器实例共享 Redis + MySQL + RabbitMQ：
 
 ```
-                    ┌──── Redis Cluster ────┐
-                    │   (shared state)      │
-                    └───────────────────────┘
+                    ┌──── Redis 集群 ────┐
+                    │   （共享状态）      │
+                    └─────────────────────┘
                           ▲     ▲     ▲
                     ┌─────┘     │     └─────┐
                     │           │           │
               ┌─────┴───┐ ┌────┴────┐ ┌────┴───┐
               │ GoIM #1 │ │ GoIM #2 │ │ GoIM #3│
-              │ (port   │ │ (port   │ │ (port  │
-              │  8080)  │ │  8081)  │ │  8082) │
-              └─────────┘ └─────────┘ └────────┘
+              │ （端口  │ │ （端口  │ │ （端口  │
+              │  8080） │ │  8081） │ │  8082） │
+              └─────────┘ └─────────┘ └─────────┘
                     │           │           │
                     └───────────┼───────────┘
                                 ▼
                     ┌──── RabbitMQ ─────────┐
-                    │   (shared MQ)         │
+                    │   （共享 MQ）          │
                     └───────────────────────┘
                                 ▼
                     ┌──── MySQL ─────────────┐
-                    │   (shared DB)          │
+                    │   （共享数据库）        │
                     └───────────────────────┘
 ```
 
-**Important**: For horizontal scaling with WebSocket, use a reverse proxy with sticky sessions (e.g., nginx with `ip_hash`). Each WS connection must reach the same GoIM instance.
+**重要提示**：对于 WebSocket 的水平扩展，请使用带有粘性会话的反向代理（例如，nginx 配置 `ip_hash`）。每个 WS 连接必须到达同一个 GoIM 实例。
 
-#### Lua Script Limitations
+#### Lua 脚本限制
 
-Current Lua scripts use dynamic key construction (`inbox:{receiverID}`), which blocks Redis Cluster migration. For Redis Cluster, modify scripts to pass all keys upfront (Redis Cluster requires all keys in a Lua script to hash to the same slot).
+当前的 Lua 脚本使用动态键构造（`inbox:{receiverID}`），这会阻止 Redis 集群的迁移。对于 Redis 集群，需要修改脚本以预先传递所有键（Redis 集群要求 Lua 脚本中的所有键哈希到同一个槽位）。
 
-#### Load Balancer Config (nginx)
+#### 负载均衡器配置（nginx）
 
 ```nginx
 upstream goim {
-    ip_hash;  # Sticky sessions for WebSocket
+    ip_hash;  # WebSocket 粘性会话
     server goim1:8080;
     server goim2:8081;
     server goim3:8082;
@@ -134,7 +134,7 @@ server {
         proxy_set_header Host $host;
     }
     
-    # Health check
+    # 健康检查
     location /health {
         proxy_pass http://goim;
     }
@@ -143,30 +143,30 @@ server {
 
 ---
 
-## Monitoring
+## 监控
 
-### Health Check Endpoint
+### 健康检查接口
 
 ```bash
 curl http://localhost:8080/health
 ```
 
-### Redis Monitoring
+### Redis 监控
 
 ```bash
 redis-cli info memory
 redis-cli info stats
-# Check inbox/outbox sizes
+# 检查收件箱/发件箱大小
 redis-cli keys "inbox:*" | wc -l
 ```
 
-### RabbitMQ Monitoring
+### RabbitMQ 监控
 
-- Management UI: http://localhost:15672
-- Queue depths: check `private_msg_persist`, `group_msg_fanout`, `moment_push` queues
-- If queue depth grows, consumers may be lagging
+- 管理界面：http://localhost:15672
+- 队列深度：检查 `private_msg_persist`、`group_msg_fanout`、`moment_push` 队列
+- 如果队列深度不断增长，消费者可能存在滞后
 
-### MySQL Monitoring
+### MySQL 监控
 
 ```bash
 mysql -u goim -pgoim123 goim -e "SHOW TABLE STATUS"
@@ -175,39 +175,39 @@ mysql -u goim -pgoim123 goim -e "SELECT COUNT(*) FROM private_messages"
 
 ---
 
-## Troubleshooting
+## 故障排查
 
-### Common Issues
+### 常见问题
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| MySQL connection refused | MySQL not running | `docker-compose up -d mysql` |
-| Redis connection refused | Redis not running | `docker-compose up -d redis` |
-| RabbitMQ connection refused | RabbitMQ not running | `docker-compose up -d rabbitmq` |
-| JWT auth fails | Wrong secret | Check `jwt.secret` matches config |
-| WebSocket disconnects | Token expired | Refresh token before connecting |
-| Message not delivered | Users not friends | Create friendship before private messaging |
-| Group msg rejected | Not a member | Join group before sending messages |
-| Queue depth growing | Consumer lag | Check MQ consumer logs, increase consumer count |
+| 问题 | 原因 | 解决方案 |
+|------|------|----------|
+| MySQL 连接被拒绝 | MySQL 未运行 | `docker-compose up -d mysql` |
+| Redis 连接被拒绝 | Redis 未运行 | `docker-compose up -d redis` |
+| RabbitMQ 连接被拒绝 | RabbitMQ 未运行 | `docker-compose up -d rabbitmq` |
+| JWT 认证失败 | 密钥错误 | 检查 `jwt.secret` 是否与配置匹配 |
+| WebSocket 断开连接 | 令牌过期 | 连接前先刷新令牌 |
+| 消息未送达 | 用户不是好友 | 发送私聊消息前先建立好友关系 |
+| 群聊消息被拒绝 | 不是群成员 | 发送消息前先加入群组 |
+| 队列深度不断增长 | 消费者滞后 | 检查 MQ 消费者日志，增加消费者数量 |
 
-### Log Levels
+### 日志级别
 
-GoIM uses zap logger. Set `gin.SetMode(gin.TestMode)` for tests, `gin.ReleaseMode()` for production.
+GoIM 使用 zap 日志库。测试时设置 `gin.SetMode(gin.TestMode)`，生产环境使用 `gin.ReleaseMode()`。
 
 ```bash
-# View server logs
-./goim-server -c configs/config.yaml  # logs to stdout
+# 查看服务器日志
+./goim-server -c configs/config.yaml  # 日志输出到 stdout
 ```
 
 ---
 
-## Security Checklist
+## 安全清单
 
-- [ ] Change `jwt.secret` from default
-- [ ] Enable Redis password in production
-- [ ] Use strong MySQL password
-- [ ] Restrict MySQL/Redis/RabbitMQ access to GoIM only
-- [ ] Enable HTTPS via reverse proxy
-- [ ] Rate-limit auth endpoints (register/login)
-- [ ] Set `gin.ReleaseMode()` for production
-- [ ] Keep LLM API key out of config file (use env var)
+- [ ] 更改默认的 `jwt.secret`
+- [ ] 在生产环境中启用 Redis 密码
+- [ ] 使用强 MySQL 密码
+- [ ] 限制 MySQL/Redis/RabbitMQ 仅允许 GoIM 访问
+- [ ] 通过反向代理启用 HTTPS
+- [ ] 对认证接口（注册/登录）进行频率限制
+- [ ] 生产环境设置 `gin.ReleaseMode()`
+- [ ] 不要在配置文件中存放 LLM API 密钥（使用环境变量）

@@ -1,36 +1,36 @@
-# GoIM API Reference
+# GoIM API 参考文档
 
-## Base URL
+## 基础 URL
 
 ```
 http://localhost:8080/api/v1
 ```
 
-## Authentication
+## 认证
 
-All protected endpoints require a JWT access token via `Authorization` header:
+所有需要保护的接口都需要通过 `Authorization` 头携带 JWT 访问令牌：
 
 ```
 Authorization: Bearer <access_token>
 ```
 
-WebSocket connections authenticate via query parameter:
+WebSocket 连接通过查询参数进行认证：
 
 ```
 GET /ws?token=<access_token>
 ```
 
-Tokens are obtained from `/auth/login` or `/auth/refresh`.
+令牌通过 `/auth/login` 或 `/auth/refresh` 获取。
 
 ---
 
-## Health Check
+## 健康检查
 
 ### GET /health
 
-No auth required.
+无需认证。
 
-**Response:**
+**响应：**
 ```json
 {
   "status": "ok",
@@ -40,11 +40,11 @@ No auth required.
 
 ---
 
-## Auth (Public — No JWT Required)
+## 认证（公开 — 无需 JWT）
 
 ### POST /auth/register
 
-**Request:**
+**请求：**
 ```json
 {
   "username": "alice",
@@ -52,7 +52,7 @@ No auth required.
 }
 ```
 
-**Response (201):**
+**响应 (201)：**
 ```json
 {
   "user_id": 1,
@@ -60,13 +60,13 @@ No auth required.
 }
 ```
 
-**Errors:**
-- `400`: username/password too short (min 3 chars each)
-- `409`: username already taken
+**错误：**
+- `400`：用户名/密码过短（每个至少 3 个字符）
+- `409`：用户名已被占用
 
 ### POST /auth/login
 
-**Request:**
+**请求：**
 ```json
 {
   "username": "alice",
@@ -74,7 +74,7 @@ No auth required.
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "access_token": "eyJhbG...",
@@ -83,19 +83,19 @@ No auth required.
 }
 ```
 
-**Errors:**
-- `401`: user not found or wrong password
+**错误：**
+- `401`：用户未找到或密码错误
 
 ### POST /auth/refresh
 
-**Request:**
+**请求：**
 ```json
 {
   "refresh_token": "eyJhbG..."
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "access_token": "eyJhbG...",
@@ -103,18 +103,18 @@ No auth required.
 }
 ```
 
-**Errors:**
-- `401`: invalid or expired refresh token
+**错误：**
+- `401`：刷新令牌无效或已过期
 
 ---
 
-## Friend (JWT Required)
+## 好友（需要 JWT）
 
 ### POST /friend/request
 
-Send a friend request.
+发送好友申请。
 
-**Request:**
+**请求：**
 ```json
 {
   "to_user_id": 2,
@@ -122,7 +122,7 @@ Send a friend request.
 }
 ```
 
-**Response (201):**
+**响应 (201)：**
 ```json
 {
   "request_id": 1,
@@ -132,21 +132,21 @@ Send a friend request.
 }
 ```
 
-**Errors:**
-- `400`: self-request
-- `403`: target has blocked you
-- `409`: already friends or duplicate request
+**错误：**
+- `400`：不能向自己发送申请
+- `403`：对方已将你拉黑
+- `409`：已经是好友或存在重复申请
 
 ### POST /friend/accept
 
-**Request:**
+**请求：**
 ```json
 {
   "request_id": 1
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "user_id": 2,
@@ -154,20 +154,20 @@ Send a friend request.
 }
 ```
 
-**Errors:**
-- `403`: not the request target
-- `404`: request not found
+**错误：**
+- `403`：不是该申请的接收方
+- `404`：申请未找到
 
 ### POST /friend/reject
 
-**Request:**
+**请求：**
 ```json
 {
   "request_id": 1
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "friend request rejected"
@@ -176,7 +176,7 @@ Send a friend request.
 
 ### GET /friend/requests
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "requests": [
@@ -194,7 +194,7 @@ Send a friend request.
 
 ### GET /friend/list
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "friends": [
@@ -210,9 +210,9 @@ Send a friend request.
 
 ### DELETE /friend/:friendID
 
-Remove a friendship.
+删除好友关系。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "friend deleted"
@@ -221,33 +221,33 @@ Remove a friendship.
 
 ### POST /friend/block
 
-**Request:**
+**请求：**
 ```json
 {
   "blocked_id": 5
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "user blocked"
 }
 ```
 
-**Errors:**
-- `409`: already blocked
+**错误：**
+- `409`：已经被拉黑
 
 ### POST /friend/unblock
 
-**Request:**
+**请求：**
 ```json
 {
   "blocked_id": 5
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "user unblocked"
@@ -256,13 +256,13 @@ Remove a friendship.
 
 ---
 
-## Group (JWT Required)
+## 群组（需要 JWT）
 
 ### POST /group
 
-Create a group. Creator becomes owner (role=2).
+创建群组。创建者成为群主 (role=2)。
 
-**Request:**
+**请求：**
 ```json
 {
   "name": "My Group",
@@ -270,7 +270,7 @@ Create a group. Creator becomes owner (role=2).
 }
 ```
 
-**Response (201):**
+**响应 (201)：**
 ```json
 {
   "group_id": 1
@@ -279,9 +279,9 @@ Create a group. Creator becomes owner (role=2).
 
 ### PUT /group/:groupID
 
-Update group name/notice. Only owner or admin can update.
+更新群组名称/公告。仅群主或管理员可以更新。
 
-**Request:**
+**请求：**
 ```json
 {
   "name": "Updated Name",
@@ -289,20 +289,20 @@ Update group name/notice. Only owner or admin can update.
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "group updated"
 }
 ```
 
-**Errors:**
-- `403`: not owner or admin
-- `404`: group not found
+**错误：**
+- `403`：不是群主或管理员
+- `404`：群组未找到
 
 ### GET /group/:groupID
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "id": 1,
@@ -316,45 +316,45 @@ Update group name/notice. Only owner or admin can update.
 
 ### POST /group/:groupID/member
 
-Add a member. Only owner or admin can add.
+添加成员。仅群主或管理员可以添加。
 
-**Request:**
+**请求：**
 ```json
 {
   "member_id": 3
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "member added"
 }
 ```
 
-**Errors:**
-- `403`: not owner/admin
-- `404`: group not found
-- `409`: already member or group full (max 500)
+**错误：**
+- `403`：不是群主/管理员
+- `404`：群组未找到
+- `409`：已经是成员或群组已满（最多 500 人）
 
 ### DELETE /group/:groupID/member/:memberID
 
-Remove/kick a member. Owner cannot be removed.
+移除/踢出成员。群主不能被移除。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "member removed"
 }
 ```
 
-**Errors:**
-- `403`: not owner/admin or trying to remove owner
-- `404`: group not found
+**错误：**
+- `403`：不是群主/管理员或试图移除群主
+- `404`：群组未找到
 
 ### GET /group/:groupID/members
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "members": [
@@ -370,18 +370,18 @@ Remove/kick a member. Owner cannot be removed.
 
 ### PUT /group/:groupID/member/:memberID/role
 
-Update member role. Only owner can change roles.
+更新成员角色。仅群主可以更改角色。
 
-**Request:**
+**请求：**
 ```json
 {
   "role": 1
 }
 ```
 
-Roles: 0=member, 1=admin, 2=owner
+角色：0=普通成员，1=管理员，2=群主
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "member role updated"
@@ -390,28 +390,28 @@ Roles: 0=member, 1=admin, 2=owner
 
 ### POST /group/:groupID/leave
 
-Leave a group. Owner cannot leave (must transfer first).
+退出群组。群主不能退出（必须先转让群主）。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "left group"
 }
 ```
 
-**Errors:**
-- `403`: owner cannot leave
-- `404`: group not found
+**错误：**
+- `403`：群主不能退出
+- `404`：群组未找到
 
 ---
 
-## Moment (JWT Required)
+## 朋友圈（需要 JWT）
 
 ### POST /moment
 
-Publish a moment.
+发布一条朋友圈。
 
-**Request:**
+**请求：**
 ```json
 {
   "content": "Great day today!",
@@ -420,9 +420,9 @@ Publish a moment.
 }
 ```
 
-Visibility: 1=all, 2=friends only, 3=private
+可见性：1=公开，2=仅好友，3=私密
 
-**Response (201):**
+**响应 (201)：**
 ```json
 {
   "moment_id": 1
@@ -431,7 +431,7 @@ Visibility: 1=all, 2=friends only, 3=private
 
 ### GET /moment/:momentID
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "id": 1,
@@ -445,9 +445,9 @@ Visibility: 1=all, 2=friends only, 3=private
 
 ### GET /moment/user/:userID?limit=20&offset=0
 
-Get moments by a specific user.
+获取指定用户的朋友圈。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "moments": [...]
@@ -456,20 +456,20 @@ Get moments by a specific user.
 
 ### POST /moment/:momentID/like
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "ok": true
 }
 ```
 
-**Errors:**
-- `404`: moment not found
-- `409`: already liked
+**错误：**
+- `404`：朋友圈未找到
+- `409`：已经点赞
 
 ### DELETE /moment/:momentID/like
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "ok": true
@@ -478,14 +478,14 @@ Get moments by a specific user.
 
 ### POST /moment/:momentID/comment
 
-**Request:**
+**请求：**
 ```json
 {
   "content": "Nice post!"
 }
 ```
 
-**Response (201):**
+**响应 (201)：**
 ```json
 {
   "comment_id": 1
@@ -494,24 +494,24 @@ Get moments by a specific user.
 
 ### DELETE /moment/comment/:commentID
 
-Only comment author can delete.
+仅评论作者可以删除。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "ok": true
 }
 ```
 
-**Errors:**
-- `403`: not comment owner
-- `404`: comment not found
+**错误：**
+- `403`：不是评论作者
+- `404`：评论未找到
 
 ### GET /moment/feed?last_sync_time=0&limit=20
 
-Get the user's moment feed (from friends' timeline).
+获取用户的朋友圈动态流（来自好友的时间线）。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "moments": [...]
@@ -520,20 +520,20 @@ Get the user's moment feed (from friends' timeline).
 
 ---
 
-## AI (JWT Required)
+## AI（需要 JWT）
 
 ### POST /ai/chat
 
-Send a message to the AI assistant.
+向 AI 助手发送消息。
 
-**Request:**
+**请求：**
 ```json
 {
   "content": "What are my hobbies?"
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "response": "Based on our conversations, you enjoy hiking, photography, and cooking."
@@ -542,9 +542,9 @@ Send a message to the AI assistant.
 
 ### GET /ai/profile
 
-Get the AI's understanding of the user (Layer 2 memory).
+获取 AI 对用户的理解（第 2 层记忆）。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "items": [
@@ -560,9 +560,9 @@ Get the AI's understanding of the user (Layer 2 memory).
 
 ### POST /ai/summary/:convID
 
-Generate an AI summary for a conversation.
+为会话生成 AI 摘要。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "id": 1,
@@ -576,13 +576,13 @@ Generate an AI summary for a conversation.
 
 ---
 
-## Message Operations (JWT Required)
+## 消息操作（需要 JWT）
 
 ### POST /msg/revoke
 
-Revoke a message (within 2 minutes of sending, sender only).
+撤回一条消息（发送后 2 分钟内，仅发送者可撤回）。
 
-**Request:**
+**请求：**
 ```json
 {
   "convId": "p_1_2",
@@ -590,22 +590,22 @@ Revoke a message (within 2 minutes of sending, sender only).
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "message revoked"
 }
 ```
 
-**Errors:**
-- `400`: message not revocable (too old or already revoked)
-- `403`: not the message sender
+**错误：**
+- `400`：消息不可撤回（超时或已被撤回）
+- `403`：不是消息发送者
 
 ### DELETE /msg/:msgID?convId=p_1_2
 
-Delete a message (local deletion only, other party still sees it).
+删除一条消息（仅本地删除，对方仍能看到）。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "message deleted"
@@ -614,9 +614,9 @@ Delete a message (local deletion only, other party still sees it).
 
 ### GET /msg/search?q=hello&limit=20&offset=0
 
-Search private messages.
+搜索私聊消息。
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "messages": [...]
@@ -625,11 +625,11 @@ Search private messages.
 
 ---
 
-## Settings (JWT Required)
+## 设置（需要 JWT）
 
 ### GET /settings
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "user_id": 1,
@@ -642,7 +642,7 @@ Search private messages.
 
 ### PUT /settings
 
-**Request:**
+**请求：**
 ```json
 {
   "notification_enabled": true,
@@ -651,7 +651,7 @@ Search private messages.
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "settings updated"
@@ -660,44 +660,44 @@ Search private messages.
 
 ### POST /settings/mute
 
-Mute a conversation.
+免打扰某个会话。
 
-**Request:**
+**请求：**
 ```json
 {
   "convId": "p_1_2"
 }
 ```
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "conversation muted"
 }
 ```
 
-**Errors:**
-- `409`: already muted
+**错误：**
+- `409`：已经免打扰
 
 ### DELETE /settings/mute/:convID
 
-**Response (200):**
+**响应 (200)：**
 ```json
 {
   "message": "conversation unmuted"
 }
 ```
 
-**Errors:**
-- `404`: not muted
+**错误：**
+- `404`：未处于免打扰状态
 
 ---
 
-## WebSocket Protocol
+## WebSocket 协议
 
-Connect to `GET /ws?token=<access_token>`.
+连接到 `GET /ws?token=<access_token>`。
 
-All messages use JSON envelope format:
+所有消息使用 JSON 信封格式：
 
 ```json
 {
@@ -706,55 +706,55 @@ All messages use JSON envelope format:
 }
 ```
 
-### Client → Server Messages
+### 客户端 → 服务端消息
 
-| Type | Purpose | Data Fields |
-|------|---------|-------------|
-| `msg` | Send chat message | `msgId` (client ID), `convType` (1=private, 2=group), `toId`, `msgType` (1=text), `content`, `timestamp` |
-| `deliverAck` | Confirm delivery | `serverMsgId` |
-| `readAck` | Mark conversation read | `convId` |
-| `syncReq` | Request offline sync | `lastSyncTime`, `batchSize` |
-| `revokeMsg` | Revoke a message | `convId`, `serverMsgId` |
-| `aiStream` | AI chat stream | `content` |
-| `friendApply` | Friend apply via WS | (placeholder) |
-| `ping` | Heartbeat | — |
+| 类型 | 用途 | 数据字段 |
+|------|------|----------|
+| `msg` | 发送聊天消息 | `msgId`（客户端 ID）、`convType`（1=私聊，2=群聊）、`toId`、`msgType`（1=文本）、`content`、`timestamp` |
+| `deliverAck` | 确认送达 | `serverMsgId` |
+| `readAck` | 标记会话已读 | `convId` |
+| `syncReq` | 请求离线同步 | `lastSyncTime`、`batchSize` |
+| `revokeMsg` | 撤回一条消息 | `convId`、`serverMsgId` |
+| `aiStream` | AI 聊天流 | `content` |
+| `friendApply` | 好友申请（通过 WS） | （占位） |
+| `ping` | 心跳 | — |
 
-### Server → Client Messages
+### 服务端 → 客户端消息
 
-| Type | Purpose | Data Fields |
-|------|---------|-------------|
-| `serverAck` | Message acknowledged | `clientMsgId`, `serverMsgId`, `groupSeq` (group), `timestamp` |
-| `msg` | Incoming chat message | `msgId`, `convId`, `convType`, `fromId`, `toId`, `msgType`, `content`, `readStatus` (private), `groupSeq` (group), `timestamp` |
-| `syncBatch` | Offline sync batch | `msgs[]`, `hasMore`, `syncTime` |
-| `convSync` | Conversation sync | `conversations[]`, `unreadMap` |
-| `msgRevoked` | Message revoked notification | `convId`, `serverMsgId`, `operatorId` |
-| `kick` | Connection kicked | `reason: "new_login"` |
-| `friendAccepted` | Friend request accepted | — |
-| `presence` | Online status change | — |
-| `error` | Error notification | `code`, `message` |
-| `pong` | Heartbeat response | — |
+| 类型 | 用途 | 数据字段 |
+|------|------|----------|
+| `serverAck` | 消息已确认 | `clientMsgId`、`serverMsgId`、`groupSeq`（群聊）、`timestamp` |
+| `msg` | 收到的聊天消息 | `msgId`、`convId`、`convType`、`fromId`、`toId`、`msgType`、`content`、`readStatus`（私聊）、`groupSeq`（群聊）、`timestamp` |
+| `syncBatch` | 离线同步批次 | `msgs[]`、`hasMore`、`syncTime` |
+| `convSync` | 会话同步 | `conversations[]`、`unreadMap` |
+| `msgRevoked` | 消息撤回通知 | `convId`、`serverMsgId`、`operatorId` |
+| `kick` | 连接被踢出 | `reason: "new_login"` |
+| `friendAccepted` | 好友申请被接受 | — |
+| `presence` | 在线状态变更 | — |
+| `error` | 错误通知 | `code`、`message` |
+| `pong` | 心跳响应 | — |
 
-### Message Types
+### 消息类型
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| MsgTypeText | 1 | Plain text message |
-| MsgTypeImage | 2 | Image message |
-| MsgTypeVideo | 3 | Video message |
-| MsgTypeAI | 4 | AI-generated message |
-| MsgTypeSystem | 5 | System notification |
-| MsgTypeRevoked | 6 | Revoked placeholder |
+| 常量 | 值 | 描述 |
+|------|-----|------|
+| MsgTypeText | 1 | 纯文本消息 |
+| MsgTypeImage | 2 | 图片消息 |
+| MsgTypeVideo | 3 | 视频消息 |
+| MsgTypeAI | 4 | AI 生成的消息 |
+| MsgTypeSystem | 5 | 系统通知 |
+| MsgTypeRevoked | 6 | 撤回占位符 |
 
-### Conversation Types
+### 会话类型
 
-| Constant | Value | ID Format |
-|----------|-------|-----------|
-| ConvTypePrivate | 1 | `p_{smallerID}_{largerID}` |
-| ConvTypeGroup | 2 | `g_{groupID}` |
+| 常量 | 值 | ID 格式 |
+|------|-----|---------|
+| ConvTypePrivate | 1 | `p_{较小ID}_{较大ID}` |
+| ConvTypeGroup | 2 | `g_{群组ID}` |
 
-### Single-Device Policy
+### 单设备策略
 
-When a user connects via WebSocket, any existing connection for the same user ID is kicked. The old connection receives:
+当用户通过 WebSocket 连接时，同一用户 ID 的任何现有连接都会被踢出。旧连接会收到：
 
 ```json
 {
@@ -763,4 +763,4 @@ When a user connects via WebSocket, any existing connection for the same user ID
 }
 ```
 
-The old connection's WebSocket is then closed.
+然后旧连接的 WebSocket 会被关闭。

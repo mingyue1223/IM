@@ -8,21 +8,21 @@ import (
 	"github.com/goim/goim/internal/model"
 )
 
-// MySQLRepo defines all MySQL CRUD operations needed by services and consumers.
-// The interface allows mocking in tests. Methods will be fleshed out in Tasks 12-17.
+// MySQLRepo 定义了服务和消费者所需的所有 MySQL CRUD 操作。
+// 该接口允许在测试中进行模拟。方法将在任务 12-17 中逐步完善。
 type MySQLRepo interface {
-	// ── Messages ──
+	// ── 消息 ──
 	InsertPrivateMessage(ctx context.Context, msg *model.PrivateMessage) error
 	InsertGroupMessage(ctx context.Context, msg *model.GroupMessage) error
 	InsertMsgRevoked(ctx context.Context, revoked *model.MsgRevoked) error
 
-	// ── Users ──
+	// ── 用户 ──
 	GetUserByID(ctx context.Context, userID int64) (*model.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
 	CreateUser(ctx context.Context, user *model.User) error
 	UpdateUser(ctx context.Context, user *model.User) error
 
-	// ── Friendships ──
+	// ── 好友 ──
 	CreateFriendRequest(ctx context.Context, req *model.FriendRequest) error
 	UpdateFriendRequest(ctx context.Context, req *model.FriendRequest) error
 	GetFriendRequestByID(ctx context.Context, id int64) (*model.FriendRequest, error)
@@ -35,7 +35,7 @@ type MySQLRepo interface {
 	DeleteBlacklist(ctx context.Context, userID, blockedID int64) error
 	IsBlocked(ctx context.Context, userID, blockedID int64) (bool, error)
 
-	// ── Groups ──
+	// ── 群组 ──
 	CreateGroup(ctx context.Context, group *model.Group) (int64, error)
 	UpdateGroup(ctx context.Context, group *model.Group) error
 	GetGroupByID(ctx context.Context, groupID int64) (*model.Group, error)
@@ -44,7 +44,7 @@ type MySQLRepo interface {
 	GetGroupMembers(ctx context.Context, groupID int64) ([]model.GroupMember, error)
 	UpdateGroupMemberRole(ctx context.Context, groupID, userID, role int) error
 
-	// ── Moments ──
+	// ── 朋友圈 ──
 	CreateMoment(ctx context.Context, moment *model.Moment) error
 	GetMomentByID(ctx context.Context, id int64) (*model.Moment, error)
 	GetMomentsByUser(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error)
@@ -59,16 +59,16 @@ type MySQLRepo interface {
 	CreateAIProfileItem(ctx context.Context, item *model.AIProfileItem) error
 	GetAIProfileByUser(ctx context.Context, userID int64) ([]model.AIProfileItem, error)
 
-	// ── User Settings ──
+	// ── 用户设置 ──
 	GetUserSettings(ctx context.Context, userID int64) (*model.UserSettings, error)
 	CreateOrUpdateUserSettings(ctx context.Context, settings *model.UserSettings) error
 
-	// ── Message Search ──
+	// ── 消息搜索 ──
 	SearchPrivateMessages(ctx context.Context, userID int64, query string, limit, offset int) ([]model.PrivateMessage, error)
 }
 
 // ──────────────────────────────────────────────────────
-// MySQLRepoImpl — concrete implementation using database/sql
+// MySQLRepoImpl — 基于 database/sql 的具体实现
 // ──────────────────────────────────────────────────────
 
 type MySQLRepoImpl struct {
@@ -79,7 +79,7 @@ func NewMySQLRepo(db *sql.DB) *MySQLRepoImpl {
 	return &MySQLRepoImpl{db: db}
 }
 
-// ── Messages ──
+// ── 消息 ──
 
 func (m *MySQLRepoImpl) InsertPrivateMessage(ctx context.Context, msg *model.PrivateMessage) error {
 	query := `INSERT INTO private_messages (id, sender_id, receiver_id, content, msg_type, created_at)
@@ -93,7 +93,7 @@ func (m *MySQLRepoImpl) InsertPrivateMessage(ctx context.Context, msg *model.Pri
 		msg.CreatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("insert private_messages: %w", err)
+		return fmt.Errorf("插入 private_messages: %w", err)
 	}
 	return nil
 }
@@ -111,7 +111,7 @@ func (m *MySQLRepoImpl) InsertGroupMessage(ctx context.Context, msg *model.Group
 		msg.CreatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("insert group_messages: %w", err)
+		return fmt.Errorf("插入 group_messages: %w", err)
 	}
 	return nil
 }
@@ -126,17 +126,17 @@ func (m *MySQLRepoImpl) InsertMsgRevoked(ctx context.Context, revoked *model.Msg
 		revoked.RevokedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("insert msg_revoked: %w", err)
+		return fmt.Errorf("插入 msg_revoked: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("insert msg_revoked lastInsertId: %w", err)
+		return fmt.Errorf("获取 msg_revoked 最后插入ID: %w", err)
 	}
 	revoked.ID = id
 	return nil
 }
 
-// ── Users (fleshed out in Task 12) ──
+// ── 用户（在任务 12 中完善） ──
 
 func (m *MySQLRepoImpl) GetUserByID(ctx context.Context, userID int64) (*model.User, error) {
 	query := `SELECT id, username, password_hash, nickname, avatar_url, sign, gender, created_at, updated_at
@@ -148,7 +148,7 @@ func (m *MySQLRepoImpl) GetUserByID(ctx context.Context, userID int64) (*model.U
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get user by id: %w", err)
+		return nil, fmt.Errorf("按ID获取用户: %w", err)
 	}
 	return &u, nil
 }
@@ -163,7 +163,7 @@ func (m *MySQLRepoImpl) GetUserByUsername(ctx context.Context, username string) 
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get user by username: %w", err)
+		return nil, fmt.Errorf("按用户名获取用户: %w", err)
 	}
 	return &u, nil
 }
@@ -180,11 +180,11 @@ func (m *MySQLRepoImpl) CreateUser(ctx context.Context, user *model.User) error 
 		user.Gender,
 	)
 	if err != nil {
-		return fmt.Errorf("create user: %w", err)
+		return fmt.Errorf("创建用户: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("create user lastInsertId: %w", err)
+		return fmt.Errorf("创建用户 获取最后插入ID: %w", err)
 	}
 	user.ID = id
 	return nil
@@ -194,12 +194,12 @@ func (m *MySQLRepoImpl) UpdateUser(ctx context.Context, user *model.User) error 
 	query := `UPDATE users SET nickname=?, avatar_url=?, sign=?, gender=? WHERE id=?`
 	_, err := m.db.ExecContext(ctx, query, user.Nickname, user.AvatarURL, user.Sign, user.Gender, user.ID)
 	if err != nil {
-		return fmt.Errorf("update user: %w", err)
+		return fmt.Errorf("更新用户: %w", err)
 	}
 	return nil
 }
 
-// ── Friendships (implemented in Task 13) ──
+// ── 好友（在任务 13 中实现） ──
 
 func (m *MySQLRepoImpl) CreateFriendRequest(ctx context.Context, req *model.FriendRequest) error {
 	query := `INSERT INTO friend_requests (from_user_id, to_user_id, message, status)
@@ -211,11 +211,11 @@ func (m *MySQLRepoImpl) CreateFriendRequest(ctx context.Context, req *model.Frie
 		req.Status,
 	)
 	if err != nil {
-		return fmt.Errorf("insert friend_requests: %w", err)
+		return fmt.Errorf("插入 friend_requests: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("insert friend_requests lastInsertId: %w", err)
+		return fmt.Errorf("插入 friend_requests 获取最后插入ID: %w", err)
 	}
 	req.ID = id
 	return nil
@@ -225,7 +225,7 @@ func (m *MySQLRepoImpl) UpdateFriendRequest(ctx context.Context, req *model.Frie
 	query := `UPDATE friend_requests SET status=?, updated_at=NOW() WHERE id=?`
 	_, err := m.db.ExecContext(ctx, query, req.Status, req.ID)
 	if err != nil {
-		return fmt.Errorf("update friend_requests: %w", err)
+		return fmt.Errorf("更新 friend_requests: %w", err)
 	}
 	return nil
 }
@@ -240,7 +240,7 @@ func (m *MySQLRepoImpl) GetFriendRequestByID(ctx context.Context, id int64) (*mo
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get friend_request by id: %w", err)
+		return nil, fmt.Errorf("按ID获取好友请求: %w", err)
 	}
 	return &r, nil
 }
@@ -251,7 +251,7 @@ func (m *MySQLRepoImpl) GetFriendRequestsByUser(ctx context.Context, userID int6
 	          ORDER BY created_at DESC`
 	rows, err := m.db.QueryContext(ctx, query, userID, userID)
 	if err != nil {
-		return nil, fmt.Errorf("get friend_requests by user: %w", err)
+		return nil, fmt.Errorf("按用户获取好友请求: %w", err)
 	}
 	defer rows.Close()
 
@@ -259,36 +259,36 @@ func (m *MySQLRepoImpl) GetFriendRequestsByUser(ctx context.Context, userID int6
 	for rows.Next() {
 		var r model.FriendRequest
 		if err := rows.Scan(&r.ID, &r.FromUserID, &r.ToUserID, &r.Message, &r.Status, &r.CreatedAt, &r.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan friend_request: %w", err)
+			return nil, fmt.Errorf("扫描好友请求: %w", err)
 		}
 		results = append(results, r)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate friend_requests: %w", err)
+		return nil, fmt.Errorf("遍历好友请求: %w", err)
 	}
 	return results, nil
 }
 
 func (m *MySQLRepoImpl) CreateFriendship(ctx context.Context, fs *model.Friendship) error {
-	// Insert bidirectional rows: user->friend AND friend->user
+	// 插入双向记录：user->friend 和 friend->user
 	query := `INSERT INTO friendships (user_id, friend_id) VALUES (?, ?)`
 	_, err := m.db.ExecContext(ctx, query, fs.UserID, fs.FriendID)
 	if err != nil {
-		return fmt.Errorf("insert friendship user->friend: %w", err)
+		return fmt.Errorf("插入好友关系 user->friend: %w", err)
 	}
 	_, err = m.db.ExecContext(ctx, query, fs.FriendID, fs.UserID)
 	if err != nil {
-		return fmt.Errorf("insert friendship friend->user: %w", err)
+		return fmt.Errorf("插入好友关系 friend->user: %w", err)
 	}
 	return nil
 }
 
 func (m *MySQLRepoImpl) DeleteFriendship(ctx context.Context, userID, friendID int64) error {
-	// Delete bidirectional rows: user->friend AND friend->user
+	// 删除双向记录：user->friend 和 friend->user
 	query := `DELETE FROM friendships WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`
 	_, err := m.db.ExecContext(ctx, query, userID, friendID, friendID, userID)
 	if err != nil {
-		return fmt.Errorf("delete friendship: %w", err)
+		return fmt.Errorf("删除好友关系: %w", err)
 	}
 	return nil
 }
@@ -299,7 +299,7 @@ func (m *MySQLRepoImpl) GetFriendList(ctx context.Context, userID int64) ([]mode
 	          WHERE f.user_id = ?`
 	rows, err := m.db.QueryContext(ctx, query, userID)
 	if err != nil {
-		return nil, fmt.Errorf("get friend list: %w", err)
+		return nil, fmt.Errorf("获取好友列表: %w", err)
 	}
 	defer rows.Close()
 
@@ -307,12 +307,12 @@ func (m *MySQLRepoImpl) GetFriendList(ctx context.Context, userID int64) ([]mode
 	for rows.Next() {
 		var fs model.Friendship
 		if err := rows.Scan(&fs.ID, &fs.UserID, &fs.FriendID, &fs.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan friendship: %w", err)
+			return nil, fmt.Errorf("扫描好友关系: %w", err)
 		}
 		results = append(results, fs)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate friendships: %w", err)
+		return nil, fmt.Errorf("遍历好友关系: %w", err)
 	}
 	return results, nil
 }
@@ -322,7 +322,7 @@ func (m *MySQLRepoImpl) IsFriend(ctx context.Context, userID, friendID int64) (b
 	var count int
 	err := m.db.QueryRowContext(ctx, query, userID, friendID).Scan(&count)
 	if err != nil {
-		return false, fmt.Errorf("check is_friend: %w", err)
+		return false, fmt.Errorf("检查是否为好友: %w", err)
 	}
 	return count > 0, nil
 }
@@ -331,11 +331,11 @@ func (m *MySQLRepoImpl) CreateBlacklist(ctx context.Context, bl *model.Blacklist
 	query := `INSERT INTO blacklist (user_id, blocked_id) VALUES (?, ?)`
 	result, err := m.db.ExecContext(ctx, query, bl.UserID, bl.BlockedID)
 	if err != nil {
-		return fmt.Errorf("insert blacklist: %w", err)
+		return fmt.Errorf("插入黑名单: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("insert blacklist lastInsertId: %w", err)
+		return fmt.Errorf("插入黑名单 获取最后插入ID: %w", err)
 	}
 	bl.ID = id
 	return nil
@@ -345,7 +345,7 @@ func (m *MySQLRepoImpl) DeleteBlacklist(ctx context.Context, userID, blockedID i
 	query := `DELETE FROM blacklist WHERE user_id = ? AND blocked_id = ?`
 	_, err := m.db.ExecContext(ctx, query, userID, blockedID)
 	if err != nil {
-		return fmt.Errorf("delete blacklist: %w", err)
+		return fmt.Errorf("删除黑名单: %w", err)
 	}
 	return nil
 }
@@ -355,12 +355,12 @@ func (m *MySQLRepoImpl) IsBlocked(ctx context.Context, userID, blockedID int64) 
 	var count int
 	err := m.db.QueryRowContext(ctx, query, userID, blockedID).Scan(&count)
 	if err != nil {
-		return false, fmt.Errorf("check is_blocked: %w", err)
+		return false, fmt.Errorf("检查是否已拉黑: %w", err)
 	}
 	return count > 0, nil
 }
 
-// ── Groups (fleshed out in Task 14) ──
+// ── 群组（在任务 14 中完善） ──
 
 func (m *MySQLRepoImpl) CreateGroup(ctx context.Context, group *model.Group) (int64, error) {
 	query := `INSERT INTO groups (name, notice, owner_id, max_members, created_at, updated_at)
@@ -371,11 +371,11 @@ func (m *MySQLRepoImpl) CreateGroup(ctx context.Context, group *model.Group) (in
 		group.OwnerID,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("create group: %w", err)
+		return 0, fmt.Errorf("创建群组: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("create group lastInsertId: %w", err)
+		return 0, fmt.Errorf("创建群组 获取最后插入ID: %w", err)
 	}
 	return id, nil
 }
@@ -384,7 +384,7 @@ func (m *MySQLRepoImpl) UpdateGroup(ctx context.Context, group *model.Group) err
 	query := `UPDATE groups SET name=?, notice=?, updated_at=NOW() WHERE id=?`
 	_, err := m.db.ExecContext(ctx, query, group.Name, group.Notice, group.ID)
 	if err != nil {
-		return fmt.Errorf("update group: %w", err)
+		return fmt.Errorf("更新群组: %w", err)
 	}
 	return nil
 }
@@ -399,7 +399,7 @@ func (m *MySQLRepoImpl) GetGroupByID(ctx context.Context, groupID int64) (*model
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get group by id: %w", err)
+		return nil, fmt.Errorf("按ID获取群组: %w", err)
 	}
 	return &g, nil
 }
@@ -414,7 +414,7 @@ func (m *MySQLRepoImpl) AddGroupMember(ctx context.Context, member *model.GroupM
 		member.MutedUntil,
 	)
 	if err != nil {
-		return fmt.Errorf("add group member: %w", err)
+		return fmt.Errorf("添加群成员: %w", err)
 	}
 	return nil
 }
@@ -423,7 +423,7 @@ func (m *MySQLRepoImpl) RemoveGroupMember(ctx context.Context, groupID, userID i
 	query := `DELETE FROM group_members WHERE group_id=? AND user_id=?`
 	_, err := m.db.ExecContext(ctx, query, groupID, userID)
 	if err != nil {
-		return fmt.Errorf("remove group member: %w", err)
+		return fmt.Errorf("移除群成员: %w", err)
 	}
 	return nil
 }
@@ -433,7 +433,7 @@ func (m *MySQLRepoImpl) GetGroupMembers(ctx context.Context, groupID int64) ([]m
 	          FROM group_members WHERE group_id = ?`
 	rows, err := m.db.QueryContext(ctx, query, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("get group members: %w", err)
+		return nil, fmt.Errorf("获取群成员: %w", err)
 	}
 	defer rows.Close()
 
@@ -442,12 +442,12 @@ func (m *MySQLRepoImpl) GetGroupMembers(ctx context.Context, groupID int64) ([]m
 		var gm model.GroupMember
 		err := rows.Scan(&gm.ID, &gm.GroupID, &gm.UserID, &gm.Role, &gm.MutedUntil, &gm.JoinedAt)
 		if err != nil {
-			return nil, fmt.Errorf("scan group member: %w", err)
+			return nil, fmt.Errorf("扫描群成员: %w", err)
 		}
 		members = append(members, gm)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate group members: %w", err)
+		return nil, fmt.Errorf("遍历群成员: %w", err)
 	}
 	return members, nil
 }
@@ -456,12 +456,12 @@ func (m *MySQLRepoImpl) UpdateGroupMemberRole(ctx context.Context, groupID, user
 	query := `UPDATE group_members SET role=? WHERE group_id=? AND user_id=?`
 	_, err := m.db.ExecContext(ctx, query, role, groupID, userID)
 	if err != nil {
-		return fmt.Errorf("update group member role: %w", err)
+		return fmt.Errorf("更新群成员角色: %w", err)
 	}
 	return nil
 }
 
-// ── Moments ──
+// ── 朋友圈 ──
 
 func (m *MySQLRepoImpl) CreateMoment(ctx context.Context, moment *model.Moment) error {
 	query := `INSERT INTO moments (author_id, content, media_urls, visibility, created_at)
@@ -474,11 +474,11 @@ func (m *MySQLRepoImpl) CreateMoment(ctx context.Context, moment *model.Moment) 
 		moment.CreatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("insert moment: %w", err)
+		return fmt.Errorf("插入朋友圈动态: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("insert moment lastInsertId: %w", err)
+		return fmt.Errorf("插入朋友圈动态 获取最后插入ID: %w", err)
 	}
 	moment.ID = id
 	return nil
@@ -494,7 +494,7 @@ func (m *MySQLRepoImpl) GetMomentByID(ctx context.Context, id int64) (*model.Mom
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get moment by id: %w", err)
+		return nil, fmt.Errorf("按ID获取朋友圈动态: %w", err)
 	}
 	return &moment, nil
 }
@@ -504,7 +504,7 @@ func (m *MySQLRepoImpl) GetMomentsByUser(ctx context.Context, userID int64, limi
 	          FROM moments WHERE author_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	rows, err := m.db.QueryContext(ctx, query, userID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("get moments by user: %w", err)
+		return nil, fmt.Errorf("按用户获取朋友圈动态: %w", err)
 	}
 	defer rows.Close()
 
@@ -512,12 +512,12 @@ func (m *MySQLRepoImpl) GetMomentsByUser(ctx context.Context, userID int64, limi
 	for rows.Next() {
 		var moment model.Moment
 		if err := rows.Scan(&moment.ID, &moment.AuthorID, &moment.Content, &moment.MediaUrls, &moment.Visibility, &moment.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan moment: %w", err)
+			return nil, fmt.Errorf("扫描朋友圈动态: %w", err)
 		}
 		moments = append(moments, moment)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows error: %w", err)
+		return nil, fmt.Errorf("遍历结果行错误: %w", err)
 	}
 	return moments, nil
 }
@@ -526,11 +526,11 @@ func (m *MySQLRepoImpl) CreateMomentLike(ctx context.Context, like *model.Moment
 	query := `INSERT INTO moment_likes (moment_id, user_id, created_at) VALUES (?, ?, ?)`
 	result, err := m.db.ExecContext(ctx, query, like.MomentID, like.UserID, like.CreatedAt)
 	if err != nil {
-		return fmt.Errorf("insert moment_like: %w", err)
+		return fmt.Errorf("插入朋友圈点赞: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("insert moment_like lastInsertId: %w", err)
+		return fmt.Errorf("插入朋友圈点赞 获取最后插入ID: %w", err)
 	}
 	like.ID = id
 	return nil
@@ -540,7 +540,7 @@ func (m *MySQLRepoImpl) DeleteMomentLike(ctx context.Context, momentID, userID i
 	query := `DELETE FROM moment_likes WHERE moment_id = ? AND user_id = ?`
 	_, err := m.db.ExecContext(ctx, query, momentID, userID)
 	if err != nil {
-		return fmt.Errorf("delete moment_like: %w", err)
+		return fmt.Errorf("删除朋友圈点赞: %w", err)
 	}
 	return nil
 }
@@ -549,7 +549,7 @@ func (m *MySQLRepoImpl) CreateMomentComment(ctx context.Context, comment *model.
 	query := `INSERT INTO moment_comments (id, moment_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)`
 	_, err := m.db.ExecContext(ctx, query, comment.ID, comment.MomentID, comment.UserID, comment.Content, comment.CreatedAt)
 	if err != nil {
-		return fmt.Errorf("insert moment_comment: %w", err)
+		return fmt.Errorf("插入朋友圈评论: %w", err)
 	}
 	return nil
 }
@@ -564,7 +564,7 @@ func (m *MySQLRepoImpl) GetMomentCommentByID(ctx context.Context, id int64) (*mo
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get moment_comment by id: %w", err)
+		return nil, fmt.Errorf("按ID获取朋友圈评论: %w", err)
 	}
 	return &comment, nil
 }
@@ -573,12 +573,12 @@ func (m *MySQLRepoImpl) DeleteMomentComment(ctx context.Context, id int64) error
 	query := `DELETE FROM moment_comments WHERE id = ?`
 	_, err := m.db.ExecContext(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("delete moment_comment: %w", err)
+		return fmt.Errorf("删除朋友圈评论: %w", err)
 	}
 	return nil
 }
 
-// ── AI (fleshed out in Task 16) ──
+// ── AI（在任务 16 中完善） ──
 
 func (m *MySQLRepoImpl) CreateAISummary(ctx context.Context, summary *model.AISummary) error {
 	query := `INSERT INTO ai_summaries (user_id, topic, key_points, conclusion, user_intent, message_range, created_at)
@@ -593,7 +593,7 @@ func (m *MySQLRepoImpl) CreateAISummary(ctx context.Context, summary *model.AISu
 		summary.CreatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("insert ai_summaries: %w", err)
+		return fmt.Errorf("插入 ai_summaries: %w", err)
 	}
 	return nil
 }
@@ -611,7 +611,7 @@ func (m *MySQLRepoImpl) CreateAIProfileItem(ctx context.Context, item *model.AIP
 		item.UpdatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("insert ai_user_profiles: %w", err)
+		return fmt.Errorf("插入 ai_user_profiles: %w", err)
 	}
 	return nil
 }
@@ -621,7 +621,7 @@ func (m *MySQLRepoImpl) GetAIProfileByUser(ctx context.Context, userID int64) ([
 	          FROM ai_user_profiles WHERE user_id = ? ORDER BY confidence DESC`
 	rows, err := m.db.QueryContext(ctx, query, userID)
 	if err != nil {
-		return nil, fmt.Errorf("query ai_user_profiles: %w", err)
+		return nil, fmt.Errorf("查询 ai_user_profiles: %w", err)
 	}
 	defer rows.Close()
 
@@ -629,17 +629,17 @@ func (m *MySQLRepoImpl) GetAIProfileByUser(ctx context.Context, userID int64) ([
 	for rows.Next() {
 		var item model.AIProfileItem
 		if err := rows.Scan(&item.ID, &item.UserID, &item.FieldName, &item.Value, &item.Confidence, &item.Source, &item.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan ai_user_profile: %w", err)
+			return nil, fmt.Errorf("扫描 ai_user_profile: %w", err)
 		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate ai_user_profiles: %w", err)
+		return nil, fmt.Errorf("遍历 ai_user_profiles: %w", err)
 	}
 	return items, nil
 }
 
-// ── User Settings (fleshed out in Task 17) ──
+// ── 用户设置（在任务 17 中完善） ──
 
 func (m *MySQLRepoImpl) GetUserSettings(ctx context.Context, userID int64) (*model.UserSettings, error) {
 	query := `SELECT id, user_id, notification_enabled, msg_preview_enabled, mute_list, created_at, updated_at
@@ -652,7 +652,7 @@ func (m *MySQLRepoImpl) GetUserSettings(ctx context.Context, userID int64) (*mod
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("get user_settings: %w", err)
+		return nil, fmt.Errorf("获取用户设置: %w", err)
 	}
 	if muteList.Valid {
 		s.MuteList = muteList.String
@@ -678,18 +678,18 @@ func (m *MySQLRepoImpl) CreateOrUpdateUserSettings(ctx context.Context, settings
 		muteList,
 	)
 	if err != nil {
-		return fmt.Errorf("create or update user_settings: %w", err)
+		return fmt.Errorf("创建或更新用户设置: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		// ON DUPLICATE KEY UPDATE: LastInsertId may not be meaningful, but ignore error
+		// ON DUPLICATE KEY UPDATE: LastInsertId 在存在更新时可能无意义，但忽略该错误
 		return nil
 	}
 	settings.ID = id
 	return nil
 }
 
-// ── Message Search (fleshed out in Task 17) ──
+// ── 消息搜索（在任务 17 中完善） ──
 
 func (m *MySQLRepoImpl) SearchPrivateMessages(ctx context.Context, userID int64, query string, limit, offset int) ([]model.PrivateMessage, error) {
 	sqlQuery := `SELECT id, sender_id, receiver_id, content, msg_type, created_at
@@ -699,7 +699,7 @@ func (m *MySQLRepoImpl) SearchPrivateMessages(ctx context.Context, userID int64,
 	likeQuery := "%" + query + "%"
 	rows, err := m.db.QueryContext(ctx, sqlQuery, userID, userID, likeQuery, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("search private_messages: %w", err)
+		return nil, fmt.Errorf("搜索私聊消息: %w", err)
 	}
 	defer rows.Close()
 
@@ -707,12 +707,12 @@ func (m *MySQLRepoImpl) SearchPrivateMessages(ctx context.Context, userID int64,
 	for rows.Next() {
 		var msg model.PrivateMessage
 		if err := rows.Scan(&msg.ID, &msg.SenderID, &msg.ReceiverID, &msg.Content, &msg.MsgType, &msg.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan private_message: %w", err)
+			return nil, fmt.Errorf("扫描私聊消息: %w", err)
 		}
 		results = append(results, msg)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate private_messages: %w", err)
+		return nil, fmt.Errorf("遍历私聊消息: %w", err)
 	}
 	return results, nil
 }

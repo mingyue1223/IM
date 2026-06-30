@@ -13,31 +13,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// setupTestRedis connects to a local Redis instance for integration tests.
-// Requires a Redis server running at localhost:6379 (e.g. via docker-compose).
+// setupTestRedis 连接到本地 Redis 实例用于集成测试。
+// 需要 Redis 服务器运行在 localhost:6379 (例如通过 docker-compose)。
 func setupTestRedis(t *testing.T) *goredis.Client {
 	rdb := goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})
 	err := rdb.Ping(context.Background()).Err()
 	if err != nil {
-		t.Skipf("Redis not available at localhost:6379: %v", err)
+		t.Skipf("Redis 在 localhost:6379 不可用: %v", err)
 	}
 	return rdb
 }
 
-// cleanupKeys deletes all keys created during a test to avoid cross-test interference.
+// cleanupKeys 删除测试期间创建的所有键，避免跨测试干扰。
 func cleanupKeys(t *testing.T, rdb *goredis.Client, ctx context.Context, keys ...string) {
 	for _, key := range keys {
 		rdb.Del(ctx, key)
 	}
 }
 
-// ========== Private Message Check ==========
+// ========== 私聊消息检查 ==========
 
 func TestPrivateMsgCheck(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// Setup: create bidirectional friendship, receiver online, no blacklist
+	// 准备：创建双向好友关系，接收者在线，无黑名单
 	rdb.Set(ctx, "friend:1:2", "1", 0)
 	rdb.Set(ctx, "friend:2:1", "1", 0)
 	rdb.Set(ctx, "online:2", "1", 0)
@@ -47,13 +47,13 @@ func TestPrivateMsgCheck(t *testing.T) {
 	result, err := ExecPrivateMsgCheck(rdb, ctx, 1, 2, "client-msg-001")
 	require.NoError(t, err)
 
-	assert.Equal(t, PMErrOK, result.ErrCode, "should succeed with valid friendship")
-	assert.Greater(t, result.MsgID, int64(0), "msgID should be allocated")
-	assert.True(t, result.IsOnline, "receiver should be online")
-	assert.True(t, result.IsFriend, "should be friends")
-	assert.False(t, result.IsBlocked, "should not be blocked")
+	assert.Equal(t, PMErrOK, result.ErrCode, "有效好友关系应成功")
+	assert.Greater(t, result.MsgID, int64(0), "msgID 应被分配")
+	assert.True(t, result.IsOnline, "接收者应在线")
+	assert.True(t, result.IsFriend, "应为好友")
+	assert.False(t, result.IsBlocked, "不应被拉黑")
 
-	// Cleanup dedup key
+	// 清理去重键
 	rdb.Del(ctx, "msg_dedup:1:client-msg-001")
 }
 
@@ -61,22 +61,22 @@ func TestPrivateMsgCheckNotFriend(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// No friendship keys set up
+	// 未创建好友关系键
 
 	defer cleanupKeys(t, rdb, ctx, "msg_id_global")
 
 	result, err := ExecPrivateMsgCheck(rdb, ctx, 1, 2, "client-msg-002")
 	require.NoError(t, err)
 
-	assert.Equal(t, PMErrNotFriend, result.ErrCode, "should fail with not_friend")
-	assert.Equal(t, int64(0), result.MsgID, "msgID should be 0 on failure")
+	assert.Equal(t, PMErrNotFriend, result.ErrCode, "非好友应返回 not_friend 错误")
+	assert.Equal(t, int64(0), result.MsgID, "失败时 msgID 应为 0")
 }
 
 func TestPrivateMsgCheckBlocked(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// Setup: friendship exists but receiver has sender in blacklist
+	// 准备：好友关系存在，但接收者将发送者加入黑名单
 	rdb.Set(ctx, "friend:1:2", "1", 0)
 	rdb.Set(ctx, "friend:2:1", "1", 0)
 	rdb.SAdd(ctx, "blacklist:2", "1")
@@ -86,18 +86,18 @@ func TestPrivateMsgCheckBlocked(t *testing.T) {
 	result, err := ExecPrivateMsgCheck(rdb, ctx, 1, 2, "client-msg-003")
 	require.NoError(t, err)
 
-	assert.Equal(t, PMErrBlocked, result.ErrCode, "should fail with blocked")
-	assert.True(t, result.IsBlocked, "should be blocked")
+	assert.Equal(t, PMErrBlocked, result.ErrCode, "被拉黑应返回 blocked 错误")
+	assert.True(t, result.IsBlocked, "应被拉黑")
 }
 
 func TestPrivateMsgCheckDuplicate(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// Setup: friendship + no blacklist
+	// 准备：好友关系存在，无黑名单
 	rdb.Set(ctx, "friend:1:2", "1", 0)
 	rdb.Set(ctx, "friend:2:1", "1", 0)
-	// Simulate a previous message with the same clientMsgID (dedup key exists)
+	// 模拟之前已有一条相同 clientMsgID 的消息（去重键已存在）
 	rdb.Set(ctx, "msg_dedup:1:client-msg-dup", "1", 0)
 
 	defer cleanupKeys(t, rdb, ctx, "friend:1:2", "friend:2:1", "msg_dedup:1:client-msg-dup", "msg_id_global")
@@ -105,39 +105,39 @@ func TestPrivateMsgCheckDuplicate(t *testing.T) {
 	result, err := ExecPrivateMsgCheck(rdb, ctx, 1, 2, "client-msg-dup")
 	require.NoError(t, err)
 
-	assert.Equal(t, PMErrDuplicate, result.ErrCode, "should fail with duplicate")
+	assert.Equal(t, PMErrDuplicate, result.ErrCode, "重复消息应返回 duplicate 错误")
 }
 
 func TestPrivateMsgCheckOffline(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// Setup: friendship exists, receiver offline
+	// 准备：好友关系存在，接收者离线
 	rdb.Set(ctx, "friend:1:2", "1", 0)
 	rdb.Set(ctx, "friend:2:1", "1", 0)
-	// No online:2 key → receiver offline
+	// 无 online:2 键 → 接收者离线
 
 	defer cleanupKeys(t, rdb, ctx, "friend:1:2", "friend:2:1", "msg_id_global")
 
 	result, err := ExecPrivateMsgCheck(rdb, ctx, 1, 2, "client-msg-offline")
 	require.NoError(t, err)
 
-	assert.Equal(t, PMErrOK, result.ErrCode, "should succeed")
-	assert.False(t, result.IsOnline, "receiver should be offline")
+	assert.Equal(t, PMErrOK, result.ErrCode, "应成功")
+	assert.False(t, result.IsOnline, "接收者应离线")
 
-	// Cleanup dedup key
+	// 清理去重键
 	rdb.Del(ctx, "msg_dedup:1:client-msg-offline")
 }
 
-// ========== Group Message Check ==========
+// ========== 群聊消息检查 ==========
 
 func TestGroupMsgCheck(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// Setup: sender is a group member, not muted
+	// 准备：发送者是群成员，未被禁言
 	rdb.SAdd(ctx, "group_members:5", "1")
-	// memberInfo with muted=false
+	// memberInfo 中 muted=false
 	memberInfo, _ := json.Marshal(map[string]interface{}{"role": "member", "muted": false})
 	rdb.HSet(ctx, "group_member_info:5", "1", memberInfo)
 
@@ -146,13 +146,13 @@ func TestGroupMsgCheck(t *testing.T) {
 	result, err := ExecGroupMsgCheck(rdb, ctx, 5, 1, "client-grp-001")
 	require.NoError(t, err)
 
-	assert.Equal(t, GMErrOK, result.ErrCode, "should succeed")
-	assert.Greater(t, result.MsgID, int64(0), "msgID should be allocated")
-	assert.Greater(t, result.GroupSeq, int64(0), "groupSeq should be allocated")
-	assert.True(t, result.IsMember, "should be a member")
-	assert.False(t, result.IsMuted, "should not be muted")
+	assert.Equal(t, GMErrOK, result.ErrCode, "应成功")
+	assert.Greater(t, result.MsgID, int64(0), "msgID 应被分配")
+	assert.Greater(t, result.GroupSeq, int64(0), "groupSeq 应被分配")
+	assert.True(t, result.IsMember, "应为群成员")
+	assert.False(t, result.IsMuted, "不应被禁言")
 
-	// Cleanup dedup key
+	// 清理去重键
 	rdb.Del(ctx, "msg_dedup:1:client-grp-001")
 }
 
@@ -160,21 +160,21 @@ func TestGroupMsgCheckNotMember(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// Sender not in group_members
+	// 发送者不在 group_members 中
 	defer cleanupKeys(t, rdb, ctx, "msg_id_global")
 
 	result, err := ExecGroupMsgCheck(rdb, ctx, 5, 99, "client-grp-notmember")
 	require.NoError(t, err)
 
-	assert.Equal(t, GMErrNotMember, result.ErrCode, "should fail with not_member")
-	assert.Equal(t, int64(0), result.MsgID, "msgID should be 0 on failure")
+	assert.Equal(t, GMErrNotMember, result.ErrCode, "非群成员应返回 not_member 错误")
+	assert.Equal(t, int64(0), result.MsgID, "失败时 msgID 应为 0")
 }
 
 func TestGroupMsgCheckMuted(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// Setup: sender is a member but muted
+	// 准备：发送者是成员但被禁言
 	rdb.SAdd(ctx, "group_members:5", "1")
 	memberInfo, _ := json.Marshal(map[string]interface{}{"role": "member", "muted": true})
 	rdb.HSet(ctx, "group_member_info:5", "1", memberInfo)
@@ -184,31 +184,31 @@ func TestGroupMsgCheckMuted(t *testing.T) {
 	result, err := ExecGroupMsgCheck(rdb, ctx, 5, 1, "client-grp-muted")
 	require.NoError(t, err)
 
-	assert.Equal(t, GMErrMuted, result.ErrCode, "should fail with muted")
-	assert.True(t, result.IsMuted, "should be muted")
+	assert.Equal(t, GMErrMuted, result.ErrCode, "被禁言应返回 muted 错误")
+	assert.True(t, result.IsMuted, "应被禁言")
 }
 
 func TestGroupMsgCheckMutedNoInfo(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	// Setup: sender is a member, no memberInfo hash entry (not muted)
+	// 准备：发送者是成员，无 memberInfo 哈希条目（未禁言）
 	rdb.SAdd(ctx, "group_members:5", "1")
-	// No group_member_info entry → not muted
+	// 无 group_member_info 条目 → 未禁言
 
 	defer cleanupKeys(t, rdb, ctx, "group_members:5", "group_seq:5", "msg_id_global")
 
 	result, err := ExecGroupMsgCheck(rdb, ctx, 5, 1, "client-grp-noinfo")
 	require.NoError(t, err)
 
-	assert.Equal(t, GMErrOK, result.ErrCode, "should succeed when no mute info")
-	assert.False(t, result.IsMuted, "should not be muted when no info")
+	assert.Equal(t, GMErrOK, result.ErrCode, "无禁言信息时应成功")
+	assert.False(t, result.IsMuted, "无信息时不应被禁言")
 
-	// Cleanup dedup key
+	// 清理去重键
 	rdb.Del(ctx, "msg_dedup:1:client-grp-noinfo")
 }
 
-// ========== Inbox Mark Read ==========
+// ========== 收件箱标记已读 ==========
 
 func TestInboxMarkRead(t *testing.T) {
 	rdb := setupTestRedis(t)
@@ -219,7 +219,7 @@ func TestInboxMarkRead(t *testing.T) {
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
 	unreadKey := fmt.Sprintf("unread:%d", userID)
 
-	// Setup: add 3 messages to inbox, 2 unread (readStatus=0) for target conv, 1 read
+	// 准备：向收件箱添加 3 条消息，2 条未读 (readStatus=0) 属于目标会话，1 条已读
 	ts := time.Now().UnixMilli()
 	msg1 := map[string]interface{}{
 		"msgId":      1,
@@ -229,7 +229,7 @@ func TestInboxMarkRead(t *testing.T) {
 		"toId":       100,
 		"msgType":    1,
 		"content":    "hello",
-		"readStatus": 0, // unread
+		"readStatus": 0, // 未读
 		"timestamp":  ts,
 	}
 	msg2 := map[string]interface{}{
@@ -240,18 +240,18 @@ func TestInboxMarkRead(t *testing.T) {
 		"toId":       100,
 		"msgType":    1,
 		"content":    "world",
-		"readStatus": 0, // unread
+		"readStatus": 0, // 未读
 		"timestamp":  ts + 1,
 	}
 	msg3 := map[string]interface{}{
 		"msgId":      3,
-		"convId":     "p_100_300", // different conversation
+		"convId":     "p_100_300", // 不同会话
 		"convType":   1,
 		"fromId":     300,
 		"toId":       100,
 		"msgType":    1,
 		"content":    "other conv",
-		"readStatus": 0, // unread but different convID — should NOT be marked
+		"readStatus": 0, // 未读但属于不同 convID — 不应被标记
 		"timestamp":  ts + 2,
 	}
 
@@ -262,21 +262,21 @@ func TestInboxMarkRead(t *testing.T) {
 	rdb.ZAdd(ctx, inboxKey, goredis.Z{Score: float64(ts), Member: string(msg1JSON)})
 	rdb.ZAdd(ctx, inboxKey, goredis.Z{Score: float64(ts + 1), Member: string(msg2JSON)})
 	rdb.ZAdd(ctx, inboxKey, goredis.Z{Score: float64(ts + 2), Member: string(msg3JSON)})
-	rdb.HSet(ctx, unreadKey, convID, 2) // 2 unread for p_100_200
+	rdb.HSet(ctx, unreadKey, convID, 2) // p_100_200 有 2 条未读
 
 	defer cleanupKeys(t, rdb, ctx, inboxKey, unreadKey)
 
 	count, err := ExecInboxMarkRead(rdb, ctx, userID, convID)
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(2), count, "should mark 2 messages as read")
+	assert.Equal(t, int64(2), count, "应将 2 条消息标记为已读")
 
-	// Verify unread counter reset
+	// 验证未读计数器已重置
 	unreadVal, _ := rdb.HGet(ctx, unreadKey, convID).Int64()
-	assert.Equal(t, int64(0), unreadVal, "unread counter should be 0")
+	assert.Equal(t, int64(0), unreadVal, "未读计数器应为 0")
 
-	// Verify the different-conv message is still unread
-	// (We can check by scanning the inbox for messages with readStatus=0 in p_100_300)
+	// 验证不同会话的消息仍为未读
+	// （可以通过扫描收件箱中 p_100_300 里 readStatus=0 的消息来检查）
 	remaining, _ := rdb.ZRange(ctx, inboxKey, 0, -1).Result()
 	foundUnreadOther := false
 	for _, m := range remaining {
@@ -289,7 +289,7 @@ func TestInboxMarkRead(t *testing.T) {
 			}
 		}
 	}
-	assert.True(t, foundUnreadOther, "other conversation messages should remain unread")
+	assert.True(t, foundUnreadOther, "其他会话的消息应保持未读")
 }
 
 func TestInboxMarkReadNoUnread(t *testing.T) {
@@ -300,7 +300,7 @@ func TestInboxMarkReadNoUnread(t *testing.T) {
 	convID := "p_100_200"
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
 
-	// Setup: add a message that is already read
+	// 准备：添加一条已读消息
 	ts := time.Now().UnixMilli()
 	msg := map[string]interface{}{
 		"msgId":      1,
@@ -310,7 +310,7 @@ func TestInboxMarkReadNoUnread(t *testing.T) {
 		"toId":       100,
 		"msgType":    1,
 		"content":    "already read",
-		"readStatus": 1, // already read
+		"readStatus": 1, // 已读
 		"timestamp":  ts,
 	}
 	msgJSON, _ := json.Marshal(msg)
@@ -321,22 +321,22 @@ func TestInboxMarkReadNoUnread(t *testing.T) {
 	count, err := ExecInboxMarkRead(rdb, ctx, userID, convID)
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(0), count, "should mark 0 messages when all are already read")
+	assert.Equal(t, int64(0), count, "所有消息已读时应标记 0 条")
 }
 
-// ========== Revoke Message ==========
+// ========== 撤回消息 ==========
 
 func TestRevokeMsgPrivate(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	userID := int64(200) // receiver
+	userID := int64(200) // 接收者
 	convID := "p_100_200"
 	msgID := int64(12345)
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
 
-	// Setup: add a message to inbox that was sent recently
-	ts := time.Now().UnixMilli() - 30000 // 30 seconds ago (within 2-min window)
+	// 准备：向收件箱添加一条最近发送的消息
+	ts := time.Now().UnixMilli() - 30000 // 30 秒前（在 2 分钟窗口内）
 	msg := map[string]interface{}{
 		"msgId":      msgID,
 		"convId":     convID,
@@ -351,15 +351,15 @@ func TestRevokeMsgPrivate(t *testing.T) {
 	msgJSON, _ := json.Marshal(msg)
 	rdb.ZAdd(ctx, inboxKey, goredis.Z{Score: float64(ts), Member: string(msgJSON)})
 
-	// Revoke message JSON (msgType=6)
+	// 撤回消息 JSON (msgType=6)
 	revokeMsg := map[string]interface{}{
 		"msgId":      msgID,
 		"convId":     convID,
 		"convType":   1,
 		"fromId":     100,
 		"toId":       200,
-		"msgType":    6, // revoked type
-		"content":    "message revoked",
+		"msgType":    6, // 撤回类型
+		"content":    "消息已撤回",
 		"readStatus": 0,
 		"timestamp":  ts,
 	}
@@ -370,15 +370,15 @@ func TestRevokeMsgPrivate(t *testing.T) {
 	ok, err := ExecRevokeMsg(rdb, ctx, userID, convID, msgID, string(revokeJSON), time.Now().UnixMilli())
 	require.NoError(t, err)
 
-	assert.True(t, ok, "revoke should succeed within 2 minutes")
+	assert.True(t, ok, "2 分钟内撤回应成功")
 
-	// Verify the revoked message is in the inbox
+	// 验证撤回后的消息在收件箱中
 	remaining, _ := rdb.ZRange(ctx, inboxKey, 0, -1).Result()
-	assert.Equal(t, 1, len(remaining), "inbox should contain exactly 1 message")
+	assert.Equal(t, 1, len(remaining), "收件箱应恰好包含 1 条消息")
 	var parsed map[string]interface{}
 	json.Unmarshal([]byte(remaining[0]), &parsed)
 	mt, _ := strconv.Atoi(fmt.Sprintf("%v", parsed["msgType"]))
-	assert.Equal(t, 6, mt, "message type should be revoked (6)")
+	assert.Equal(t, 6, mt, "消息类型应为撤回 (6)")
 }
 
 func TestRevokeMsgTooLate(t *testing.T) {
@@ -390,8 +390,8 @@ func TestRevokeMsgTooLate(t *testing.T) {
 	msgID := int64(12346)
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
 
-	// Setup: add a message that was sent more than 2 minutes ago
-	ts := time.Now().UnixMilli() - 180000 // 3 minutes ago
+	// 准备：添加一条发送时间超过 2 分钟的消息
+	ts := time.Now().UnixMilli() - 180000 // 3 分钟前
 	msg := map[string]interface{}{
 		"msgId":      msgID,
 		"convId":     convID,
@@ -411,7 +411,7 @@ func TestRevokeMsgTooLate(t *testing.T) {
 	ok, err := ExecRevokeMsg(rdb, ctx, userID, convID, msgID, "\"revoked\"", time.Now().UnixMilli())
 	require.NoError(t, err)
 
-	assert.False(t, ok, "revoke should fail when message is older than 2 minutes")
+	assert.False(t, ok, "消息超过 2 分钟时撤回应失败")
 }
 
 func TestRevokeMsgNotFound(t *testing.T) {
@@ -420,17 +420,17 @@ func TestRevokeMsgNotFound(t *testing.T) {
 
 	userID := int64(200)
 	convID := "p_100_200"
-	msgID := int64(99999) // non-existent message
+	msgID := int64(99999) // 不存在的消息
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
 
-	// Inbox is empty
+	// 收件箱为空
 
 	defer cleanupKeys(t, rdb, ctx, inboxKey)
 
 	ok, err := ExecRevokeMsg(rdb, ctx, userID, convID, msgID, "\"revoked\"", time.Now().UnixMilli())
 	require.NoError(t, err)
 
-	assert.False(t, ok, "revoke should fail when message not found")
+	assert.False(t, ok, "消息不存在时撤回应失败")
 }
 
 func TestRevokeMsgGroup(t *testing.T) {
@@ -442,8 +442,8 @@ func TestRevokeMsgGroup(t *testing.T) {
 	msgID := int64(12347)
 	outboxKey := fmt.Sprintf("outbox:%s", groupID)
 
-	// For group revoke, userID is used only as a parameter but the ZSet key is outbox:{groupID}
-	ts := time.Now().UnixMilli() - 10000 // 10 seconds ago
+	// 对于群聊撤回，userID 仅作为参数，但 ZSet 键为 outbox:{groupID}
+	ts := time.Now().UnixMilli() - 10000 // 10 秒前
 	msg := map[string]interface{}{
 		"msgId":      msgID,
 		"groupId":    5,
@@ -465,7 +465,7 @@ func TestRevokeMsgGroup(t *testing.T) {
 		"convType":   2,
 		"fromId":     100,
 		"msgType":    6,
-		"content":    "message revoked",
+		"content":    "消息已撤回",
 		"timestamp":  ts,
 		"groupSeq":   42,
 	}
@@ -473,17 +473,17 @@ func TestRevokeMsgGroup(t *testing.T) {
 
 	defer cleanupKeys(t, rdb, ctx, outboxKey)
 
-	// userID=0 for group revoke (doesn't affect key resolution, convID determines the ZSet)
+	// userID=0 用于群聊撤回（不影响键解析，convID 决定 ZSet）
 	ok, err := ExecRevokeMsg(rdb, ctx, 0, convID, msgID, string(revokeJSON), time.Now().UnixMilli())
 	require.NoError(t, err)
 
-	assert.True(t, ok, "group message revoke should succeed within 2 minutes")
+	assert.True(t, ok, "群聊消息在 2 分钟内撤回应成功")
 
-	// Verify the revoked message is in the outbox
+	// 验证撤回后的消息在发件箱中
 	remaining, _ := rdb.ZRange(ctx, outboxKey, 0, -1).Result()
-	assert.Equal(t, 1, len(remaining), "outbox should contain exactly 1 message")
+	assert.Equal(t, 1, len(remaining), "发件箱应恰好包含 1 条消息")
 	var parsed map[string]interface{}
 	json.Unmarshal([]byte(remaining[0]), &parsed)
 	mt, _ := strconv.Atoi(fmt.Sprintf("%v", parsed["msgType"]))
-	assert.Equal(t, 6, mt, "message type should be revoked (6)")
+	assert.Equal(t, 6, mt, "消息类型应为撤回 (6)")
 }

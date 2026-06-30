@@ -9,17 +9,17 @@ import (
 	"github.com/goim/goim/internal/service"
 )
 
-// MsgOpHandler provides Gin HTTP handlers for message operation endpoints.
+// MsgOpHandler 为消息操作端点提供 Gin HTTP 处理器。
 type MsgOpHandler struct {
 	msgOpSvc *service.MsgOpService
 }
 
-// NewMsgOpHandler creates a MsgOpHandler wrapping the given MsgOpService.
+// NewMsgOpHandler 创建一个 MsgOpHandler，封装给定的 MsgOpService。
 func NewMsgOpHandler(msgOpSvc *service.MsgOpService) *MsgOpHandler {
 	return &MsgOpHandler{msgOpSvc: msgOpSvc}
 }
 
-// ── Request / response DTOs ──
+// ── 请求 / 响应 DTO ──
 
 type revokeMsgReq struct {
 	ConvID string `json:"convId" binding:"required"`
@@ -32,7 +32,7 @@ type searchMsgReq struct {
 	Offset int    `form:"offset,default=0"`
 }
 
-// ── Handlers ──
+// ── 处理器 ──
 
 // RevokeMessage handles POST /msg/revoke.
 func (h *MsgOpHandler) RevokeMessage(c *gin.Context) {

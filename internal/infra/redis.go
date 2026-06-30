@@ -5,7 +5,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// NewRedisClient creates a configured Redis client.
+// NewRedisClient 创建一个已配置的 Redis 客户端。
 func NewRedisClient(cfg *config.RedisConfig) (*redis.Client, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     cfg.Addr,

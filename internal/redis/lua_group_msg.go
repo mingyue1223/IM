@@ -7,7 +7,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-// Error codes returned by group_msg_check.lua
+// group_msg_check.lua 返回的错误码
 const (
 	GMErrOK        = 0
 	GMErrNotMember = 1
@@ -15,16 +15,15 @@ const (
 	GMErrDuplicate = 3
 )
 
-// Client-facing error codes mapped from group Lua error codes.
+// 从群聊 Lua 错误码映射的客户端错误码。
 const (
 	CodeGMNotMember  = 5001
 	CodeGMMuted      = 5002
 	CodeGMDuplicate  = 5003
 )
 
-// MapGroupLuaErrToClientCode translates a group-message Lua error code to a
-// client-facing error code. Returns 0 for OK and the original code for
-// unrecognized Lua codes.
+// MapGroupLuaErrToClientCode 将群聊消息 Lua 错误码转换为客户端错误码。
+// 成功时返回 0，无法识别的 Lua 错误码则返回原始值。
 func MapGroupLuaErrToClientCode(luaErrCode int) int {
 	switch luaErrCode {
 	case GMErrNotMember:
@@ -38,13 +37,13 @@ func MapGroupLuaErrToClientCode(luaErrCode int) int {
 	}
 }
 
-// GroupMsgCheckResult holds the result of the group message check Lua script.
+// GroupMsgCheckResult 保存群聊消息检查 Lua 脚本的结果。
 type GroupMsgCheckResult struct {
-	ErrCode  int   // 0=ok, 1=not_member, 2=muted, 3=duplicate
-	MsgID    int64 // allocated global message ID (0 if error)
-	GroupSeq int64 // allocated group sequence number (0 if error)
-	IsMember bool  // membership status
-	IsMuted  bool  // mute status
+	ErrCode  int   // 0=正常, 1=非成员, 2=已禁言, 3=重复消息
+	MsgID    int64 // 分配的全局消息 ID（出错时为 0）
+	GroupSeq int64 // 分配的群聊序列号（出错时为 0）
+	IsMember bool  // 成员状态
+	IsMuted  bool  // 禁言状态
 }
 
 const luaGroupMsgCheck = `
@@ -52,7 +51,7 @@ local groupID = KEYS[1]
 local senderID = KEYS[2]
 local clientMsgID = KEYS[3]
 
--- 1. Membership check
+-- 1. 成员身份检查
 local isMember = redis.call('SISMEMBER', 'group_members:' .. groupID, senderID)
 if isMember == 0 then
     return {1, 0, 0, 0, 0}

@@ -14,17 +14,17 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Mock MySQLRepo for settings tests
+// Mock MySQLRepo，用于 settings 测试
 // ──────────────────────────────────────────────────────
 
 type mockSettingsRepo struct {
 	mu sync.Mutex
 
-	// Stored user settings keyed by userID
+	// 存储的用户设置，以 userID 为键
 	settings map[int64]*model.UserSettings
-	// Next auto-increment ID
+	// 下一个自增 ID
 	nextID int64
-	// Error overrides
+	// 错误覆盖
 	getSettingsErr       error
 	createOrUpdateErr    error
 }
@@ -36,7 +36,7 @@ func newMockSettingsRepo() *mockSettingsRepo {
 	}
 }
 
-// ── Settings-specific methods ──
+// ── Settings 相关方法 ──
 
 func (m *mockSettingsRepo) GetUserSettings(_ context.Context, userID int64) (*model.UserSettings, error) {
 	m.mu.Lock()

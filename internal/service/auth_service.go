@@ -12,18 +12,18 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── Validation / business-error constants ──
+// ── 验证 / 业务错误常量 ──
 
 const (
-	ErrUsernameTooShort = "username must be 3-50 characters"
-	ErrPasswordTooShort = "password must be at least 6 characters"
-	ErrUsernameTaken    = "username is already taken"
-	ErrUserNotFound     = "user not found"
-	ErrWrongPassword    = "wrong password"
-	ErrInvalidToken     = "invalid or expired refresh token"
+	ErrUsernameTooShort = "用户名必须为3-50个字符"
+	ErrPasswordTooShort = "密码必须至少为6个字符"
+	ErrUsernameTaken    = "用户名已被占用"
+	ErrUserNotFound     = "用户未找到"
+	ErrWrongPassword    = "密码错误"
+	ErrInvalidToken     = "刷新令牌无效或已过期"
 )
 
-// AuthService handles user registration, login, and token refresh.
+// AuthService 处理用户注册、登录和令牌刷新。
 type AuthService struct {
 	repo            repository.MySQLRepo
 	jwtSecret       string
@@ -32,7 +32,7 @@ type AuthService struct {
 	refreshExpDays  int
 }
 
-// NewAuthService creates an AuthService with the given MySQL repo and JWT config.
+// NewAuthService 使用给定的 MySQL 仓库和 JWT 配置创建 AuthService。
 func NewAuthService(repo repository.MySQLRepo, jwtSecret string, accessExpHours, refreshExpDays int) *AuthService {
 	return &AuthService{
 		repo:            repo,
@@ -43,106 +43,106 @@ func NewAuthService(repo repository.MySQLRepo, jwtSecret string, accessExpHours,
 	}
 }
 
-// Register validates input, hashes the password, and creates a new user.
-// Returns the new user's ID and username on success.
+// Register 验证输入，对密码进行哈希处理，并创建新用户。
+// 成功时返回新用户的 ID 和用户名。
 func (s *AuthService) Register(ctx context.Context, username, password string) (int64, string, error) {
-	// Validate username length
+	// 验证用户名长度
 	if len(username) < 3 || len(username) > 50 {
 		return 0, "", fmt.Errorf(ErrUsernameTooShort)
 	}
-	// Validate password length
+	// 验证密码长度
 	if len(password) < 6 {
 		return 0, "", fmt.Errorf(ErrPasswordTooShort)
 	}
 
-	// Check username uniqueness
+	// 检查用户名唯一性
 	existing, err := s.repo.GetUserByUsername(ctx, username)
 	if err != nil {
-		return 0, "", fmt.Errorf("check username: %w", err)
+		return 0, "", fmt.Errorf("检查用户名: %w", err)
 	}
 	if existing != nil {
 		return 0, "", fmt.Errorf(ErrUsernameTaken)
 	}
 
-	// Hash password
+	// 哈希密码
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), s.bcryptCost)
 	if err != nil {
-		return 0, "", fmt.Errorf("hash password: %w", err)
+		return 0, "", fmt.Errorf("哈希密码: %w", err)
 	}
 
-	// Create user row
+	// 创建用户记录
 	user := &model.User{
 		Username:     username,
 		PasswordHash: string(hash),
-		Nickname:     username, // default nickname = username
+		Nickname:     username, // 默认昵称 = 用户名
 	}
 	if err := s.repo.CreateUser(ctx, user); err != nil {
-		return 0, "", fmt.Errorf("create user: %w", err)
+		return 0, "", fmt.Errorf("创建用户: %w", err)
 	}
 
 	return user.ID, user.Username, nil
 }
 
-// Login validates credentials and returns JWT tokens.
-// Returns accessToken, refreshToken, expiresIn (seconds), error.
+// Login 验证凭据并返回 JWT 令牌。
+// 返回 accessToken、refreshToken、expiresIn（秒）、error。
 func (s *AuthService) Login(ctx context.Context, username, password string) (string, string, int64, error) {
 	user, err := s.repo.GetUserByUsername(ctx, username)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("lookup user: %w", err)
+		return "", "", 0, fmt.Errorf("查找用户: %w", err)
 	}
 	if user == nil {
 		return "", "", 0, fmt.Errorf(ErrUserNotFound)
 	}
 
-	// Verify password
+	// 验证密码
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return "", "", 0, fmt.Errorf(ErrWrongPassword)
 	}
 
-	// Generate access token
+	// 生成访问令牌
 	accessToken, err := middleware.GenerateAccessToken(user.ID, user.Username, s.jwtSecret, s.accessExpHours)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("generate access token: %w", err)
+		return "", "", 0, fmt.Errorf("生成访问令牌: %w", err)
 	}
 
-	// Generate refresh token
+	// 生成刷新令牌
 	refreshToken, err := middleware.GenerateRefreshToken(user.ID, s.jwtSecret, s.refreshExpDays)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("generate refresh token: %w", err)
+		return "", "", 0, fmt.Errorf("生成刷新令牌: %w", err)
 	}
 
 	expiresIn := int64(s.accessExpHours * 3600)
 	return accessToken, refreshToken, expiresIn, nil
 }
 
-// Refresh validates a refresh token and issues a new access token.
-// Returns accessToken, expiresIn (seconds), error.
+// Refresh 验证刷新令牌并颁发新的访问令牌。
+// 返回 accessToken、expiresIn（秒）、error。
 func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string, int64, error) {
 	_, claims, err := middleware.ParseToken(refreshToken, s.jwtSecret)
 	if err != nil {
 		return "", 0, fmt.Errorf(ErrInvalidToken)
 	}
 
-	// Verify user still exists
+	// 验证用户是否仍然存在
 	user, err := s.repo.GetUserByID(ctx, claims.UserID)
 	if err != nil {
-		return "", 0, fmt.Errorf("lookup user: %w", err)
+		return "", 0, fmt.Errorf("查找用户: %w", err)
 	}
 	if user == nil {
 		return "", 0, fmt.Errorf(ErrUserNotFound)
 	}
 
-	// Generate new access token
+	// 生成新的访问令牌
 	accessToken, err := middleware.GenerateAccessToken(user.ID, user.Username, s.jwtSecret, s.accessExpHours)
 	if err != nil {
-		return "", 0, fmt.Errorf("generate access token: %w", err)
+		return "", 0, fmt.Errorf("生成访问令牌: %w", err)
 	}
 
 	expiresIn := int64(s.accessExpHours * 3600)
 	return accessToken, expiresIn, nil
 }
 
-// TokenExpiry returns the configured access-token expiry duration.
+// TokenExpiry 返回配置的访问令牌过期时长。
 func (s *AuthService) TokenExpiry() time.Duration {
 	return time.Duration(s.accessExpHours) * time.Hour
 }

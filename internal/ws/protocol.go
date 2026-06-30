@@ -1,15 +1,14 @@
 package ws
 
-// Protocol types and encoding/decoding functions have been moved to
-// internal/protocol to break the import cycle between ws and service.
-// This file re-exports them for backward compatibility within the ws package.
+// 协议类型和编解码函数已移至 internal/protocol 以打破 ws 和 service 之间的导入循环。
+// 本文件在 ws 包内重新导出它们以保持向后兼容。
 
 import (
 	"github.com/goim/goim/internal/model"
 	"github.com/goim/goim/internal/protocol"
 )
 
-// Re-export Type constants for backward compatibility within ws package.
+// 在 ws 包内重新导出 Type 常量以保持向后兼容。
 const (
 	TypeMsg            = protocol.TypeMsg
 	TypeServerAck      = protocol.TypeServerAck
@@ -30,12 +29,12 @@ const (
 	TypePong           = protocol.TypePong
 )
 
-// EncodeMsg delegates to protocol.EncodeMsg.
+// EncodeMsg 委托给 protocol.EncodeMsg。
 func EncodeMsg(msgType string, data interface{}) ([]byte, error) {
 	return protocol.EncodeMsg(msgType, data)
 }
 
-// DecodeMsg delegates to protocol.DecodeMsg.
+// DecodeMsg 委托给 protocol.DecodeMsg。
 func DecodeMsg(raw []byte) (*model.WsMessage, error) {
 	return protocol.DecodeMsg(raw)
 }

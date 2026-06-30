@@ -8,12 +8,12 @@ import (
 	"github.com/goim/goim/internal/service"
 )
 
-// AuthHandler provides Gin HTTP handlers for auth endpoints.
+// AuthHandler 提供认证端点的 Gin HTTP 处理器。
 type AuthHandler struct {
 	authSvc *service.AuthService
 }
 
-// NewAuthHandler creates an AuthHandler wrapping the given AuthService.
+// NewAuthHandler 创建一个 AuthHandler，封装给定的 AuthService。
 func NewAuthHandler(authSvc *service.AuthService) *AuthHandler {
 	return &AuthHandler{authSvc: authSvc}
 }

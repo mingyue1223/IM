@@ -9,16 +9,16 @@ import (
 func TestConnectionManager_RegisterGetDelete(t *testing.T) {
 	cm := NewConnectionManager()
 
-	// Register
+	// 注册
 	client := &ClientConnection{UserID: 1}
 	cm.Register(1, client)
 
-	// Get
+	// 获取
 	got, ok := cm.Get(1)
 	assert.True(t, ok)
 	assert.Equal(t, client, got)
 
-	// Delete
+	// 删除
 	cm.Delete(1)
 	_, ok = cm.Get(1)
 	assert.False(t, ok)
@@ -33,24 +33,24 @@ func TestConnectionManager_KickOld(t *testing.T) {
 	newClient := &ClientConnection{UserID: 1, SendCh: make(chan []byte, 256), CloseCh: make(chan struct{})}
 	cm.KickOld(1, newClient)
 
-	// Old connection should receive kick message
+	// 旧连接应该收到踢出消息
 	select {
 	case msg := <-oldClient.SendCh:
 		assert.Contains(t, string(msg), "kick")
 		assert.Contains(t, string(msg), "new_login")
 	default:
-		t.Fatal("old client should receive kick message")
+		t.Fatal("旧客户端应收到踢出消息")
 	}
 
-	// Old connection's CloseCh should be closed
+	// 旧连接的 CloseCh 应该被关闭
 	select {
 	case <-oldClient.CloseCh:
-		// expected: CloseCh was closed
+		// 符合预期：CloseCh 已关闭
 	default:
-		t.Fatal("old client's CloseCh should be closed")
+		t.Fatal("旧客户端的 CloseCh 应该被关闭")
 	}
 
-	// New connection should be registered
+	// 新连接应该已被注册
 	got, ok := cm.Get(1)
 	assert.True(t, ok)
 	assert.Equal(t, newClient, got)
@@ -59,7 +59,7 @@ func TestConnectionManager_KickOld(t *testing.T) {
 func TestConnectionManager_KickOld_NoExisting(t *testing.T) {
 	cm := NewConnectionManager()
 
-	// No existing connection — KickOld should just register the new one
+	// 没有已存在的连接 — KickOld 应直接注册新连接
 	newClient := &ClientConnection{UserID: 1, SendCh: make(chan []byte, 256), CloseCh: make(chan struct{})}
 	cm.KickOld(1, newClient)
 

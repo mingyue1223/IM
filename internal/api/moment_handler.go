@@ -9,22 +9,22 @@ import (
 	"github.com/goim/goim/internal/service"
 )
 
-// MomentHandler provides Gin HTTP handlers for moment endpoints.
+// MomentHandler 提供朋友圈的 Gin HTTP 处理函数。
 type MomentHandler struct {
 	momentSvc *service.MomentService
 }
 
-// NewMomentHandler creates a MomentHandler wrapping the given MomentService.
+// NewMomentHandler 创建一个包装给定 MomentService 的 MomentHandler。
 func NewMomentHandler(momentSvc *service.MomentService) *MomentHandler {
 	return &MomentHandler{momentSvc: momentSvc}
 }
 
-// ── Request / response DTOs ──
+// ── 请求/响应 DTO ──
 
 type publishMomentRequest struct {
 	Content    string  `json:"content" binding:"required"`
-	MediaUrls  *string `json:"media_urls,omitempty"` // nullable JSON string
-	Visibility int     `json:"visibility"`            // 1=all, 2=friends, 3=private
+	MediaUrls  *string `json:"media_urls,omitempty"` // 可空的 JSON 字符串
+	Visibility int     `json:"visibility"`            // 1=全部, 2=好友, 3=私密
 }
 
 type publishMomentResponse struct {
@@ -37,7 +37,7 @@ type getMomentResponse struct {
 	Content    string    `json:"content"`
 	MediaUrls  *string   `json:"media_urls,omitempty"`
 	Visibility int       `json:"visibility"`
-	CreatedAt  string    `json:"created_at"` // RFC3339 formatted
+	CreatedAt  string    `json:"created_at"` // RFC3339 格式
 }
 
 type likeMomentResponse struct {
@@ -64,23 +64,23 @@ type momentFeedResponse struct {
 	Moments []getMomentResponse `json:"moments"`
 }
 
-// ── Handlers ──
+// ── 处理函数 ──
 
-// PublishMoment handles POST /api/v1/moment.
+// PublishMoment 处理 POST /api/v1/moment 请求。
 func (h *MomentHandler) PublishMoment(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
 	var req publishMomentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "内容不能为空"})
 		return
 	}
 
-	// Default visibility to 1 (all) if not specified
+	// 如果未指定，默认可见性为 1（全部可见）
 	visibility := req.Visibility
 	if visibility == 0 {
 		visibility = 1
@@ -94,7 +94,7 @@ func (h *MomentHandler) PublishMoment(c *gin.Context) {
 		case service.ErrInvalidVisibility:
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		}
 		return
 	}
@@ -102,12 +102,12 @@ func (h *MomentHandler) PublishMoment(c *gin.Context) {
 	c.JSON(http.StatusCreated, publishMomentResponse{MomentID: momentID})
 }
 
-// GetMoment handles GET /api/v1/moment/:momentID.
+// GetMoment 处理 GET /api/v1/moment/:momentID 请求。
 func (h *MomentHandler) GetMoment(c *gin.Context) {
 	momentIDStr := c.Param("momentID")
 	momentID, err := strconv.ParseInt(momentIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid moment ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的动态ID"})
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *MomentHandler) GetMoment(c *gin.Context) {
 		case service.ErrMomentNotFound:
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		}
 		return
 	}
@@ -132,12 +132,12 @@ func (h *MomentHandler) GetMoment(c *gin.Context) {
 	})
 }
 
-// GetUserMoments handles GET /api/v1/moment/user/:userID.
+// GetUserMoments 处理 GET /api/v1/moment/user/:userID 请求。
 func (h *MomentHandler) GetUserMoments(c *gin.Context) {
 	userIDStr := c.Param("userID")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
 		return
 	}
 
@@ -152,7 +152,7 @@ func (h *MomentHandler) GetUserMoments(c *gin.Context) {
 
 	moments, err := h.momentSvc.GetUserMoments(c.Request.Context(), userID, limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		return
 	}
 
@@ -171,18 +171,18 @@ func (h *MomentHandler) GetUserMoments(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"moments": response})
 }
 
-// LikeMoment handles POST /api/v1/moment/:momentID/like.
+// LikeMoment 处理 POST /api/v1/moment/:momentID/like 请求。
 func (h *MomentHandler) LikeMoment(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
 	momentIDStr := c.Param("momentID")
 	momentID, err := strconv.ParseInt(momentIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid moment ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的动态ID"})
 		return
 	}
 
@@ -193,7 +193,7 @@ func (h *MomentHandler) LikeMoment(c *gin.Context) {
 		case service.ErrAlreadyLiked:
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		}
 		return
 	}
@@ -201,47 +201,47 @@ func (h *MomentHandler) LikeMoment(c *gin.Context) {
 	c.JSON(http.StatusOK, likeMomentResponse{Ok: true})
 }
 
-// UnlikeMoment handles DELETE /api/v1/moment/:momentID/like.
+// UnlikeMoment 处理 DELETE /api/v1/moment/:momentID/like 请求。
 func (h *MomentHandler) UnlikeMoment(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
 	momentIDStr := c.Param("momentID")
 	momentID, err := strconv.ParseInt(momentIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid moment ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的动态ID"})
 		return
 	}
 
 	if err := h.momentSvc.UnlikeMoment(c.Request.Context(), userID.(int64), momentID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		return
 	}
 
 	c.JSON(http.StatusOK, unlikeMomentResponse{Ok: true})
 }
 
-// CommentMoment handles POST /api/v1/moment/:momentID/comment.
+// CommentMoment 处理 POST /api/v1/moment/:momentID/comment 请求。
 func (h *MomentHandler) CommentMoment(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
 	momentIDStr := c.Param("momentID")
 	momentID, err := strconv.ParseInt(momentIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid moment ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的动态ID"})
 		return
 	}
 
 	var req commentMomentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "内容不能为空"})
 		return
 	}
 
@@ -253,7 +253,7 @@ func (h *MomentHandler) CommentMoment(c *gin.Context) {
 		case service.ErrMomentNotFound:
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		}
 		return
 	}
@@ -261,18 +261,18 @@ func (h *MomentHandler) CommentMoment(c *gin.Context) {
 	c.JSON(http.StatusCreated, commentMomentResponse{CommentID: commentID})
 }
 
-// DeleteComment handles DELETE /api/v1/moment/comment/:commentID.
+// DeleteComment 处理 DELETE /api/v1/moment/comment/:commentID 请求。
 func (h *MomentHandler) DeleteComment(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
 	commentIDStr := c.Param("commentID")
 	commentID, err := strconv.ParseInt(commentIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid comment ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的评论ID"})
 		return
 	}
 
@@ -283,7 +283,7 @@ func (h *MomentHandler) DeleteComment(c *gin.Context) {
 		case service.ErrCommentNotFound:
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		}
 		return
 	}
@@ -291,11 +291,11 @@ func (h *MomentHandler) DeleteComment(c *gin.Context) {
 	c.JSON(http.StatusOK, deleteCommentResponse{Ok: true})
 }
 
-// GetFeed handles GET /api/v1/moment/feed.
+// GetFeed 处理 GET /api/v1/moment/feed 请求。
 func (h *MomentHandler) GetFeed(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
@@ -311,7 +311,7 @@ func (h *MomentHandler) GetFeed(c *gin.Context) {
 
 	moments, err := h.momentSvc.GetFeed(c.Request.Context(), userID.(int64), lastSyncTime, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		return
 	}
 
@@ -330,7 +330,7 @@ func (h *MomentHandler) GetFeed(c *gin.Context) {
 	c.JSON(http.StatusOK, momentFeedResponse{Moments: response})
 }
 
-// RegisterRoutes registers all moment HTTP routes on the given Gin router group.
+// RegisterRoutes 在给定的 Gin 路由组上注册所有朋友圈 HTTP 路由。
 func (h *MomentHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	moment := rg.Group("/moment")
 	moment.POST("", h.PublishMoment)

@@ -15,26 +15,26 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Mock MySQLRepo for friend tests
+// 模拟 MySQLRepo，用于好友相关测试
 // ──────────────────────────────────────────────────────
 
 type mockFriendRepo struct {
 	mu sync.Mutex
 
-	// Stored friend requests keyed by ID
+	// 按 ID 存储好友请求
 	friendRequests map[int64]*model.FriendRequest
-	// Stored friendships keyed by "userID:friendID"
+	// 按 "userID:friendID" 存储好友关系
 	friendships map[string]*model.Friendship
-	// Stored blacklist entries keyed by "userID:blockedID"
+	// 按 "userID:blockedID" 存储黑名单条目
 	blacklist map[string]*model.Blacklist
-	// Stored users keyed by ID (for GetFriendList enrichment)
+	// 按 ID 存储用户（用于 GetFriendList 补充信息）
 	users map[int64]*model.User
-	// Next auto-increment IDs
+	// 下一个自增 ID
 	nextRequestID int64
 	nextFriendID  int64
 	nextBlackID   int64
 
-	// Error overrides
+	// 错误覆盖
 	isFriendErr    error
 	isBlockedErr   error
 	getRequestsErr error
@@ -69,7 +69,7 @@ func blackKey(userID, blockedID int64) string {
 	return fmt.Sprintf("%d:%d", userID, blockedID)
 }
 
-// ── Friend-specific methods ──
+// ── 好友专用方法 ──
 
 func (m *mockFriendRepo) CreateFriendRequest(_ context.Context, req *model.FriendRequest) error {
 	m.mu.Lock()
@@ -136,14 +136,14 @@ func (m *mockFriendRepo) CreateFriendship(_ context.Context, fs *model.Friendshi
 	m.nextFriendID++
 	fs.CreatedAt = time.Now()
 	m.friendships[friendKey(fs.UserID, fs.FriendID)] = fs
-	// Bidirectional: also add friend→user
+	// 双向：同时添加 friend→user
 	m.friendships[friendKey(fs.FriendID, fs.UserID)] = &model.Friendship{
 		ID:        fs.ID + 1,
 		UserID:    fs.FriendID,
 		FriendID:  fs.UserID,
 		CreatedAt: fs.CreatedAt,
 	}
-	m.nextFriendID++ // account for the reverse row
+	m.nextFriendID++ // 为反向行递增计数
 	return nil
 }
 
@@ -216,7 +216,7 @@ func (m *mockFriendRepo) IsBlocked(_ context.Context, userID, blockedID int64) (
 	return ok, nil
 }
 
-// ── User methods (for GetFriendList enrichment) ──
+// ── 用户方法（用于 GetFriendList 补充信息） ──
 
 func (m *mockFriendRepo) GetUserByID(_ context.Context, userID int64) (*model.User, error) {
 	m.mu.Lock()
@@ -235,7 +235,7 @@ func (m *mockFriendRepo) GetUserByUsername(_ context.Context, _ string) (*model.
 func (m *mockFriendRepo) CreateUser(_ context.Context, _ *model.User) error                  { return nil }
 func (m *mockFriendRepo) UpdateUser(_ context.Context, _ *model.User) error                  { return nil }
 
-// ── Stub out all other MySQLRepo methods ──
+// ── 桩实现：其他所有 MySQLRepo 方法 ──
 
 func (m *mockFriendRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error { return nil }
 func (m *mockFriendRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error       { return nil }
@@ -279,7 +279,7 @@ func (m *mockFriendRepo) SearchPrivateMessages(_ context.Context, _ int64, _ str
 }
 
 // ──────────────────────────────────────────────────────
-// Mock RedisRepo for friend tests
+// 模拟 RedisRepo，用于好友相关测试
 // ──────────────────────────────────────────────────────
 
 type mockFriendRedisRepo struct{}
@@ -336,7 +336,7 @@ func (m *mockFriendRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ str
 func (m *mockFriendRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 
 // ──────────────────────────────────────────────────────
-// Helper: new test FriendService
+// 辅助函数：新建测试用 FriendService
 // ──────────────────────────────────────────────────────
 
 func newTestFriendService(repo *mockFriendRepo) *FriendService {
@@ -345,14 +345,14 @@ func newTestFriendService(repo *mockFriendRepo) *FriendService {
 }
 
 // ──────────────────────────────────────────────────────
-// SendFriendRequest tests
+// SendFriendRequest 测试
 // ──────────────────────────────────────────────────────
 
 func TestFriend_SendFriendRequest_Success(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Add two users
+	// 添加两个用户
 	repo.mu.Lock()
 	repo.users[1] = &model.User{ID: 1, Nickname: "alice", AvatarURL: "avatar1"}
 	repo.users[2] = &model.User{ID: 2, Nickname: "bob", AvatarURL: "avatar2"}
@@ -381,7 +381,7 @@ func TestFriend_SendFriendRequest_AlreadyFriends(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Set up an existing friendship
+	// 设置已有好友关系
 	repo.mu.Lock()
 	repo.friendships[friendKey(1, 2)] = &model.Friendship{UserID: 1, FriendID: 2}
 	repo.friendships[friendKey(2, 1)] = &model.Friendship{UserID: 2, FriendID: 1}
@@ -396,7 +396,7 @@ func TestFriend_SendFriendRequest_Blocked(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Set up a blacklist entry: user 2 blocked user 1
+	// 设置黑名单条目：用户 2 屏蔽了用户 1
 	repo.mu.Lock()
 	repo.blacklist[blackKey(2, 1)] = &model.Blacklist{UserID: 2, BlockedID: 1}
 	repo.mu.Unlock()
@@ -410,7 +410,7 @@ func TestFriend_SendFriendRequest_BlockedBySender(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Set up a blacklist entry: user 1 blocked user 2
+	// 设置黑名单条目：用户 1 屏蔽了用户 2
 	repo.mu.Lock()
 	repo.blacklist[blackKey(1, 2)] = &model.Blacklist{UserID: 1, BlockedID: 2}
 	repo.mu.Unlock()
@@ -424,11 +424,11 @@ func TestFriend_SendFriendRequest_DuplicatePending(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// First request succeeds
+	// 第一次请求成功
 	_, err := svc.SendFriendRequest(context.Background(), 1, 2, "hello")
 	assert.NoError(t, err)
 
-	// Second request from same user to same target should fail
+	// 同一用户向同一目标发送的第二次请求应该失败
 	_, err = svc.SendFriendRequest(context.Background(), 1, 2, "hello again")
 	assert.Error(t, err)
 	assert.Equal(t, ErrDuplicateRequest, err.Error())
@@ -438,42 +438,42 @@ func TestFriend_SendFriendRequest_DuplicatePendingReverse(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// User 2 sends request to user 1
+	// 用户 2 向用户 1 发送请求
 	_, err := svc.SendFriendRequest(context.Background(), 2, 1, "hello")
 	assert.NoError(t, err)
 
-	// User 1 tries to send request to user 2 — should detect existing pending request
+	// 用户 1 尝试向用户 2 发送请求 — 应该检测到已存在的待处理请求
 	_, err = svc.SendFriendRequest(context.Background(), 1, 2, "hello back")
 	assert.Error(t, err)
 	assert.Equal(t, ErrDuplicateRequest, err.Error())
 }
 
 // ──────────────────────────────────────────────────────
-// AcceptFriendRequest tests
+// AcceptFriendRequest 测试
 // ──────────────────────────────────────────────────────
 
 func TestFriend_AcceptFriendRequest_Success(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Create a friend request first
+	// 先创建一个好友请求
 	req, err := svc.SendFriendRequest(context.Background(), 1, 2, "hello")
 	assert.NoError(t, err)
 
-	// Accept it as the target user (user 2)
+	// 以目标用户（用户 2）的身份接受
 	fs, err := svc.AcceptFriendRequest(context.Background(), 2, req.ID)
 	assert.NoError(t, err)
 	assert.NotNil(t, fs)
 	assert.Equal(t, int64(1), fs.UserID)
 	assert.Equal(t, int64(2), fs.FriendID)
 
-	// Verify the request status was updated
+	// 验证请求状态已更新
 	repo.mu.Lock()
 	storedReq := repo.friendRequests[req.ID]
 	repo.mu.Unlock()
 	assert.Equal(t, 1, storedReq.Status)
 
-	// Verify the friendship was created bidirectionally
+	// 验证好友关系已双向创建
 	isFriend, err := repo.IsFriend(context.Background(), 1, 2)
 	assert.NoError(t, err)
 	assert.True(t, isFriend)
@@ -486,11 +486,11 @@ func TestFriend_AcceptFriendRequest_WrongTarget(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Create a friend request: user 1 → user 2
+	// 创建好友请求：用户 1 → 用户 2
 	req, err := svc.SendFriendRequest(context.Background(), 1, 2, "hello")
 	assert.NoError(t, err)
 
-	// Try to accept it as user 3 (wrong target)
+	// 尝试以用户 3（非目标用户）的身份接受
 	_, err = svc.AcceptFriendRequest(context.Background(), 3, req.ID)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotRequestTarget, err.Error())
@@ -506,22 +506,22 @@ func TestFriend_AcceptFriendRequest_NotFound(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// RejectFriendRequest tests
+// RejectFriendRequest 测试
 // ──────────────────────────────────────────────────────
 
 func TestFriend_RejectFriendRequest_Success(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Create a friend request
+	// 创建一个好友请求
 	req, err := svc.SendFriendRequest(context.Background(), 1, 2, "hello")
 	assert.NoError(t, err)
 
-	// Reject it as the target user (user 2)
+	// 以目标用户（用户 2）的身份拒绝
 	err = svc.RejectFriendRequest(context.Background(), 2, req.ID)
 	assert.NoError(t, err)
 
-	// Verify the request status was updated
+	// 验证请求状态已更新
 	repo.mu.Lock()
 	storedReq := repo.friendRequests[req.ID]
 	repo.mu.Unlock()
@@ -532,11 +532,11 @@ func TestFriend_RejectFriendRequest_WrongTarget(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Create a friend request: user 1 → user 2
+	// 创建好友请求：用户 1 → 用户 2
 	req, err := svc.SendFriendRequest(context.Background(), 1, 2, "hello")
 	assert.NoError(t, err)
 
-	// Try to reject it as user 3 (wrong target)
+	// 尝试以用户 3（非目标用户）的身份拒绝
 	err = svc.RejectFriendRequest(context.Background(), 3, req.ID)
 	assert.Error(t, err)
 	assert.Equal(t, ErrNotRequestTarget, err.Error())
@@ -552,14 +552,14 @@ func TestFriend_RejectFriendRequest_NotFound(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// GetFriendRequests tests
+// GetFriendRequests 测试
 // ──────────────────────────────────────────────────────
 
 func TestFriend_GetFriendRequests(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Create two friend requests involving user 1
+	// 创建两个涉及用户 1 的好友请求
 	_, err := svc.SendFriendRequest(context.Background(), 1, 2, "hello")
 	assert.NoError(t, err)
 	_, err = svc.SendFriendRequest(context.Background(), 3, 1, "hi")
@@ -571,14 +571,14 @@ func TestFriend_GetFriendRequests(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// DeleteFriend tests
+// DeleteFriend 测试
 // ──────────────────────────────────────────────────────
 
 func TestFriend_DeleteFriend_Success(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Set up a friendship
+	// 设置好友关系
 	repo.mu.Lock()
 	repo.friendships[friendKey(1, 2)] = &model.Friendship{UserID: 1, FriendID: 2}
 	repo.friendships[friendKey(2, 1)] = &model.Friendship{UserID: 2, FriendID: 1}
@@ -587,7 +587,7 @@ func TestFriend_DeleteFriend_Success(t *testing.T) {
 	err := svc.DeleteFriend(context.Background(), 1, 2)
 	assert.NoError(t, err)
 
-	// Verify bidirectional deletion
+	// 验证双向删除
 	repo.mu.Lock()
 	_, ok1 := repo.friendships[friendKey(1, 2)]
 	_, ok2 := repo.friendships[friendKey(2, 1)]
@@ -597,7 +597,7 @@ func TestFriend_DeleteFriend_Success(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// BlockUser / UnblockUser / IsBlocked tests
+// BlockUser / UnblockUser / IsBlocked 测试
 // ──────────────────────────────────────────────────────
 
 func TestFriend_BlockUser_Success(t *testing.T) {
@@ -607,7 +607,7 @@ func TestFriend_BlockUser_Success(t *testing.T) {
 	err := svc.BlockUser(context.Background(), 1, 2)
 	assert.NoError(t, err)
 
-	// Verify blocked
+	// 验证已屏蔽
 	isBlocked, err := svc.IsBlocked(context.Background(), 1, 2)
 	assert.NoError(t, err)
 	assert.True(t, isBlocked)
@@ -617,11 +617,11 @@ func TestFriend_BlockUser_AlreadyBlocked(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Block once
+	// 第一次屏蔽
 	err := svc.BlockUser(context.Background(), 1, 2)
 	assert.NoError(t, err)
 
-	// Block again should fail
+	// 再次屏蔽应该失败
 	err = svc.BlockUser(context.Background(), 1, 2)
 	assert.Error(t, err)
 	assert.Equal(t, ErrAlreadyBlocked, err.Error())
@@ -631,15 +631,15 @@ func TestFriend_UnblockUser_Success(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Block first
+	// 先屏蔽
 	err := svc.BlockUser(context.Background(), 1, 2)
 	assert.NoError(t, err)
 
-	// Unblock
+	// 取消屏蔽
 	err = svc.UnblockUser(context.Background(), 1, 2)
 	assert.NoError(t, err)
 
-	// Verify unblocked
+	// 验证已取消屏蔽
 	isBlocked, err := svc.IsBlocked(context.Background(), 1, 2)
 	assert.NoError(t, err)
 	assert.False(t, isBlocked)
@@ -655,14 +655,14 @@ func TestFriend_IsBlocked_NotBlocked(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// GetFriendList tests
+// GetFriendList 测试
 // ──────────────────────────────────────────────────────
 
 func TestFriend_GetFriendList_WithProfile(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
 
-	// Set up friendship and users
+	// 设置好友关系和用户
 	repo.mu.Lock()
 	repo.friendships[friendKey(1, 2)] = &model.Friendship{ID: 1, UserID: 1, FriendID: 2, CreatedAt: time.Now()}
 	repo.users[2] = &model.User{ID: 2, Nickname: "bob", AvatarURL: "avatar2"}

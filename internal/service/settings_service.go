@@ -11,12 +11,12 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
-// ── SettingsService error constants ──
+// ── SettingsService 错误常量 ──
 
 const (
-	ErrSettingsNotFound = "settings not found"
-	ErrMuteConvExists   = "conversation is already muted"
-	ErrMuteConvNotFound = "conversation is not in mute list"
+	ErrSettingsNotFound = "设置未找到"
+	ErrMuteConvExists   = "会话已被静音"
+	ErrMuteConvNotFound = "会话不在静音列表中"
 )
 
 // SettingsService handles user settings: notification preferences and mute list.

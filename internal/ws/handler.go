@@ -5,16 +5,15 @@ import (
 	"github.com/goim/goim/internal/service"
 )
 
-// MessageDispatcher routes WebSocket messages to appropriate service handlers
-// based on the message type field in the WsMessage envelope.
+// MessageDispatcher 根据 WsMessage 信封中的消息类型字段，将 WebSocket 消息路由到对应的服务处理器。
 type MessageDispatcher struct {
 	MsgSvc    *service.MsgService
 	FriendSvc *service.FriendService
 	AiSvc     *service.AIService
 }
 
-// NewMessageDispatcher creates a dispatcher with references to all service handlers.
-// Services that are not yet implemented can be nil — the dispatcher will skip those message types.
+// NewMessageDispatcher 创建一个调度器，持有所有服务处理器的引用。
+// 尚未实现的服务可以为 nil —— 调度器将跳过这些消息类型。
 func NewMessageDispatcher(msgSvc *service.MsgService, friendSvc *service.FriendService, aiSvc *service.AIService) *MessageDispatcher {
 	return &MessageDispatcher{
 		MsgSvc:    msgSvc,
@@ -23,13 +22,12 @@ func NewMessageDispatcher(msgSvc *service.MsgService, friendSvc *service.FriendS
 	}
 }
 
-// HandleMessage is the callback function passed to ReadPump.
-// It decodes the raw JSON bytes into a WsMessage envelope and routes
-// the message to the appropriate service handler based on msg.Type.
+// HandleMessage 是传递给 ReadPump 的回调函数。
+// 它将原始 JSON 字节解码为 WsMessage 信封，并根据 msg.Type 将消息路由到对应的服务处理器。
 func (d *MessageDispatcher) HandleMessage(c *conn.ClientConnection, rawMsg []byte) {
 	msg, err := DecodeMsg(rawMsg)
 	if err != nil {
-		// Invalid message format, skip
+		// 无效的消息格式，跳过
 		return
 	}
 
@@ -63,14 +61,14 @@ func (d *MessageDispatcher) HandleMessage(c *conn.ClientConnection, rawMsg []byt
 			d.AiSvc.HandleAiStream(c.UserID, msg.Data)
 		}
 	case TypePing:
-		// Ping is handled by the PingHandler in ReadPump; skip here
+		// Ping 由 ReadPump 中的 PingHandler 处理；此处跳过
 	default:
-		// Unknown message type, skip
+		// 未知的消息类型，跳过
 	}
 }
 
-// Callback returns a function signature matching the ReadPump msgHandler callback.
-// This is convenient for passing to ServeWebSocket and ReadPump.
+// Callback 返回一个与 ReadPump 的 msgHandler 回调签名匹配的函数。
+// 这样便于传递给 ServeWebSocket 和 ReadPump。
 func (d *MessageDispatcher) Callback() func(*conn.ClientConnection, []byte) {
 	return d.HandleMessage
 }

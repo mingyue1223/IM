@@ -18,18 +18,18 @@ local modified = 0
 
 for i, msg in ipairs(msgs) do
     local decoded = cjson.decode(msg)
-    -- Only modify messages matching the target conversation and unread
+    -- 仅修改匹配目标会话且未读的消息
     if decoded.convId == convID and decoded.readStatus == 0 then
         decoded.readStatus = 1
         local newMsg = cjson.encode(decoded)
-        -- ZREM old entry, then ZADD with same score but new JSON value
+        -- 删除旧条目，然后用相同分数但新的 JSON 值重新添加
         redis.call('ZREM', inboxKey, msg)
         redis.call('ZADD', inboxKey, decoded.timestamp, newMsg)
         modified = modified + 1
     end
 end
 
--- Update unread count to 0 for this conversation
+-- 将该会话的未读数更新为 0
 if modified > 0 then
     redis.call('HSET', unreadKey, convID, 0)
 end
@@ -37,10 +37,10 @@ end
 return modified
 `
 
-// ExecInboxMarkRead atomically marks all unread messages in a specific
-// conversation as read. It scans the inbox ZSet, finds messages matching
-// convID with readStatus=0, replaces them with readStatus=1 versions,
-// and resets the unread counter. Returns the count of messages marked read.
+// ExecInboxMarkRead 原子性地将指定会话中所有未读消息标记为已读。
+// 它扫描收件箱 ZSet，查找 convID 匹配且 readStatus=0 的消息，
+// 将其替换为 readStatus=1 的版本，并重置未读计数器。
+// 返回被标记为已读的消息数量。
 func ExecInboxMarkRead(rdb *goredis.Client, ctx context.Context, userID int64, convID string) (int64, error) {
 	keys := []string{
 		strconv.FormatInt(userID, 10),

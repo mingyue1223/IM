@@ -1,25 +1,27 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/goim/goim/internal/llm"
 	"github.com/goim/goim/internal/service"
 )
 
-// AIHandler provides Gin HTTP handlers for AI endpoints.
+// AIHandler 为 AI 端点提供 Gin HTTP 处理器。
 type AIHandler struct {
 	aiSvc *service.AIService
 }
 
-// NewAIHandler creates an AIHandler wrapping the given AIService.
+// NewAIHandler 创建一个包装了给定 AIService 的 AIHandler。
 func NewAIHandler(aiSvc *service.AIService) *AIHandler {
 	return &AIHandler{aiSvc: aiSvc}
 }
 
-// ── Request / response DTOs ──
+// ── 请求 / 响应 DTO ──
 
 type aiChatRequest struct {
 	Content string `json:"content" binding:"required"`
@@ -48,21 +50,31 @@ type aiSummaryResponse struct {
 	MessageRange string `json:"message_range"`
 }
 
-// ── Handlers ──
+// ── SSE 流式 DTO ──
 
-// Chat handles POST /ai/chat.
-// It receives a user message and returns an AI response.
+// sseChunkEvent 是流式传输中每条 SSE 数据行所发送的 JSON 载荷。
+type sseChunkEvent struct {
+	Content          string `json:"content,omitempty"`
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	Done             bool   `json:"done,omitempty"`
+	FullResponse     string `json:"full_response,omitempty"`
+	Error            string `json:"error,omitempty"`
+}
+
+// ── 处理器 ──
+
+// Chat 处理 POST /ai/chat。
+// 它接收用户消息并返回 AI 响应（非流式）。
 func (h *AIHandler) Chat(c *gin.Context) {
 	var req aiChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "content is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content 字段为必填项"})
 		return
 	}
 
-	// Extract userID from JWT middleware context
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
@@ -75,12 +87,87 @@ func (h *AIHandler) Chat(c *gin.Context) {
 	c.JSON(http.StatusOK, aiChatResponse{Response: response})
 }
 
-// Profile handles GET /ai/profile.
-// It returns the user's AI profile items (Layer 2 memory).
+// ChatStream 处理 POST /ai/chat/stream。
+// 它以 SSE 事件形式发送 AI 响应，将 LLM 返回的每个块实时流式传输。
+func (h *AIHandler) ChatStream(c *gin.Context) {
+	var req aiChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content 字段为必填项"})
+		return
+	}
+
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
+		return
+	}
+
+	// 设置 SSE 响应头
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no") // 禁用 nginx 缓冲
+
+	// 刷新响应头
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	// 定义写入 SSE 事件的块回调函数
+	onChunk := func(chunk llm.StreamChunk) {
+		event := sseChunkEvent{
+			Content:          chunk.Content,
+			ReasoningContent: chunk.ReasoningContent,
+			Done:             chunk.Done,
+		}
+
+		data, err := json.Marshal(event)
+		if err != nil {
+			// 将错误作为 SSE 事件发送
+			errData, _ := json.Marshal(sseChunkEvent{Error: fmt.Sprintf("序列化块数据失败: %v", err)})
+			fmt.Fprintf(c.Writer, "data: %s\n\n", errData)
+			if flusher, ok := c.Writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			return
+		}
+
+		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+		if flusher, ok := c.Writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}
+
+	// 调用流式服务
+	fullResponse, err := h.aiSvc.SendAIMessageStream(c.Request.Context(), userID.(int64), req.Content, onChunk)
+	if err != nil {
+		// 发送最终的错误事件
+		errData, _ := json.Marshal(sseChunkEvent{Error: err.Error(), Done: true})
+		fmt.Fprintf(c.Writer, "data: %s\n\n", errData)
+		if flusher, ok := c.Writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		return
+	}
+
+	// 发送包含完整组装响应的最终事件
+	finalEvent := sseChunkEvent{
+		Done:         true,
+		FullResponse: fullResponse,
+	}
+	data, _ := json.Marshal(finalEvent)
+	fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Profile 处理 GET /ai/profile。
+// 它返回用户的 AI 画像条目（第二层记忆）。
 func (h *AIHandler) Profile(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
@@ -103,18 +190,18 @@ func (h *AIHandler) Profile(c *gin.Context) {
 	c.JSON(http.StatusOK, aiProfileResponse{Items: dtoItems})
 }
 
-// Summary handles POST /ai/summary/:convID.
-// It generates an AI summary for the specified conversation.
+// Summary 处理 POST /ai/summary/:convID。
+// 它为指定会话生成 AI 摘要。
 func (h *AIHandler) Summary(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权"})
 		return
 	}
 
 	convID := c.Param("convID")
 	if convID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "convID is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "convID 为必填参数"})
 		return
 	}
 
@@ -124,22 +211,21 @@ func (h *AIHandler) Summary(c *gin.Context) {
 		return
 	}
 
-	convIDInt, _ := strconv.ParseInt(convID, 10, 64)
-
 	c.JSON(http.StatusOK, gin.H{
-		"id":         convIDInt,
-		"topic":      summary.Topic,
-		"key_points": summary.KeyPoints,
-		"conclusion": summary.Conclusion,
-		"user_intent": summary.UserIntent,
+		"id":            convID,
+		"topic":         summary.Topic,
+		"key_points":    summary.KeyPoints,
+		"conclusion":    summary.Conclusion,
+		"user_intent":   summary.UserIntent,
 		"message_range": summary.MessageRange,
 	})
 }
 
-// RegisterRoutes registers all AI HTTP routes on the given Gin router group.
+// RegisterRoutes 在给定的 Gin 路由组上注册所有 AI HTTP 路由。
 func (h *AIHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	ai := rg.Group("/ai")
 	ai.POST("/chat", h.Chat)
+	ai.POST("/chat/stream", h.ChatStream)
 	ai.GET("/profile", h.Profile)
 	ai.POST("/summary/:convID", h.Summary)
 }

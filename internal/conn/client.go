@@ -6,24 +6,24 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// WebSocket connection constants
+// WebSocket 连接常量
 const (
-	maxMessageSize = 4096           // max bytes for a single message
-	writeWait      = 10 * time.Second // write deadline timeout
-	pongWait       = 60 * time.Second // time to wait for pong from client
-	pingPeriod     = 30 * time.Second // interval between pings (must be < pongWait)
+	maxMessageSize = 4096           // 单条消息的最大字节数
+	writeWait      = 10 * time.Second // 写入超时时间
+	pongWait       = 60 * time.Second // 等待客户端pong响应的超时时间
+	pingPeriod     = 30 * time.Second // 发送ping的间隔（必须小于 pongWait）
 )
 
-// ClientConnection represents a single user's WebSocket connection.
+// ClientConnection 表示单个用户的 WebSocket 连接。
 type ClientConnection struct {
 	UserID   int64
 	Conn     *websocket.Conn
-	SendCh   chan []byte      // buffered channel for outbound messages (cap 256)
-	CloseCh  chan struct{}     // signaled when connection should be closed
-	LastPing time.Time         // tracks last received ping/pong for health monitoring
+	SendCh   chan []byte      // 用于发送消息的缓冲通道（容量 256）
+	CloseCh  chan struct{}     // 当连接需要关闭时发送信号
+	LastPing time.Time         // 记录最后一次收到的 ping/pong 用于健康监测
 }
 
-// NewClientConnection creates a new ClientConnection wrapping a websocket.Conn.
+// NewClientConnection 创建一个新的 ClientConnection，封装 websocket.Conn。
 func NewClientConnection(userID int64, conn *websocket.Conn) *ClientConnection {
 	return &ClientConnection{
 		UserID:   userID,
@@ -34,9 +34,9 @@ func NewClientConnection(userID int64, conn *websocket.Conn) *ClientConnection {
 	}
 }
 
-// ReadPump runs in a goroutine, reading messages from the WebSocket connection.
-// It forwards each message to the msgHandler callback and handles pong/timeout.
-// Exits when the connection is closed or a read error occurs.
+// ReadPump 在一个 goroutine 中运行，从 WebSocket 连接读取消息。
+// 它将每条消息转发给 msgHandler 回调，并处理 pong/超时。
+// 当连接关闭或发生读取错误时退出。
 func (c *ClientConnection) ReadPump(msgHandler func(*ClientConnection, []byte)) {
 	defer c.Conn.Close()
 
@@ -50,7 +50,7 @@ func (c *ClientConnection) ReadPump(msgHandler func(*ClientConnection, []byte)) 
 	c.Conn.SetPingHandler(func(appData string) error {
 		c.LastPing = time.Now()
 		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
-		// Send pong response using WriteControl (same as default handler)
+		// 使用 WriteControl 发送 pong 响应（与默认处理程序相同）
 		err := c.Conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(writeWait))
 		if err == websocket.ErrCloseSent {
 			return nil
@@ -67,9 +67,9 @@ func (c *ClientConnection) ReadPump(msgHandler func(*ClientConnection, []byte)) 
 	}
 }
 
-// WritePump runs in a goroutine, writing messages from SendCh to the WebSocket connection.
-// It sends periodic ping messages and handles CloseCh for graceful shutdown.
-// Exits when CloseCh is signaled, SendCh is closed, or a write error occurs.
+// WritePump 在一个 goroutine 中运行，将 SendCh 中的消息写入 WebSocket 连接。
+// 它定期发送 ping 消息，并处理 CloseCh 以进行优雅关闭。
+// 当 CloseCh 收到信号、SendCh 关闭或发生写入错误时退出。
 func (c *ClientConnection) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -82,7 +82,7 @@ func (c *ClientConnection) WritePump() {
 		case msg, ok := <-c.SendCh:
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// SendCh closed — send close frame and exit
+				// SendCh 已关闭 — 发送关闭帧并退出
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -100,7 +100,7 @@ func (c *ClientConnection) WritePump() {
 	}
 }
 
-// Close closes the underlying WebSocket connection.
+// Close 关闭底层的 WebSocket 连接。
 func (c *ClientConnection) Close() {
 	c.Conn.Close()
 }

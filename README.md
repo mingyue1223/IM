@@ -1,131 +1,131 @@
-# GoIM — High-Concurrency Instant Messaging System
+# GoIM — 高并发即时通讯系统
 
-A production-grade IM (Instant Messaging) system built in Go, featuring WeChat-style privacy design, Redis-first architecture with async MySQL persistence, and AI-powered conversation intelligence.
+一个基于 Go 语言构建的生产级 IM（即时通讯）系统，采用微信风格的隐私设计、Redis 优先架构配合异步 MySQL 持久化，并集成 AI 驱动的对话智能。
 
-## ✨ Features
+## ✨ 功能特性
 
-| Category | Features |
+| 分类 | 功能 |
 |----------|----------|
-| **Messaging** | Private chat (push model), group chat (pull model), message revoke, delivery/read ack, offline sync |
-| **Social** | Friend request/accept/reject/block, bidirectional friendship, moment publish/like/comment/feed |
-| **Group** | Create/update/leave group, member management (add/remove/kick), role system (owner/admin/member) |
-| **AI** | 4-layer memory architecture, AI chat with LLM integration, conversation summaries, user profile extraction |
-| **Settings** | Notification preferences, message preview toggle, conversation mute list |
-| **Real-time** | WebSocket with JWT auth, single-device policy (kick old connection), heartbeat, push notifications |
-| **Reliability** | Redis Lua atomic operations, RabbitMQ async persistence, 3-day TTL with auto-cleanup |
+| **消息** | 私聊（推送模式）、群聊（拉取模式）、消息撤回、送达/已读回执、离线同步 |
+| **社交** | 好友请求/接受/拒绝/拉黑、双向好友关系、朋友圈发布/点赞/评论/动态流 |
+| **群组** | 创建/更新/退出群组、成员管理（添加/移除/踢出）、角色体系（群主/管理员/成员） |
+| **AI** | 4层记忆架构、集成大语言模型的 AI 聊天、对话摘要、用户画像提取 |
+| **设置** | 通知偏好、消息预览开关、会话免打扰列表 |
+| **实时通信** | 基于 JWT 认证的 WebSocket、单设备登录策略（踢出旧连接）、心跳、推送通知 |
+| **可靠性** | Redis Lua 原子操作、RabbitMQ 异步持久化、3天 TTL 自动清理 |
 
-## 🏗 Architecture
+## 🏗 架构
 
 ```
 ┌─────────────┐     ┌──────────────────┐     ┌────────────┐
-│   Client     │────▶│   Gin HTTP + WS   │────▶│   Redis    │
-│  (Browser/   │     │   Server          │     │   (First)  │
-│   Mobile)    │◀────│                   │◀────│            │
+│   客户端      │────▶│   Gin HTTP + WS   │────▶│   Redis    │
+│  (浏览器/    │     │   服务端           │     │   (优先)   │
+│   移动端)    │◀────│                   │◀────│            │
 └─────────────┘     │   ┌──────────┐    │     └────────────┘
-                    │   │ MQ Pub   │────│────▶┌────────────┐
+                    │   │ MQ 发布  │────│────▶┌────────────┐
                     │   │ (RabbitMQ)│    │     │  RabbitMQ  │
-                    │   └──────────┘    │     │  Consumers │
+                    │   └──────────┘    │     │  消费者     │
                     │                   │     │ ┌────────┐ │
                     │   ┌──────────┐    │     │ │ MySQL  │ │
-                    │   │ Lua EVAL │◀───│     │ │ Persist│ │
+                    │   │ Lua EVAL │◀───│     │ │ 持久化 │ │
                     │   └──────────┘    │     │ └────────┘ │
                     └──────────────────┘     └────────────┘
 ```
 
-### Core Design Decisions
+### 核心设计决策
 
-1. **Redis-First Pattern**: All reads/writes go to Redis first. MySQL persistence happens asynchronously via MQ consumers.
-2. **Private Chat Push Model**: Messages pushed to per-user `inbox:{userID}` ZSet. Receiver's connection gets real-time push.
-3. **Group Chat Pull Model**: Messages stored in per-group `outbox:{groupID}` ZSet. Members pull on sync request.
-4. **WeChat Privacy**: Sender **cannot** see receiver's read status. `readStatus` is only visible to the receiver.
-5. **Atomic Lua Operations**: Friend check, dedup, msgID allocation, inbox write, mark-read, and revoke all execute as Redis Lua scripts.
-6. **3-Day TTL**: Inbox/outbox/timeline auto-expire via `ZREMRANGEBYSCORE` (time) + `ZREMRANGEBYRANK` (count cap).
-7. **Single-Device Policy**: New WS connection kicks old one, sending `{"type":"kick","reason":"new_login"}`.
+1. **Redis 优先模式**：所有读写优先经过 Redis。MySQL 持久化通过 MQ 消费者异步完成。
+2. **私聊推送模式**：消息推送到每个用户的 `inbox:{userID}` ZSet。接收方连接实时收到推送。
+3. **群聊拉取模式**：消息存储在群组维度的 `outbox:{groupID}` ZSet。成员通过同步请求拉取消息。
+4. **微信隐私设计**：发送者**无法**查看接收者的已读状态。`readStatus` 仅对接收者本人可见。
+5. **Lua 原子操作**：好友校验、去重、msgID 分配、收件箱写入、标记已读、撤回等操作均通过 Redis Lua 脚本原子执行。
+6. **3天 TTL**：收件箱/发件箱/时间线通过 `ZREMRANGEBYSCORE`（按时间）+ `ZREMRANGEBYRANK`（按数量上限）自动过期。
+7. **单设备登录策略**：新的 WebSocket 连接会踢出旧连接，发送 `{"type":"kick","reason":"new_login"}`。
 
-### Conversation ID Format
+### 会话 ID 格式
 
-- Private: `p_{smallerID}_{largerID}` (e.g., `p_1_2`)
-- Group: `g_{groupID}` (e.g., `g_42`)
+- 私聊：`p_{较小ID}_{较大ID}`（例如 `p_1_2`）
+- 群聊：`g_{groupID}`（例如 `g_42`）
 
-### AI 4-Layer Memory Architecture
+### AI 4层记忆架构
 
-| Layer | Storage | Content | Purpose |
+| 层级 | 存储位置 | 内容 | 用途 |
 |-------|---------|---------|---------|
-| 0 | MySQL `private_messages` | Raw messages | Full conversation history |
-| 1 | MySQL `ai_summaries` | Topic, key points, conclusion | Structured summaries |
-| 2 | MySQL `ai_user_profiles` | Field, value, confidence, source | User profile with confidence scoring |
-| 3 | Redis `ai_memory:{userID}:{key}` | Working memory with TTL | Fast context for AI responses |
+| 0 | MySQL `private_messages` | 原始消息 | 完整对话历史 |
+| 1 | MySQL `ai_summaries` | 话题、关键点、结论 | 结构化摘要 |
+| 2 | MySQL `ai_user_profiles` | 字段、值、置信度、来源 | 带置信度评分的用户画像 |
+| 3 | Redis `ai_memory:{userID}:{key}` | 带 TTL 的工作记忆 | AI 响应的快速上下文 |
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### Prerequisites
+### 前置条件
 
 - Go 1.22+
-- Docker & Docker Compose
-- MySQL 8, Redis 7, RabbitMQ 3 (or use Docker Compose below)
+- Docker 与 Docker Compose
+- MySQL 8、Redis 7、RabbitMQ 3（或使用下方的 Docker Compose）
 
-### 1. Start Infrastructure
+### 1. 启动基础设施
 
 ```bash
 docker-compose up -d
 ```
 
-### 2. Run Database Migrations
+### 2. 运行数据库迁移
 
 ```bash
-# Apply migrations in order
+# 按顺序执行迁移文件
 for f in scripts/migrations/*.sql; do
   mysql -u goim -pgoim123 goim < "$f"
 done
 ```
 
-### 3. Build & Run
+### 3. 构建并运行
 
 ```bash
 go build -o goim-server ./cmd/server
 ./goim-server -c configs/config.yaml
 ```
 
-Or run directly:
+或直接运行：
 
 ```bash
 go run ./cmd/server -c configs/config.yaml
 ```
 
-### 4. Verify
+### 4. 验证
 
 ```bash
 curl http://localhost:8080/health
 # {"status":"ok","service":"goim"}
 ```
 
-### 5. Run E2E Tests
+### 5. 运行端到端测试
 
 ```bash
-# Start Docker services first, then:
+# 先启动 Docker 服务，然后执行：
 go test ./tests/... -v -tags e2e -timeout 120s
 ```
 
-### 6. Run Unit Tests
+### 6. 运行单元测试
 
 ```bash
 go test ./internal/... -v
 ```
 
-## 📁 Project Structure
+## 📁 项目结构
 
 ```
 GoIM/
-├── cmd/server/           # Entry point (main.go)
-├── configs/              # Config YAML files
-│   ├── config.yaml       # Production config template
-│   └── config.test.yaml  # E2E test config
-├── docker-compose.yaml   # Docker infrastructure
-├── docs/                 # Documentation
-│   ├── architecture.md   # System architecture details
-│   ├── api_reference.md  # REST + WS API reference
-│   └── deployment.md     # Deployment guide
-├── scripts/migrations/   # MySQL migration SQL files
+├── cmd/server/           # 入口点 (main.go)
+├── configs/              # 配置 YAML 文件
+│   ├── config.yaml       # 生产环境配置模板
+│   └── config.test.yaml  # 端到端测试配置
+├── docker-compose.yaml   # Docker 基础设施
+├── docs/                 # 文档
+│   ├── architecture.md   # 系统架构详情
+│   ├── api_reference.md  # REST + WS API 参考
+│   └── deployment.md     # 部署指南
+├── scripts/migrations/   # MySQL 迁移 SQL 文件
 │   ├── 001_create_users.sql
 │   ├── 002_create_friendships.sql
 │   ├── 003_create_groups.sql
@@ -134,70 +134,70 @@ GoIM/
 │   ├── 006_create_misc.sql
 │   ├── 007_create_ai.sql
 │   └── 008_create_user_settings.sql
-├── tests/                # E2E integration tests
-│   ├── e2e_helper.go     # Test helpers
-│   └── e2e_test.go       # E2E test suites
+├── tests/                # 端到端集成测试
+│   ├── e2e_helper.go     # 测试辅助函数
+│   └── e2e_test.go       # 端到端测试套件
 └── internal/
-    ├── api/              # Gin HTTP handlers (7 files)
-    ├── config/           # Config loading
-    ├── conn/             # ConnectionManager + ClientConnection
-    ├── consumer/         # MQ consumers (3 files)
-    ├── infra/            # MySQL/Redis/RabbitMQ connections + cleanup
-    ├── llm/              # LLM client (OpenAI-compatible)
-    ├── middleware/        # JWT auth middleware
-    ├── model/            # Data models (7 files)
-    ├── protocol/         # WS message types + encode/decode
-    ├── redis/            # Lua scripts (4 files + loader)
-    ├── repository/       # MySQL/Redis/MQ repo interfaces + impl
-    ├── service/          # Business logic (8 services)
-    └── ws/               # WS upgrade + message dispatcher
+    ├── api/              # Gin HTTP 处理器 (7 个文件)
+    ├── config/           # 配置加载
+    ├── conn/             # 连接管理器 + 客户端连接
+    ├── consumer/         # MQ 消费者 (3 个文件)
+    ├── infra/            # MySQL/Redis/RabbitMQ 连接 + 清理
+    ├── llm/              # 大语言模型客户端 (兼容 OpenAI)
+    ├── middleware/        # JWT 认证中间件
+    ├── model/            # 数据模型 (7 个文件)
+    ├── protocol/         # WebSocket 消息类型 + 编解码
+    ├── redis/            # Lua 脚本 (4 个文件 + 加载器)
+    ├── repository/       # MySQL/Redis/MQ 仓库接口 + 实现
+    ├── service/          # 业务逻辑 (8 个服务)
+    └── ws/               # WebSocket 升级 + 消息分发器
 ```
 
-## 🛠 Tech Stack
+## 🛠 技术栈
 
-| Component | Technology | Version |
+| 组件 | 技术 | 版本 |
 |-----------|------------|---------|
-| Language | Go | 1.24+ |
-| HTTP Framework | Gin | v1.10+ |
+| 语言 | Go | 1.24+ |
+| HTTP 框架 | Gin | v1.10+ |
 | WebSocket | gorilla/websocket | v1.5 |
 | MySQL | go-sql-driver/mysql | v1.8+ |
 | Redis | go-redis/v9 | v9.7+ |
 | RabbitMQ | amqp091-go | v1.10+ |
 | JWT | golang-jwt/jwt/v5 | v5.2+ |
-| Config | yaml.v3 | v3 |
-| Logging | zap | v1.27+ |
-| Password | bcrypt | — |
-| Container | Docker Compose | v3.8 |
+| 配置 | yaml.v3 | v3 |
+| 日志 | zap | v1.27+ |
+| 密码 | bcrypt | — |
+| 容器 | Docker Compose | v3.8 |
 
-## 📊 API Overview
+## 📊 API 概览
 
-See [docs/api_reference.md](docs/api_reference.md) for full details.
+完整详情请参见 [docs/api_reference.md](docs/api_reference.md)。
 
-| Category | Endpoints | Auth |
+| 分类 | 端点 | 认证 |
 |----------|-----------|------|
-| Health | `GET /health` | None |
-| Auth | register, login, refresh | None |
-| Friend | request, accept, reject, list, block, unblock | JWT |
-| Group | create, update, info, members, add/remove member, leave | JWT |
-| Moment | publish, get, like, comment, feed | JWT |
+| 健康检查 | `GET /health` | 无 |
+| 认证 | register, login, refresh | 无 |
+| 好友 | request, accept, reject, list, block, unblock | JWT |
+| 群组 | create, update, info, members, add/remove member, leave | JWT |
+| 朋友圈 | publish, get, like, comment, feed | JWT |
 | AI | chat, profile, summary | JWT |
-| Message Ops | revoke, delete, search | JWT |
-| Settings | get, update, mute, unmute | JWT |
+| 消息操作 | revoke, delete, search | JWT |
+| 设置 | get, update, mute, unmute | JWT |
 | WebSocket | `GET /ws?token=JWT` | JWT |
 
-## 🔧 Configuration
+## 🔧 配置
 
-See `configs/config.yaml` for the full config template with all fields documented.
+完整配置模板及所有字段说明请参见 `configs/config.yaml`。
 
-Key sections:
-- `server`: port, ws_path, upload_dir
-- `mysql`: host, port, user, password, db_name
-- `redis`: addr, password, db
-- `rabbitmq`: url (amqp://)
-- `jwt`: secret, access_exp_hours, refresh_exp_days
-- `llm`: provider, api_key, base_url, model, max_tokens
-- `file`: max_size_mb, allowed_exts, upload_dir
+主要配置项：
+- `server`：port, ws_path, upload_dir
+- `mysql`：host, port, user, password, db_name
+- `redis`：addr, password, db
+- `rabbitmq`：url (amqp://)
+- `jwt`：secret, access_exp_hours, refresh_exp_days
+- `llm`：provider, api_key, base_url, model, max_tokens
+- `file`：max_size_mb, allowed_exts, upload_dir
 
-## 📄 License
+## 📄 许可证
 
-This project is for educational and demonstration purposes.
+本项目仅供学习和演示目的。

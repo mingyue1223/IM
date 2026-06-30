@@ -29,7 +29,7 @@ type MsgRevoked struct {
 	RevokedAt  time.Time `json:"revoked_at"`
 }
 
-// InboxMessage — message stored in Redis inbox/outbox ZSet
+// InboxMessage — 存储在 Redis inbox/outbox ZSet 中的消息
 type InboxMessage struct {
 	MsgID      int64  `json:"msgId"`
 	ConvID     string `json:"convId"`
@@ -38,12 +38,12 @@ type InboxMessage struct {
 	ToID       int64  `json:"toId"`
 	MsgType    int    `json:"msgType"`
 	Content    string `json:"content"`
-	ReadStatus int    `json:"readStatus"` // 0=unread, 1=read (private chat only)
-	GroupSeq   int64  `json:"groupSeq,omitempty"` // group sequence (group chat only)
+	ReadStatus int    `json:"readStatus"` // 0=未读, 1=已读 (仅私聊)
+	GroupSeq   int64  `json:"groupSeq,omitempty"` // 群消息序号 (仅群聊)
 	Timestamp  int64  `json:"timestamp"`
 }
 
-// ServerAck — returned to sender after message reaches server
+// ServerAck — 消息到达服务器后返回给发送者的回执
 type ServerAck struct {
 	ClientMsgID string `json:"clientMsgId"`
 	ServerMsgID int64  `json:"serverMsgId"`
@@ -51,59 +51,59 @@ type ServerAck struct {
 	Timestamp   int64  `json:"timestamp"`
 }
 
-// DeliverAck — receiver confirms message delivered
+// DeliverAck — 接收者确认消息已送达
 type DeliverAck struct {
 	ServerMsgID int64 `json:"serverMsgId"`
 }
 
-// ReadAck — user marks conversation as read
+// ReadAck — 用户将会话标记为已读
 type ReadAck struct {
 	ConvID string `json:"convId"`
 }
 
-// SyncReq — client requests offline sync
+// SyncReq — 客户端请求离线消息同步
 type SyncReq struct {
 	LastSyncTime int64 `json:"lastSyncTime"`
 	BatchSize    int   `json:"batchSize"`
 }
 
-// SyncBatch — server returns offline messages in batches
+// SyncBatch — 服务端分批返回离线消息
 type SyncBatch struct {
 	Messages []InboxMessage `json:"msgs"`
 	HasMore  bool           `json:"hasMore"`
 	SyncTime int64          `json:"syncTime,omitempty"`
 }
 
-// ConvSync — conversation list + unread counts pushed on sync
+// ConvSync — 同步时推送的会话列表及未读数
 type ConvSync struct {
 	Conversations []ConvSummary   `json:"conversations"`
 	UnreadMap     map[string]int64 `json:"unreadMap"`
 }
 
-// SendMessage — incoming chat message from client over WebSocket
+// SendMessage — 客户端通过 WebSocket 发送的聊天消息
 type SendMessage struct {
-	ClientMsgID string `json:"msgId"`    // client-generated ID for dedup
-	ConvType    int    `json:"convType"` // 1=private, 2=group
-	ToID        int64  `json:"toId"`     // receiverID (private) or groupID (group)
-	MsgType     int    `json:"msgType"`  // 1=text, 2=image, 3=video, etc.
+	ClientMsgID string `json:"msgId"`    // 客户端生成的ID，用于去重
+	ConvType    int    `json:"convType"` // 1=私聊, 2=群聊
+	ToID        int64  `json:"toId"`     // 接收者ID(私聊) 或 群组ID(群聊)
+	MsgType     int    `json:"msgType"`  // 1=文字, 2=图片, 3=视频, 等
 	Content     string `json:"content"`
 	Timestamp   int64  `json:"timestamp"`
 }
 
-// RevokeMsgReq — client requests a message to be revoked
+// RevokeMsgReq — 客户端请求撤回一条消息
 type RevokeMsgReq struct {
 	ConvID      string `json:"convId"`
 	ServerMsgID int64  `json:"serverMsgId"`
 }
 
-// RevokedNotification — pushed to the other party when a message is revoked
+// RevokedNotification — 消息被撤回后推送给对方的通知
 type RevokedNotification struct {
 	ConvID      string `json:"convId"`
 	ServerMsgID int64  `json:"serverMsgId"`
 	OperatorID  int64  `json:"operatorId"`
 }
 
-// ConvSummary — single conversation summary for conv_list ZSet
+// ConvSummary — conv_list ZSet 中的单条会话摘要
 type ConvSummary struct {
 	ConvID       string `json:"convId"`
 	ConvType     int    `json:"convType"`

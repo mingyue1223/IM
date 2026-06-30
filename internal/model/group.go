@@ -16,7 +16,7 @@ type GroupMember struct {
 	ID        int64     `json:"id"`
 	GroupID   int64     `json:"group_id"`
 	UserID    int64     `json:"user_id"`
-	Role      int       `json:"role"` // 0=member, 1=admin, 2=owner
+	Role      int       `json:"role"` // 0=成员, 1=管理员, 2=群主
 	MutedUntil *time.Time `json:"muted_until,omitempty"`
 	JoinedAt  time.Time `json:"joined_at"`
 }

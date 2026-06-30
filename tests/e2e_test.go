@@ -1,11 +1,11 @@
 //go:build e2e
 
-// Package e2e contains end-to-end integration tests for the GoIM server.
-// These tests exercise the full stack: HTTP API, WebSocket, MQ consumers,
-// Redis, MySQL, and RabbitMQ. They require Docker services to be running
-// (as configured in configs/config.test.yaml).
+// Package e2e 包含 GoIM 服务器的端到端集成测试。
+// 这些测试覆盖完整技术栈：HTTP API、WebSocket、MQ 消费者、
+// Redis、MySQL 和 RabbitMQ。测试要求 Docker 服务处于运行状态
+//（按 configs/config.test.yaml 中的配置）。
 //
-// Run with: go test ./tests/... -v -tags e2e -timeout 120s
+// 运行命令：go test ./tests/... -v -tags e2e -timeout 120s
 package e2e
 
 import (
@@ -39,10 +39,10 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Test environment setup
+// 测试环境搭建
 // ──────────────────────────────────────────────────────
 
-// testEnv holds the full test environment: server, connections, base URL.
+// testEnv 保存完整的测试环境：服务器、连接、基础 URL。
 type testEnv struct {
 	baseURL  string
 	db       *sql.DB
@@ -56,84 +56,84 @@ type testEnv struct {
 
 var env *testEnv
 
-// TestMain sets up the full GoIM server for E2E testing.
-// It requires MySQL, Redis, and RabbitMQ to be running on localhost
-// (as configured in configs/config.test.yaml).
+// TestMain 为 E2E 测试搭建完整的 GoIM 服务器。
+// 需要 MySQL、Redis 和 RabbitMQ 在本地运行
+//（按 configs/config.test.yaml 中的配置）。
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 
-	// Load test config
+	// 加载测试配置
 	cfgPath := "configs/config.test.yaml"
 	if v := os.Getenv("GOIM_CONFIG"); v != "" {
 		cfgPath = v
 	}
 	cfg, err := config.LoadConfig(cfgPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "load config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "加载配置: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Override server port (httptest will pick its own)
+	// 覆盖服务器端口（httptest 会自动分配）
 	cfg.Server.Port = 0
 
-	// Init logger
+	// 初始化日志
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "init logger: %v\n", err)
+		fmt.Fprintf(os.Stderr, "初始化日志: %v\n", err)
 		os.Exit(1)
 	}
 
-	// ── Connect MySQL ──
+	// ── 连接 MySQL ──
 	db, err := infra.NewMySQLPool(&cfg.MySQL)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "connect MySQL: %v\n", err)
+		fmt.Fprintf(os.Stderr, "连接 MySQL: %v\n", err)
 		os.Exit(1)
 	}
 	if err := db.Ping(); err != nil {
-		fmt.Fprintf(os.Stderr, "ping MySQL: %v\n", err)
+		fmt.Fprintf(os.Stderr, "MySQL 连通检测: %v\n", err)
 		os.Exit(1)
 	}
-	logger.Info("MySQL connected for E2E")
+	logger.Info("MySQL 已连接，准备 E2E 测试")
 
-	// ── Connect Redis ──
+	// ── 连接 Redis ──
 	rdb, err := infra.NewRedisClient(&cfg.Redis)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "connect Redis: %v\n", err)
+		fmt.Fprintf(os.Stderr, "连接 Redis: %v\n", err)
 		os.Exit(1)
 	}
-	logger.Info("Redis connected for E2E")
+	logger.Info("Redis 已连接，准备 E2E 测试")
 
-	// ── Connect RabbitMQ ──
+	// ── 连接 RabbitMQ ──
 	mqConn, mqCh, err := infra.NewRabbitMQConn(&cfg.RabbitMQ)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "connect RabbitMQ: %v\n", err)
+		fmt.Fprintf(os.Stderr, "连接 RabbitMQ: %v\n", err)
 		os.Exit(1)
 	}
 	if err := infra.DeclareQueues(mqCh); err != nil {
-		fmt.Fprintf(os.Stderr, "declare queues: %v\n", err)
+		fmt.Fprintf(os.Stderr, "声明队列: %v\n", err)
 		os.Exit(1)
 	}
-	logger.Info("RabbitMQ connected for E2E")
+	logger.Info("RabbitMQ 已连接，准备 E2E 测试")
 
-	// ── Load Lua scripts ──
+	// ── 加载 Lua 脚本 ──
 	ctx := context.Background()
 	if err := goredis.LoadLuaScripts(rdb, ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "load Lua scripts: %v\n", err)
+		fmt.Fprintf(os.Stderr, "加载 Lua 脚本: %v\n", err)
 		os.Exit(1)
 	}
 
-	// ── Build repos ──
+	// ── 构建仓库层 ──
 	mysqlRepo := repository.NewMySQLRepo(db)
 	redisRepo := repository.NewRedisRepo(rdb)
 	mqRepo := repository.NewMQRepo(mqCh)
 
-	// ── Build ConnectionManager ──
+	// ── 构建连接管理器 ──
 	cm := conn.NewConnectionManager()
 
-	// ── Build LLM client ──
+	// ── 构建 LLM 客户端 ──
 	llmClient := llm.NewLLMClient(cfg.LLM)
 
-	// ── Build services ──
+	// ── 构建服务层 ──
 	msgSvc := service.NewMsgService(redisRepo, mqRepo, cm, logger)
 	authSvc := service.NewAuthService(mysqlRepo, cfg.JWT.Secret, cfg.JWT.AccessExpHours, cfg.JWT.RefreshExpDays)
 	friendSvc := service.NewFriendService(mysqlRepo, redisRepo, logger)
@@ -143,10 +143,10 @@ func TestMain(m *testing.M) {
 	msgOpSvc := service.NewMsgOpService(mysqlRepo, redisRepo, logger)
 	settingsSvc := service.NewSettingsService(mysqlRepo, logger)
 
-	// ── Build WS dispatcher ──
+	// ── 构建 WS 消息分发器 ──
 	dispatcher := ws.NewMessageDispatcher(msgSvc, friendSvc, aiSvc)
 
-	// ── Build HTTP handlers ──
+	// ── 构建 HTTP 处理器 ──
 	authHandler := api.NewAuthHandler(authSvc)
 	friendHandler := api.NewFriendHandler(friendSvc)
 	groupHandler := api.NewGroupHandler(groupSvc)
@@ -155,35 +155,35 @@ func TestMain(m *testing.M) {
 	msgOpHandler := api.NewMsgOpHandler(msgOpSvc)
 	settingsHandler := api.NewSettingsHandler(settingsSvc)
 
-	// ── Build Gin router ──
+	// ── 构建 Gin 路由器 ──
 	router := buildRouter(cfg, rdb, cm, dispatcher, logger,
 		authHandler, friendHandler, groupHandler,
 		momentHandler, aiHandler, msgOpHandler, settingsHandler)
 
-	// ── Start MQ consumers ──
+	// ── 启动 MQ 消费者 ──
 	consumerCtx, consumerCancel := context.WithCancel(ctx)
 	privateMsgConsumer := consumer.NewPrivateMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
 	groupMsgConsumer := consumer.NewGroupMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
 	momentFeedConsumer := consumer.NewMomentFeedConsumer(mqCh, mysqlRepo, redisRepo, logger)
 
 	if err := privateMsgConsumer.Start(consumerCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "start private msg consumer: %v\n", err)
+		fmt.Fprintf(os.Stderr, "启动私聊消息消费者: %v\n", err)
 		os.Exit(1)
 	}
 	if err := groupMsgConsumer.Start(consumerCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "start group msg consumer: %v\n", err)
+		fmt.Fprintf(os.Stderr, "启动群组消息消费者: %v\n", err)
 		os.Exit(1)
 	}
 	if err := momentFeedConsumer.Start(consumerCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "start moment feed consumer: %v\n", err)
+		fmt.Fprintf(os.Stderr, "启动动态流消费者: %v\n", err)
 		os.Exit(1)
 	}
-	logger.Info("MQ consumers started for E2E")
+	logger.Info("MQ 消费者已启动，准备 E2E 测试")
 
-	// ── Start cleanup task ──
+	// ── 启动清理任务 ──
 	infra.StartCleanupTask(rdb, logger, 1*time.Hour)
 
-	// ── Start httptest server ──
+	// ── 启动 httptest 服务器 ──
 	server := httptest.NewServer(router)
 
 	env = &testEnv{
@@ -197,12 +197,12 @@ func TestMain(m *testing.M) {
 		cancel:   consumerCancel,
 	}
 
-	logger.Info("GoIM E2E server started", zap.String("url", env.baseURL))
+	logger.Info("GoIM E2E 服务器已启动", zap.String("url", env.baseURL))
 
-	// Run tests
+	// 执行测试
 	code := m.Run()
 
-	// ── Cleanup ──
+	// ── 清理 ──
 	consumerCancel()
 	server.Close()
 	mqConn.Close()
@@ -212,7 +212,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// buildRouter creates the Gin router with all routes wired for E2E testing.
+// buildRouter 创建用于 E2E 测试的 Gin 路由器，并挂载所有路由。
 func buildRouter(
 	cfg *config.Config,
 	rdb *goredisv9.Client,
@@ -230,16 +230,16 @@ func buildRouter(
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// ── Health check ──
+	// ── 健康检查 ──
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "goim"})
 	})
 
-	// ── Public routes ──
+	// ── 公开路由 ──
 	public := r.Group("/api/v1")
 	authHandler.RegisterRoutes(public)
 
-	// ── Protected routes ──
+	// ── 受保护路由 ──
 	protected := r.Group("/api/v1")
 	protected.Use(middleware.JWTAuthMiddleware(cfg.JWT.Secret))
 	friendHandler.RegisterRoutes(protected)
@@ -249,7 +249,7 @@ func buildRouter(
 	msgOpHandler.RegisterRoutes(protected)
 	settingsHandler.RegisterRoutes(protected)
 
-	// ── WebSocket endpoint ──
+	// ── WebSocket 端点 ──
 	wsHandler := ws.ServeWebSocket(cfg.JWT.Secret, rdb, cm, dispatcher.Callback())
 	r.GET(cfg.Server.WsPath, wsHandler)
 
@@ -257,69 +257,69 @@ func buildRouter(
 }
 
 // ──────────────────────────────────────────────────────
-// E2E Tests
+// E2E 测试用例
 // ──────────────────────────────────────────────────────
 
-// TestE2E_HealthCheck verifies the /health endpoint returns ok.
+// TestE2E_HealthCheck 验证 /health 端点返回 ok。
 func TestE2E_HealthCheck(t *testing.T) {
 	status, body := doRequest(t, http.MethodGet, env.baseURL, "/health", nil, "")
 	if status != http.StatusOK {
-		t.Fatalf("health check: status=%d body=%s", status, body)
+		t.Fatalf("健康检查: status=%d body=%s", status, body)
 	}
 	var resp map[string]interface{}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("unmarshal health response: %v", err)
+		t.Fatalf("反序列化健康检查响应: %v", err)
 	}
 	if resp["status"] != "ok" {
-		t.Fatalf("expected status=ok, got %v", resp["status"])
+		t.Fatalf("期望 status=ok, 得到 %v", resp["status"])
 	}
 }
 
-// TestE2E_AuthFlow tests the full auth lifecycle:
-// register → login → refresh → use refreshed token.
+// TestE2E_AuthFlow 测试完整的认证生命周期：
+// 注册 → 登录 → 刷新令牌 → 使用刷新后的令牌。
 func TestE2E_AuthFlow(t *testing.T) {
 	username := fmt.Sprintf("e2e_auth_%d", time.Now().UnixNano())
 	password := "testpass123"
 
-	// Step 1: Register
+	// 步骤 1：注册
 	userID := registerUser(t, env.baseURL, username, password)
-	t.Logf("registered user: id=%d username=%s", userID, username)
+	t.Logf("已注册用户: id=%d username=%s", userID, username)
 	if userID == 0 {
-		t.Fatal("expected non-zero user ID")
+		t.Fatal("期望非零 user ID")
 	}
 
-	// Step 2: Login
+	// 步骤 2：登录
 	loginResp := loginUserFull(t, env.baseURL, username, password)
-	t.Logf("logged in: token=%s...", loginResp.AccessToken[:20])
+	t.Logf("已登录: token=%s...", loginResp.AccessToken[:20])
 
-	// Step 3: Use access token on protected endpoint
+	// 步骤 3：在受保护端点上使用访问令牌
 	status, _ := doAuthedRequest(t, http.MethodGet, env.baseURL,
 		"/api/v1/friend/list", nil, loginResp.AccessToken)
 	if status == http.StatusUnauthorized {
-		t.Fatal("access token should work on protected endpoints")
+		t.Fatal("访问令牌应可在受保护端点上使用")
 	}
 
-	// Step 4: Refresh token
+	// 步骤 4：刷新令牌
 	refreshResp := refreshToken(t, env.baseURL, loginResp.RefreshToken)
-	t.Logf("refreshed token: %s...", refreshResp.AccessToken[:20])
+	t.Logf("刷新后的令牌: %s...", refreshResp.AccessToken[:20])
 
-	// Step 5: Use refreshed token
+	// 步骤 5：使用刷新后的令牌
 	status, _ = doAuthedRequest(t, http.MethodGet, env.baseURL,
 		"/api/v1/friend/list", nil, refreshResp.AccessToken)
 	if status == http.StatusUnauthorized {
-		t.Fatal("refreshed token should work on protected endpoints")
+		t.Fatal("刷新后的令牌应可在受保护端点上使用")
 	}
 
-	// Step 6: Duplicate registration should fail
+	// 步骤 6：重复注册应失败
 	status, _ = doRequest(t, http.MethodPost, env.baseURL, "/api/v1/auth/register",
 		map[string]string{"username": username, "password": password}, "")
 	if status != http.StatusConflict {
-		t.Fatalf("duplicate registration should return 409, got %d", status)
+		t.Fatalf("重复注册应返回 409, 实际得到 %d", status)
 	}
 }
 
-// TestE2E_FriendFlow tests the full friend lifecycle:
-// send request → accept → list → block → unblock → delete.
+// TestE2E_FriendFlow 测试完整的好友生命周期：
+// 发送请求 → 接受 → 列表 → 屏蔽 → 取消屏蔽 → 删除。
 func TestE2E_FriendFlow(t *testing.T) {
 	u1Name := fmt.Sprintf("e2e_fr1_%d", time.Now().UnixNano())
 	u2Name := fmt.Sprintf("e2e_fr2_%d", time.Now().UnixNano())
@@ -328,61 +328,61 @@ func TestE2E_FriendFlow(t *testing.T) {
 	u1Token := loginUser(t, env.baseURL, u1Name, "pass1234")
 	u2Token := loginUser(t, env.baseURL, u2Name, "pass1234")
 
-	// Step 1: Send friend request (u1 → u2)
+	// 步骤 1：发送好友请求（u1 → u2）
 	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
 		map[string]interface{}{"to_user_id": u2ID, "message": "let's be friends"}, u1Token)
 	if status != http.StatusCreated {
-		t.Fatalf("send friend request: status=%d body=%s", status, body)
+		t.Fatalf("发送好友请求: status=%d body=%s", status, body)
 	}
 	var frResp friendRequestResp
 	if err := json.Unmarshal(body, &frResp); err != nil {
-		t.Fatalf("unmarshal friend request: %v", err)
+		t.Fatalf("反序列化好友请求: %v", err)
 	}
-	t.Logf("friend request: id=%d from=%d to=%d", frResp.RequestID, frResp.FromUserID, frResp.ToUserID)
+	t.Logf("好友请求: id=%d from=%d to=%d", frResp.RequestID, frResp.FromUserID, frResp.ToUserID)
 
-	// Step 2: Accept (u2)
+	// 步骤 2：接受（u2）
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
 		map[string]interface{}{"request_id": frResp.RequestID}, u2Token)
 	if status != http.StatusOK {
-		t.Fatalf("accept friend request: status=%d body=%s", status, body)
+		t.Fatalf("接受好友请求: status=%d body=%s", status, body)
 	}
 	var acceptResp acceptFriendResp
 	if err := json.Unmarshal(body, &acceptResp); err != nil {
-		t.Fatalf("unmarshal accept: %v", err)
+		t.Fatalf("反序列化接受响应: %v", err)
 	}
-	t.Logf("friend accepted: user=%d friend=%d", acceptResp.UserID, acceptResp.FriendID)
+	t.Logf("已接受好友: user=%d friend=%d", acceptResp.UserID, acceptResp.FriendID)
 
-	// Step 3: Get friend list (u1)
+	// 步骤 3：获取好友列表（u1）
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, "/api/v1/friend/list", nil, u1Token)
 	if status != http.StatusOK {
-		t.Fatalf("get friend list: status=%d body=%s", status, body)
+		t.Fatalf("获取好友列表: status=%d body=%s", status, body)
 	}
-	t.Logf("friend list for u1: %s", body)
+	t.Logf("u1 的好友列表: %s", body)
 
-	// Step 4: Block (u1 blocks u2)
+	// 步骤 4：屏蔽（u1 屏蔽 u2）
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/block",
 		map[string]interface{}{"blocked_id": u2ID}, u1Token)
 	if status != http.StatusOK {
-		t.Fatalf("block user: status=%d body=%s", status, body)
+		t.Fatalf("屏蔽用户: status=%d body=%s", status, body)
 	}
 
-	// Step 5: Unblock
+	// 步骤 5：取消屏蔽
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/unblock",
 		map[string]interface{}{"blocked_id": u2ID}, u1Token)
 	if status != http.StatusOK {
-		t.Fatalf("unblock user: status=%d body=%s", status, body)
+		t.Fatalf("取消屏蔽用户: status=%d body=%s", status, body)
 	}
 
-	// Step 6: Delete friend
+	// 步骤 6：删除好友
 	status, body = doAuthedRequest(t, http.MethodDelete, env.baseURL,
 		fmt.Sprintf("/api/v1/friend/%d", u2ID), nil, u1Token)
 	if status != http.StatusOK {
-		t.Fatalf("delete friend: status=%d body=%s", status, body)
+		t.Fatalf("删除好友: status=%d body=%s", status, body)
 	}
-	t.Logf("deleted friend %d", u2ID)
+	t.Logf("已删除好友 %d", u2ID)
 }
 
-// TestE2E_GroupMessaging tests group creation, member management, and WS messaging.
+// TestE2E_GroupMessaging 测试群组创建、成员管理及 WS 消息收发。
 func TestE2E_GroupMessaging(t *testing.T) {
 	u1Name := fmt.Sprintf("e2e_grp1_%d", time.Now().UnixNano())
 	u2Name := fmt.Sprintf("e2e_grp2_%d", time.Now().UnixNano())
@@ -391,42 +391,42 @@ func TestE2E_GroupMessaging(t *testing.T) {
 	u1Token := loginUser(t, env.baseURL, u1Name, "pass1234")
 	u2Token := loginUser(t, env.baseURL, u2Name, "pass1234")
 
-	// Step 1: Create group (u1 is owner)
+	// 步骤 1：创建群组（u1 为群主）
 	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/group",
 		map[string]interface{}{"name": "E2E Test Group", "notice": "test group"}, u1Token)
 	if status != http.StatusCreated {
-		t.Fatalf("create group: status=%d body=%s", status, body)
+		t.Fatalf("创建群组: status=%d body=%s", status, body)
 	}
 	var grpResp createGroupResp
 	if err := json.Unmarshal(body, &grpResp); err != nil {
-		t.Fatalf("unmarshal create group: %v", err)
+		t.Fatalf("反序列化创建群组响应: %v", err)
 	}
 	groupID := grpResp.GroupID
-	t.Logf("group created: id=%d", groupID)
+	t.Logf("群组已创建: id=%d", groupID)
 
-	// Step 2: Add member u2
+	// 步骤 2：添加成员 u2
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL,
 		fmt.Sprintf("/api/v1/group/%d/member", groupID),
 		map[string]interface{}{"member_id": u2ID}, u1Token)
 	if status != http.StatusOK {
-		t.Fatalf("add member: status=%d body=%s", status, body)
+		t.Fatalf("添加成员: status=%d body=%s", status, body)
 	}
 
-	// Step 3: Get group info
+	// 步骤 3：获取群组信息
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL,
 		fmt.Sprintf("/api/v1/group/%d", groupID), nil, u1Token)
 	if status != http.StatusOK {
-		t.Fatalf("get group info: status=%d body=%s", status, body)
+		t.Fatalf("获取群组信息: status=%d body=%s", status, body)
 	}
 
-	// Step 4: Get members
+	// 步骤 4：获取成员列表
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL,
 		fmt.Sprintf("/api/v1/group/%d/members", groupID), nil, u1Token)
 	if status != http.StatusOK {
-		t.Fatalf("get members: status=%d body=%s", status, body)
+		t.Fatalf("获取成员列表: status=%d body=%s", status, body)
 	}
 
-	// Step 5: Connect u1 via WS, send group message
+	// 步骤 5：u1 通过 WS 连接，发送群组消息
 	wsConn1 := connectWS(t, env.baseURL, u1Token)
 	defer closeWS(t, wsConn1)
 	time.Sleep(500 * time.Millisecond)
@@ -441,18 +441,18 @@ func TestE2E_GroupMessaging(t *testing.T) {
 		Timestamp:   time.Now().Unix(),
 	})
 
-	// Read serverAck
+	// 读取 serverAck
 	ack := readWSMessageType(t, wsConn1, "serverAck", 10*time.Second)
 	var ackData serverAckData
 	if err := json.Unmarshal(ack.Data, &ackData); err != nil {
-		t.Fatalf("unmarshal serverAck: %v", err)
+		t.Fatalf("反序列化 serverAck: %v", err)
 	}
 	if ackData.ServerMsgID == 0 {
-		t.Fatal("expected non-zero serverMsgID")
+		t.Fatal("期望非零 serverMsgID")
 	}
-	t.Logf("group msg acked: serverMsgID=%d groupSeq=%d", ackData.ServerMsgID, ackData.GroupSeq)
+	t.Logf("群组消息已确认: serverMsgID=%d groupSeq=%d", ackData.ServerMsgID, ackData.GroupSeq)
 
-	// Step 6: Connect u2 via WS, sync messages
+	// 步骤 6：u2 通过 WS 连接，同步消息
 	wsConn2 := connectWS(t, env.baseURL, u2Token)
 	defer closeWS(t, wsConn2)
 	time.Sleep(500 * time.Millisecond)
@@ -462,16 +462,16 @@ func TestE2E_GroupMessaging(t *testing.T) {
 		"batchSize":    100,
 	})
 
-	// Read sync response
+	// 读取同步响应
 	syncMsg := readWSMessage(t, wsConn2, 10*time.Second)
 	dataStr := string(syncMsg.Data)
 	if len(dataStr) > 200 {
 		dataStr = dataStr[:200]
 	}
-	t.Logf("u2 sync: type=%s data=%s", syncMsg.Type, dataStr)
+	t.Logf("u2 同步: type=%s data=%s", syncMsg.Type, dataStr)
 }
 
-// TestE2E_PrivateMessaging tests private messaging between two friends via WS.
+// TestE2E_PrivateMessaging 测试两个好友之间通过 WS 的私聊消息。
 func TestE2E_PrivateMessaging(t *testing.T) {
 	u1Name := fmt.Sprintf("e2e_pm1_%d", time.Now().UnixNano())
 	u2Name := fmt.Sprintf("e2e_pm2_%d", time.Now().UnixNano())
@@ -480,11 +480,11 @@ func TestE2E_PrivateMessaging(t *testing.T) {
 	u1Token := loginUser(t, env.baseURL, u1Name, "pass1234")
 	u2Token := loginUser(t, env.baseURL, u2Name, "pass1234")
 
-	// Make them friends (required for private msg — Lua check validates friendship)
+	// 将两人设为好友（私聊消息需要验证好友关系 —— Lua 检查）
 	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
 		map[string]interface{}{"to_user_id": u2ID, "message": "let's chat"}, u1Token)
 	if status != http.StatusCreated {
-		t.Fatalf("friend request: status=%d body=%s", status, body)
+		t.Fatalf("好友请求: status=%d body=%s", status, body)
 	}
 	var frResp friendRequestResp
 	json.Unmarshal(body, &frResp)
@@ -492,10 +492,10 @@ func TestE2E_PrivateMessaging(t *testing.T) {
 	status, _ = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
 		map[string]interface{}{"request_id": frResp.RequestID}, u2Token)
 	if status != http.StatusOK {
-		t.Fatalf("accept friend: status=%d", status)
+		t.Fatalf("接受好友: status=%d", status)
 	}
 
-	// Connect u1 and u2 via WS
+	// u1 和 u2 通过 WS 连接
 	wsConn1 := connectWS(t, env.baseURL, u1Token)
 	defer closeWS(t, wsConn1)
 	time.Sleep(500 * time.Millisecond)
@@ -504,7 +504,7 @@ func TestE2E_PrivateMessaging(t *testing.T) {
 	defer closeWS(t, wsConn2)
 	time.Sleep(500 * time.Millisecond)
 
-	// Send private message from u1 to u2
+	// 从 u1 向 u2 发送私聊消息
 	clientMsgID := fmt.Sprintf("e2e_pm_%d", time.Now().UnixNano())
 	sendWSMessage(t, wsConn1, "msg", sendMsgData{
 		ClientMsgID: clientMsgID,
@@ -515,26 +515,26 @@ func TestE2E_PrivateMessaging(t *testing.T) {
 		Timestamp:   time.Now().Unix(),
 	})
 
-	// Read serverAck on u1
+	// 在 u1 上读取 serverAck
 	ack := readWSMessageType(t, wsConn1, "serverAck", 10*time.Second)
 	var ackData serverAckData
 	if err := json.Unmarshal(ack.Data, &ackData); err != nil {
-		t.Fatalf("unmarshal serverAck: %v", err)
+		t.Fatalf("反序列化 serverAck: %v", err)
 	}
 	if ackData.ServerMsgID == 0 {
-		t.Fatal("expected non-zero serverMsgID")
+		t.Fatal("期望非零 serverMsgID")
 	}
-	t.Logf("private msg acked: serverMsgID=%d", ackData.ServerMsgID)
+	t.Logf("私聊消息已确认: serverMsgID=%d", ackData.ServerMsgID)
 
-	// u2 should receive the message (push model — consumer pushes to u2's WS)
+	// u2 应收到消息（推送模型 —— 消费者推送到 u2 的 WS）
 	msgOnU2 := readWSMessageType(t, wsConn2, "msg", 15*time.Second)
 	dataStr := string(msgOnU2.Data)
 	if len(dataStr) > 200 {
 		dataStr = dataStr[:200]
 	}
-	t.Logf("u2 received msg: data=%s", dataStr)
+	t.Logf("u2 收到消息: data=%s", dataStr)
 
-	// Send deliverAck from u2
+	// 从 u2 发送 deliverAck
 	var receivedMsg struct {
 		MsgID    int64  `json:"msgId"`
 		ConvID   string `json:"convId"`
@@ -545,15 +545,15 @@ func TestE2E_PrivateMessaging(t *testing.T) {
 		})
 	}
 
-	// Send readAck from u2
+	// 从 u2 发送 readAck
 	convID := fmt.Sprintf("p_%d_%d", min64(u1ID, u2ID), max64(u1ID, u2ID))
 	sendWSMessage(t, wsConn2, "readAck", map[string]interface{}{
 		"convId": convID,
 	})
-	t.Logf("u2 sent readAck for convId=%s", convID)
+	t.Logf("u2 发送 readAck, convId=%s", convID)
 }
 
-// TestE2E_MomentFlow tests moment lifecycle: publish → like → comment → feed.
+// TestE2E_MomentFlow 测试动态生命周期：发布 → 点赞 → 评论 → 动态流。
 func TestE2E_MomentFlow(t *testing.T) {
 	u1Name := fmt.Sprintf("e2e_mom1_%d", time.Now().UnixNano())
 	u2Name := fmt.Sprintf("e2e_mom2_%d", time.Now().UnixNano())
@@ -562,99 +562,99 @@ func TestE2E_MomentFlow(t *testing.T) {
 	u1Token := loginUser(t, env.baseURL, u1Name, "pass1234")
 	u2Token := loginUser(t, env.baseURL, u2Name, "pass1234")
 
-	// Make them friends (needed for feed fan-out)
+	// 将两人设为好友（动态流分发需要）
 	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
 		map[string]interface{}{"to_user_id": u2ID, "message": "share moments"}, u1Token)
 	if status != http.StatusCreated {
-		t.Fatalf("friend request: status=%d body=%s", status, body)
+		t.Fatalf("好友请求: status=%d body=%s", status, body)
 	}
 	var frResp friendRequestResp
 	json.Unmarshal(body, &frResp)
 	doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
 		map[string]interface{}{"request_id": frResp.RequestID}, u2Token)
 
-	// Step 1: Publish moment (u1)
+	// 步骤 1：发布动态（u1）
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment",
 		map[string]interface{}{
 			"content":    "E2E test moment!",
 			"visibility": 2,
 		}, u1Token)
 	if status != http.StatusCreated {
-		t.Fatalf("publish moment: status=%d body=%s", status, body)
+		t.Fatalf("发布动态: status=%d body=%s", status, body)
 	}
 	var momResp publishMomentResp
 	if err := json.Unmarshal(body, &momResp); err != nil {
-		t.Fatalf("unmarshal moment: %v", err)
+		t.Fatalf("反序列化动态: %v", err)
 	}
 	momentID := momResp.MomentID
-	t.Logf("moment published: id=%d", momentID)
+	t.Logf("动态已发布: id=%d", momentID)
 
-	// Step 2: Get moment by ID
+	// 步骤 2：按 ID 获取动态
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL,
 		fmt.Sprintf("/api/v1/moment/%d", momentID), nil, u1Token)
 	if status != http.StatusOK {
-		t.Fatalf("get moment: status=%d body=%s", status, body)
+		t.Fatalf("获取动态: status=%d body=%s", status, body)
 	}
 
-	// Step 3: Like moment (u2)
+	// 步骤 3：点赞动态（u2）
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL,
 		fmt.Sprintf("/api/v1/moment/%d/like", momentID), nil, u2Token)
 	if status != http.StatusOK {
-		t.Fatalf("like moment: status=%d body=%s", status, body)
+		t.Fatalf("点赞动态: status=%d body=%s", status, body)
 	}
 
-	// Step 4: Unlike moment (u2)
+	// 步骤 4：取消点赞动态（u2）
 	status, body = doAuthedRequest(t, http.MethodDelete, env.baseURL,
 		fmt.Sprintf("/api/v1/moment/%d/like", momentID), nil, u2Token)
 	if status != http.StatusOK {
-		t.Fatalf("unlike moment: status=%d body=%s", status, body)
+		t.Fatalf("取消点赞动态: status=%d body=%s", status, body)
 	}
 
-	// Step 5: Comment (u2)
+	// 步骤 5：评论（u2）
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL,
 		fmt.Sprintf("/api/v1/moment/%d/comment", momentID),
 		map[string]interface{}{"content": "nice post!"}, u2Token)
 	if status != http.StatusCreated {
-		t.Fatalf("comment moment: status=%d body=%s", status, body)
+		t.Fatalf("评论动态: status=%d body=%s", status, body)
 	}
 	var commentResp struct {
 		CommentID int64 `json:"comment_id"`
 	}
 	json.Unmarshal(body, &commentResp)
-	t.Logf("comment added: id=%d", commentResp.CommentID)
+	t.Logf("评论已添加: id=%d", commentResp.CommentID)
 
-	// Step 6: Get feed (u2) — wait for MQ consumer fan-out
+	// 步骤 6：获取动态流（u2）—— 等待 MQ 消费者分发完成
 	time.Sleep(2 * time.Second)
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL,
 		"/api/v1/moment/feed?limit=10", nil, u2Token)
 	if status != http.StatusOK {
-		t.Fatalf("get feed: status=%d body=%s", status, body)
+		t.Fatalf("获取动态流: status=%d body=%s", status, body)
 	}
-	t.Logf("feed for u2: %s", body)
+	t.Logf("u2 动态流: %s", body)
 
-	// Step 7: Delete comment
+	// 步骤 7：删除评论
 	if commentResp.CommentID > 0 {
 		status, body = doAuthedRequest(t, http.MethodDelete, env.baseURL,
 			fmt.Sprintf("/api/v1/moment/comment/%d", commentResp.CommentID), nil, u2Token)
 		if status != http.StatusOK {
-			t.Fatalf("delete comment: status=%d body=%s", status, body)
+			t.Fatalf("删除评论: status=%d body=%s", status, body)
 		}
 	}
 }
 
-// TestE2E_SettingsFlow tests user settings lifecycle.
+// TestE2E_SettingsFlow 测试用户设置的生命周期。
 func TestE2E_SettingsFlow(t *testing.T) {
 	username := fmt.Sprintf("e2e_set_%d", time.Now().UnixNano())
 	registerUser(t, env.baseURL, username, "pass1234")
 	token := loginUser(t, env.baseURL, username, "pass1234")
 
-	// Step 1: Get default settings
+	// 步骤 1：获取默认设置
 	status, body := doAuthedRequest(t, http.MethodGet, env.baseURL, "/api/v1/settings", nil, token)
 	if status != http.StatusOK {
-		t.Fatalf("get settings: status=%d body=%s", status, body)
+		t.Fatalf("获取设置: status=%d body=%s", status, body)
 	}
 
-	// Step 2: Update settings
+	// 步骤 2：更新设置
 	status, body = doAuthedRequest(t, http.MethodPut, env.baseURL, "/api/v1/settings",
 		map[string]interface{}{
 			"notification_enabled": true,
@@ -662,33 +662,33 @@ func TestE2E_SettingsFlow(t *testing.T) {
 			"mute_list":            "",
 		}, token)
 	if status != http.StatusOK {
-		t.Fatalf("update settings: status=%d body=%s", status, body)
+		t.Fatalf("更新设置: status=%d body=%s", status, body)
 	}
 
-	// Step 3: Mute conversation
+	// 步骤 3：静音会话
 	convID := "p_1_2"
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/settings/mute",
 		map[string]interface{}{"convId": convID}, token)
 	if status != http.StatusOK {
-		t.Fatalf("mute conv: status=%d body=%s", status, body)
+		t.Fatalf("静音会话: status=%d body=%s", status, body)
 	}
 
-	// Step 4: Unmute conversation
+	// 步骤 4：取消静音会话
 	status, body = doAuthedRequest(t, http.MethodDelete, env.baseURL,
 		fmt.Sprintf("/api/v1/settings/mute/%s", convID), nil, token)
 	if status != http.StatusOK {
-		t.Fatalf("unmute conv: status=%d body=%s", status, body)
+		t.Fatalf("取消静音会话: status=%d body=%s", status, body)
 	}
 
-	// Step 5: Verify settings
+	// 步骤 5：验证设置
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, "/api/v1/settings", nil, token)
 	if status != http.StatusOK {
-		t.Fatalf("get settings: status=%d body=%s", status, body)
+		t.Fatalf("获取设置: status=%d body=%s", status, body)
 	}
-	t.Logf("final settings: %s", body)
+	t.Logf("最终设置: %s", body)
 }
 
-// ── Helpers ──
+// ── 辅助函数 ──
 
 func min64(a, b int64) int64 {
 	if a < b {

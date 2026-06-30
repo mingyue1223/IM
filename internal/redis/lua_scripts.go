@@ -6,10 +6,9 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-// LoadLuaScripts preloads all Lua scripts into Redis for EVALSHA optimization.
-// go-redis automatically caches SHA on first Eval call, so explicit preload
-// is not strictly necessary. This function can be called at startup to warm
-// the cache so that subsequent calls use EVALSHA instead of EVAL.
+// LoadLuaScripts 将所有 Lua 脚本预加载到 Redis 中，以优化 EVALSHA 调用。
+// go-redis 在首次 Eval 调用时会自动缓存 SHA，因此显式预加载并非严格必要。
+// 此函数可在启动时调用以预热缓存，使后续调用使用 EVALSHA 而非 EVAL。
 func LoadLuaScripts(rdb *goredis.Client, ctx context.Context) error {
 	scripts := []string{
 		luaPrivateMsgCheck,

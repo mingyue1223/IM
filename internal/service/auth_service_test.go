@@ -15,20 +15,20 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Mock MySQLRepo for auth tests
+// 用于认证测试的模拟 MySQLRepo
 // ──────────────────────────────────────────────────────
 
 type mockAuthRepo struct {
 	mu sync.Mutex
 
-	// Stored users keyed by username
+	// 按用户名存储的用户
 	usersByUsername map[string]*model.User
-	// Stored users keyed by ID
+	// 按 ID 存储的用户
 	usersByID map[int64]*model.User
-	// Next auto-increment ID
+	// 下一个自增 ID
 	nextID int64
 
-	// Error overrides (set before calling service methods)
+	// 错误覆盖（在调用服务方法之前设置）
 	getByUsernameErr error
 	getByIDErr       error
 	createErr        error
@@ -50,7 +50,7 @@ func (m *mockAuthRepo) GetUserByUsername(_ context.Context, username string) (*m
 	}
 	u, ok := m.usersByUsername[username]
 	if !ok {
-		return nil, nil // not found
+		return nil, nil // 未找到
 	}
 	return u, nil
 }
@@ -63,7 +63,7 @@ func (m *mockAuthRepo) GetUserByID(_ context.Context, userID int64) (*model.User
 	}
 	u, ok := m.usersByID[userID]
 	if !ok {
-		return nil, nil // not found
+		return nil, nil // 未找到
 	}
 	return u, nil
 }
@@ -83,7 +83,7 @@ func (m *mockAuthRepo) CreateUser(_ context.Context, user *model.User) error {
 	return nil
 }
 
-// stub out all other MySQLRepo methods that auth tests don't use
+// 桩代码：实现其他所有 MySQLRepo 方法（认证测试中不使用）
 
 func (m *mockAuthRepo) UpdateUser(_ context.Context, _ *model.User) error { return nil }
 
@@ -147,7 +147,7 @@ func (m *mockAuthRepo) SearchPrivateMessages(_ context.Context, _ int64, _ strin
 }
 
 // ──────────────────────────────────────────────────────
-// Helper: new test AuthService
+// 辅助函数：创建新的测试 AuthService
 // ──────────────────────────────────────────────────────
 
 func newTestAuthService(repo *mockAuthRepo) *AuthService {
@@ -155,7 +155,7 @@ func newTestAuthService(repo *mockAuthRepo) *AuthService {
 }
 
 // ──────────────────────────────────────────────────────
-// Register tests
+// 注册测试
 // ──────────────────────────────────────────────────────
 
 func TestAuth_Register_Success(t *testing.T) {
@@ -167,12 +167,12 @@ func TestAuth_Register_Success(t *testing.T) {
 	assert.Equal(t, "alice", username)
 	assert.Equal(t, int64(1), userID)
 
-	// Verify stored user
+	// 验证存储的用户
 	stored, ok := repo.usersByUsername["alice"]
 	assert.True(t, ok)
 	assert.NotEmpty(t, stored.PasswordHash)
 
-	// Verify bcrypt hash is valid
+	// 验证 bcrypt 哈希是否有效
 	assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte("password123")))
 }
 
@@ -201,7 +201,7 @@ func TestAuth_Register_UsernameTooLong(t *testing.T) {
 	repo := newMockAuthRepo()
 	svc := newTestAuthService(repo)
 
-	longName := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" // 51 chars
+	longName := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" // 51 个字符
 	_, _, err := svc.Register(context.Background(), longName, "password123")
 	assert.Error(t, err)
 	assert.Equal(t, ErrUsernameTooShort, err.Error())
@@ -223,36 +223,36 @@ func TestAuth_Register_RepoCreateError(t *testing.T) {
 
 	_, _, err := svc.Register(context.Background(), "dave", "password123")
 	assert.Error(t, err)
-	// should wrap the underlying error
+	// 应包含底层错误信息
 	assert.Contains(t, err.Error(), "create user")
 }
 
 // ──────────────────────────────────────────────────────
-// Login tests
+// 登录测试
 // ──────────────────────────────────────────────────────
 
 func TestAuth_Login_Success(t *testing.T) {
 	repo := newMockAuthRepo()
 	svc := newTestAuthService(repo)
 
-	// Register a user first
+	// 先注册一个用户
 	userID, _, err := svc.Register(context.Background(), "loginuser", "mypassword")
 	assert.NoError(t, err)
 
-	// Now login
+	// 现在登录
 	accessToken, refreshToken, expiresIn, err := svc.Login(context.Background(), "loginuser", "mypassword")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, accessToken)
 	assert.NotEmpty(t, refreshToken)
 	assert.Equal(t, int64(2*3600), expiresIn)
 
-	// Validate the access token contains correct userID
+	// 验证访问令牌包含正确的 userID
 	_, claims, err := middleware.ParseToken(accessToken, "test-secret-key")
 	assert.NoError(t, err)
 	assert.Equal(t, userID, claims.UserID)
 	assert.Equal(t, "loginuser", claims.Username)
 
-	// Validate the refresh token contains correct userID
+	// 验证刷新令牌包含正确的 userID
 	_, claims, err = middleware.ParseToken(refreshToken, "test-secret-key")
 	assert.NoError(t, err)
 	assert.Equal(t, userID, claims.UserID)
@@ -280,26 +280,26 @@ func TestAuth_Login_NonexistentUser(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────
-// Refresh tests
+// 刷新令牌测试
 // ──────────────────────────────────────────────────────
 
 func TestAuth_Refresh_Success(t *testing.T) {
 	repo := newMockAuthRepo()
 	svc := newTestAuthService(repo)
 
-	// Register and login to get a refresh token
+	// 注册并登录以获取刷新令牌
 	userID, _, err := svc.Register(context.Background(), "refreshuser", "password123")
 	assert.NoError(t, err)
 	_, refreshToken, _, err := svc.Login(context.Background(), "refreshuser", "password123")
 	assert.NoError(t, err)
 
-	// Refresh
+	// 刷新令牌
 	accessToken, expiresIn, err := svc.Refresh(context.Background(), refreshToken)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, accessToken)
 	assert.Equal(t, int64(2*3600), expiresIn)
 
-	// Validate new access token
+	// 验证新的访问令牌
 	_, claims, err := middleware.ParseToken(accessToken, "test-secret-key")
 	assert.NoError(t, err)
 	assert.Equal(t, userID, claims.UserID)
@@ -319,19 +319,19 @@ func TestAuth_Refresh_UserDeleted(t *testing.T) {
 	repo := newMockAuthRepo()
 	svc := newTestAuthService(repo)
 
-	// Register and login
+	// 注册并登录
 	_, _, err := svc.Register(context.Background(), "deleteduser", "password123")
 	assert.NoError(t, err)
 	_, refreshToken, _, err := svc.Login(context.Background(), "deleteduser", "password123")
 	assert.NoError(t, err)
 
-	// Simulate user deletion — remove from mock repo
+	// 模拟用户被删除 —— 从 mock 仓库中移除
 	repo.mu.Lock()
 	delete(repo.usersByID, 1)
 	delete(repo.usersByUsername, "deleteduser")
 	repo.mu.Unlock()
 
-	// Refresh should fail
+	// 刷新应失败
 	_, _, err = svc.Refresh(context.Background(), refreshToken)
 	assert.Error(t, err)
 	assert.Equal(t, ErrUserNotFound, err.Error())
@@ -339,17 +339,17 @@ func TestAuth_Refresh_UserDeleted(t *testing.T) {
 
 func TestAuth_Refresh_ExpiredRefreshToken(t *testing.T) {
 	repo := newMockAuthRepo()
-	// Use very short refresh expiry (0 days = already expired)
+	// 使用极短的刷新令牌有效期（0 天 = 已过期）
 	svc := NewAuthService(repo, "test-secret-key", 2, 0)
 
 	_, _, err := svc.Register(context.Background(), "expireduser", "password123")
 	assert.NoError(t, err)
 
-	// Generate a refresh token that's already expired (0 days)
+	// 生成一个已过期的刷新令牌（0 天）
 	_, refreshToken, _, err := svc.Login(context.Background(), "expireduser", "password123")
 	assert.NoError(t, err)
 
-	// The refresh token should be expired; parsing should fail
+	// 刷新令牌应该已过期；解析应失败
 	_, _, err = middleware.ParseToken(refreshToken, "test-secret-key")
-	assert.Error(t, err) // token should be expired
+	assert.Error(t, err) // 令牌应已过期
 }

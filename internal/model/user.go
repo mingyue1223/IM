@@ -19,7 +19,7 @@ type FriendRequest struct {
 	FromUserID int64     `json:"from_user_id"`
 	ToUserID   int64     `json:"to_user_id"`
 	Message    string    `json:"message"`
-	Status     int       `json:"status"` // 0=pending, 1=accepted, 2=rejected
+	Status     int       `json:"status"` // 0=待处理, 1=已接受, 2=已拒绝
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }

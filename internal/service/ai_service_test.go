@@ -21,10 +21,10 @@ import (
 )
 
 // ──────────────────────────────────────────────────────
-// Mock implementations
+// 模拟实现
 // ──────────────────────────────────────────────────────
 
-// mockAIRedisRepo mocks the RedisRepo interface for AI tests.
+// mockAIRedisRepo 模拟 RedisRepo 接口，用于 AI 测试。
 type mockAIRedisRepo struct {
 	mu          sync.Mutex
 	memoryStore map[string]string // "ai_memory:{userID}:{key}" -> value
@@ -71,7 +71,7 @@ func (m *mockAIRedisRepo) GetAllWorkingMemory(_ context.Context, userID int64) (
 	return result, nil
 }
 
-// Stub out all other RedisRepo methods
+// 存根化所有其他 RedisRepo 方法
 
 func (m *mockAIRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
 func (m *mockAIRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
@@ -132,13 +132,13 @@ func (m *mockAIRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ i
 	return nil, nil
 }
 
-// mockAIMySQLRepo mocks the MySQLRepo interface for AI tests.
+// mockAIMySQLRepo 模拟 MySQLRepo 接口，用于 AI 测试。
 type mockAIMySQLRepo struct {
 	mu           sync.Mutex
 	summaries    []*model.AISummary
 	profileItems []*model.AIProfileItem
 	privateMsgs  []*model.PrivateMessage
-	insertMsgErr error // optional error override
+	insertMsgErr error // 可选的错误覆盖
 }
 
 func newMockAIMySQLRepo() *mockAIMySQLRepo {

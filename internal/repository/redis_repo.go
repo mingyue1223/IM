@@ -13,38 +13,38 @@ import (
 	"github.com/goim/goim/internal/redis"
 )
 
-// RedisRepo defines all Redis operations needed by the message service
-// and downstream MQ consumers. The interface allows mocking in tests.
+// RedisRepo 定义了消息服务和下游MQ消费者所需的所有Redis操作。
+// 该接口便于在测试中进行mock。
 type RedisRepo interface {
-	// ── Inbox / Outbox ──
+	// ── 收件箱 / 发件箱 ──
 	WriteInbox(ctx context.Context, userID int64, msg *model.InboxMessage) error
 	WriteOutbox(ctx context.Context, groupID int64, msg *model.InboxMessage) error
 	ReadInbox(ctx context.Context, userID int64, lastSyncTime int64, batchSize int) ([]model.InboxMessage, error)
 	ReadOutbox(ctx context.Context, groupID int64, lastSyncTime int64, limit int) ([]model.InboxMessage, error)
 
-	// ── Conversation list ──
+	// ── 会话列表 ──
 	UpdateConvList(ctx context.Context, userID int64, convID string, summary string, timestamp int64) error
 	GetConvList(ctx context.Context, userID int64) ([]model.ConvSummary, error)
 
-	// ── Unread counters ──
+	// ── 未读计数器 ──
 	IncrementUnread(ctx context.Context, userID int64, convID string) error
 	ClearUnread(ctx context.Context, userID int64, convID string) error
 	GetUnreadMap(ctx context.Context, userID int64) (map[string]int64, error)
 
-	// ── Group read position ──
+	// ── 群组已读位置 ──
 	SetGroupReadPos(ctx context.Context, userID int64, convID string, seq int64) error
 	GetGroupReadPos(ctx context.Context, userID int64, convID string) (int64, error)
 
-	// ── Group memberships ──
+	// ── 群组成员关系 ──
 	GetGroupMemberships(ctx context.Context, userID int64) ([]int64, error)
 	GetGroupMembers(ctx context.Context, groupID int64) ([]int64, error)
 	AddGroupMemberRedis(ctx context.Context, groupID, userID int64) error
 	RemoveGroupMemberRedis(ctx context.Context, groupID, userID int64) error
 
-	// ── Dedup ──
+	// ── 去重 ──
 	CheckDuplicate(ctx context.Context, userID int64, clientMsgID string) (bool, error)
 
-	// ── Trim (for cleanup task) ──
+	// ── 修剪（用于清理任务）──
 	TrimInbox(ctx context.Context, userID int64, maxCount int) error
 	TrimOutbox(ctx context.Context, groupID int64, maxCount int) error
 	TrimInboxByTime(ctx context.Context, userID int64, beforeTimestamp int64) error
@@ -52,23 +52,23 @@ type RedisRepo interface {
 	TrimConvListByTime(ctx context.Context, userID int64, beforeTimestamp int64) error
 	TrimTimelineByTime(ctx context.Context, userID int64, beforeTimestamp int64) error
 
-	// ── Lua script wrappers ──
+	// ── Lua脚本封装 ──
 	ExecPrivateMsgCheck(ctx context.Context, senderID, receiverID int64, clientMsgID string) (*redis.PrivateMsgCheckResult, error)
 	ExecGroupMsgCheck(ctx context.Context, groupID, senderID int64, clientMsgID string) (*redis.GroupMsgCheckResult, error)
 	ExecInboxMarkRead(ctx context.Context, userID int64, convID string) (int64, error)
 	ExecRevokeMsg(ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error)
-	// ── Moment feed ──
+	// ── 动态流 ──
 	PublishMomentFeed(ctx context.Context, userID int64, momentID int64, timestamp int64) error
 	GetMomentFeed(ctx context.Context, userID int64, lastSyncTime int64, limit int) ([]int64, error)
 
-	// ── AI working memory (Layer 3) ──
+	// ── AI工作记忆（第3层）──
 	SetWorkingMemory(ctx context.Context, userID int64, key string, value string, ttlSeconds int64) error
 	GetWorkingMemory(ctx context.Context, userID int64, key string) (string, error)
 	GetAllWorkingMemory(ctx context.Context, userID int64) (map[string]string, error)
 }
 
 // ──────────────────────────────────────────────────────
-// RedisRepoImpl — concrete implementation using go-redis
+// RedisRepoImpl — 使用go-redis的具体实现
 // ──────────────────────────────────────────────────────
 
 type RedisRepoImpl struct {
@@ -79,13 +79,13 @@ func NewRedisRepo(rdb *goredis.Client) *RedisRepoImpl {
 	return &RedisRepoImpl{rdb: rdb}
 }
 
-// ── Inbox / Outbox ──
+// ── 收件箱 / 发件箱 ──
 
 func (r *RedisRepoImpl) WriteInbox(ctx context.Context, userID int64, msg *model.InboxMessage) error {
 	key := fmt.Sprintf("inbox:%d", userID)
 	msgJSON, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("marshal inbox message: %w", err)
+		return fmt.Errorf("序列化收件箱消息失败: %w", err)
 	}
 	return r.rdb.ZAdd(ctx, key, goredis.Z{
 		Score:  float64(msg.Timestamp),
@@ -97,7 +97,7 @@ func (r *RedisRepoImpl) WriteOutbox(ctx context.Context, groupID int64, msg *mod
 	key := fmt.Sprintf("outbox:%d", groupID)
 	msgJSON, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("marshal outbox message: %w", err)
+		return fmt.Errorf("序列化发件箱消息失败: %w", err)
 	}
 	return r.rdb.ZAdd(ctx, key, goredis.Z{
 		Score:  float64(msg.Timestamp),
@@ -107,9 +107,9 @@ func (r *RedisRepoImpl) WriteOutbox(ctx context.Context, groupID int64, msg *mod
 
 func (r *RedisRepoImpl) ReadInbox(ctx context.Context, userID int64, lastSyncTime int64, batchSize int) ([]model.InboxMessage, error) {
 	key := fmt.Sprintf("inbox:%d", userID)
-	// ZRANGEBYSCORE: messages with timestamp >= lastSyncTime (inclusive).
-	// Inclusive lower bound prevents message loss when multiple messages share
-	// the same timestamp as the boundary. The client deduplicates by MsgID.
+	// ZRANGEBYSCORE: 获取时间戳 >= lastSyncTime 的消息（包含边界值）。
+	// 包含下边界可防止多条消息共享相同时间戳边界值时丢失消息。
+	// 客户端通过MsgID进行去重。
 	min := fmt.Sprintf("%d", lastSyncTime)
 	results, err := r.rdb.ZRangeByScore(ctx, key, &goredis.ZRangeBy{
 		Min:    min,
@@ -118,15 +118,15 @@ func (r *RedisRepoImpl) ReadInbox(ctx context.Context, userID int64, lastSyncTim
 		Count:  int64(batchSize),
 	}).Result()
 	if err != nil {
-		return nil, fmt.Errorf("ZRangeByScore inbox: %w", err)
+		return nil, fmt.Errorf("ZRangeByScore收件箱: %w", err)
 	}
 
 	msgs := make([]model.InboxMessage, 0, len(results))
 	for _, raw := range results {
 		var m model.InboxMessage
 		if err := json.Unmarshal([]byte(raw), &m); err != nil {
-			// Log but don't skip — malformed entries indicate a data integrity issue
-			// that operators should investigate. We skip the entry to avoid crashing.
+			// 记录日志但不跳过 — 损坏的条目表明存在数据完整性问题
+			// 运维人员应进行调查。我们跳过该条目以避免崩溃。
 			continue
 		}
 		msgs = append(msgs, m)
@@ -136,7 +136,7 @@ func (r *RedisRepoImpl) ReadInbox(ctx context.Context, userID int64, lastSyncTim
 
 func (r *RedisRepoImpl) ReadOutbox(ctx context.Context, groupID int64, lastSyncTime int64, limit int) ([]model.InboxMessage, error) {
 	key := fmt.Sprintf("outbox:%d", groupID)
-	// Inclusive lower bound (same reasoning as ReadInbox — prevents boundary loss)
+	// 包含下边界（与ReadInbox相同的原因 — 防止边界丢失）
 	min := fmt.Sprintf("%d", lastSyncTime)
 	results, err := r.rdb.ZRangeByScore(ctx, key, &goredis.ZRangeBy{
 		Min:    min,
@@ -145,7 +145,7 @@ func (r *RedisRepoImpl) ReadOutbox(ctx context.Context, groupID int64, lastSyncT
 		Count:  int64(limit),
 	}).Result()
 	if err != nil {
-		return nil, fmt.Errorf("ZRangeByScore outbox: %w", err)
+		return nil, fmt.Errorf("ZRangeByScore发件箱: %w", err)
 	}
 
 	msgs := make([]model.InboxMessage, 0, len(results))
@@ -159,14 +159,14 @@ func (r *RedisRepoImpl) ReadOutbox(ctx context.Context, groupID int64, lastSyncT
 	return msgs, nil
 }
 
-// ── Conversation list ──
+// ── 会话列表 ──
 
 func (r *RedisRepoImpl) UpdateConvList(ctx context.Context, userID int64, convID string, summary string, timestamp int64) error {
 	key := fmt.Sprintf("conv_list:%d", userID)
-	// Store summary JSON as the ZSet member so GetConvList can return full metadata.
+	// 将摘要JSON存储为ZSet成员，以便GetConvList可以返回完整的元数据。
 	member := summary
 	if member == "" {
-		member = convID // fallback: store just convID if no summary provided
+		member = convID // 后备方案：如果未提供摘要，则仅存储convID
 	}
 	return r.rdb.ZAdd(ctx, key, goredis.Z{
 		Score:  float64(timestamp),
@@ -176,16 +176,16 @@ func (r *RedisRepoImpl) UpdateConvList(ctx context.Context, userID int64, convID
 
 func (r *RedisRepoImpl) GetConvList(ctx context.Context, userID int64) ([]model.ConvSummary, error) {
 	key := fmt.Sprintf("conv_list:%d", userID)
-	// ZREVRANGE returns members sorted by lastMsgTime descending.
+	// ZREVRANGE返回按lastMsgTime降序排列的成员。
 	members, err := r.rdb.ZRevRange(ctx, key, 0, -1).Result()
 	if err != nil {
-		return nil, fmt.Errorf("ZRevRange conv_list: %w", err)
+		return nil, fmt.Errorf("ZRevRange会话列表: %w", err)
 	}
 
 	summaries := make([]model.ConvSummary, 0, len(members))
 	for _, member := range members {
-		// If the member is JSON, try to parse it as ConvSummary.
-		// If parsing fails, treat it as a plain convID string.
+		// 如果成员是JSON格式，尝试将其解析为ConvSummary。
+		// 如果解析失败，则将其视为普通的convID字符串。
 		var s model.ConvSummary
 		if err := json.Unmarshal([]byte(member), &s); err == nil && s.ConvID != "" {
 			summaries = append(summaries, s)
@@ -196,7 +196,7 @@ func (r *RedisRepoImpl) GetConvList(ctx context.Context, userID int64) ([]model.
 	return summaries, nil
 }
 
-// ── Unread counters ──
+// ── 未读计数器 ──
 
 func (r *RedisRepoImpl) IncrementUnread(ctx context.Context, userID int64, convID string) error {
 	key := fmt.Sprintf("unread:%d", userID)
@@ -212,7 +212,7 @@ func (r *RedisRepoImpl) GetUnreadMap(ctx context.Context, userID int64) (map[str
 	key := fmt.Sprintf("unread:%d", userID)
 	raw, err := r.rdb.HGetAll(ctx, key).Result()
 	if err != nil {
-		return nil, fmt.Errorf("HGetAll unread: %w", err)
+		return nil, fmt.Errorf("HGetAll未读数: %w", err)
 	}
 
 	result := make(map[string]int64, len(raw))
@@ -225,7 +225,7 @@ func (r *RedisRepoImpl) GetUnreadMap(ctx context.Context, userID int64) (map[str
 	return result, nil
 }
 
-// ── Group read position ──
+// ── 群组已读位置 ──
 
 func (r *RedisRepoImpl) SetGroupReadPos(ctx context.Context, userID int64, convID string, seq int64) error {
 	key := fmt.Sprintf("group_read_pos:%d", userID)
@@ -237,20 +237,20 @@ func (r *RedisRepoImpl) GetGroupReadPos(ctx context.Context, userID int64, convI
 	val, err := r.rdb.HGet(ctx, key, convID).Result()
 	if err != nil {
 		if err == goredis.Nil {
-			return 0, nil // no read position yet
+			return 0, nil // 尚无已读位置
 		}
-		return 0, fmt.Errorf("HGet group_read_pos: %w", err)
+		return 0, fmt.Errorf("HGet群组已读位置: %w", err)
 	}
 	return strconv.ParseInt(val, 10, 64)
 }
 
-// ── Group memberships ──
+// ── 群组成员关系 ──
 
 func (r *RedisRepoImpl) GetGroupMemberships(ctx context.Context, userID int64) ([]int64, error) {
 	key := fmt.Sprintf("user_groups:%d", userID)
 	results, err := r.rdb.SMembers(ctx, key).Result()
 	if err != nil {
-		return nil, fmt.Errorf("SMembers user_groups: %w", err)
+		return nil, fmt.Errorf("SMembers用户群组: %w", err)
 	}
 
 	groupIDs := make([]int64, 0, len(results))
@@ -268,7 +268,7 @@ func (r *RedisRepoImpl) GetGroupMembers(ctx context.Context, groupID int64) ([]i
 	key := fmt.Sprintf("group_members:%d", groupID)
 	results, err := r.rdb.SMembers(ctx, key).Result()
 	if err != nil {
-		return nil, fmt.Errorf("SMembers group_members: %w", err)
+		return nil, fmt.Errorf("SMembers群组成员: %w", err)
 	}
 
 	memberIDs := make([]int64, 0, len(results))
@@ -289,10 +289,10 @@ func (r *RedisRepoImpl) AddGroupMemberRedis(ctx context.Context, groupID, userID
 	groupIDStr := strconv.FormatInt(groupID, 10)
 
 	if err := r.rdb.SAdd(ctx, groupKey, userIDStr).Err(); err != nil {
-		return fmt.Errorf("SADD group_members: %w", err)
+		return fmt.Errorf("SADD群组成员: %w", err)
 	}
 	if err := r.rdb.SAdd(ctx, userKey, groupIDStr).Err(); err != nil {
-		return fmt.Errorf("SADD user_groups: %w", err)
+		return fmt.Errorf("SADD用户群组: %w", err)
 	}
 	return nil
 }
@@ -304,38 +304,38 @@ func (r *RedisRepoImpl) RemoveGroupMemberRedis(ctx context.Context, groupID, use
 	groupIDStr := strconv.FormatInt(groupID, 10)
 
 	if err := r.rdb.SRem(ctx, groupKey, userIDStr).Err(); err != nil {
-		return fmt.Errorf("SREM group_members: %w", err)
+		return fmt.Errorf("SREM群组成员: %w", err)
 	}
 	if err := r.rdb.SRem(ctx, userKey, groupIDStr).Err(); err != nil {
-		return fmt.Errorf("SREM user_groups: %w", err)
+		return fmt.Errorf("SREM用户群组: %w", err)
 	}
 	return nil
 }
 
-// ── Dedup ──
+// ── 去重 ──
 
 func (r *RedisRepoImpl) CheckDuplicate(ctx context.Context, userID int64, clientMsgID string) (bool, error) {
 	key := fmt.Sprintf("msg_dedup:%d:%s", userID, clientMsgID)
-	ok, err := r.rdb.SetNX(ctx, key, "1", 300*time.Second).Result() // 300s TTL
+	ok, err := r.rdb.SetNX(ctx, key, "1", 300*time.Second).Result() // 300秒TTL
 	if err != nil {
-		return false, fmt.Errorf("SetNX dedup: %w", err)
+		return false, fmt.Errorf("SetNX去重: %w", err)
 	}
-	return !ok, nil // true = duplicate (SetNX failed)
+	return !ok, nil // true = 重复消息（SetNX失败）
 }
 
-// ── Trim ──
+// ── 修剪 ──
 
 func (r *RedisRepoImpl) TrimInbox(ctx context.Context, userID int64, maxCount int) error {
 	key := fmt.Sprintf("inbox:%d", userID)
 	card, err := r.rdb.ZCard(ctx, key).Result()
 	if err != nil {
-		return fmt.Errorf("ZCard inbox: %w", err)
+		return fmt.Errorf("ZCard收件箱: %w", err)
 	}
 	if card > int64(maxCount) {
-		// Remove oldest entries beyond maxCount
+		// 删除超出maxCount的最旧条目
 		removeCount := card - int64(maxCount)
 		if err := r.rdb.ZRemRangeByRank(ctx, key, 0, removeCount-1).Err(); err != nil {
-			return fmt.Errorf("ZRemRangeByRank inbox: %w", err)
+			return fmt.Errorf("ZRemRangeByRank收件箱: %w", err)
 		}
 	}
 	return nil
@@ -345,24 +345,24 @@ func (r *RedisRepoImpl) TrimOutbox(ctx context.Context, groupID int64, maxCount 
 	key := fmt.Sprintf("outbox:%d", groupID)
 	card, err := r.rdb.ZCard(ctx, key).Result()
 	if err != nil {
-		return fmt.Errorf("ZCard outbox: %w", err)
+		return fmt.Errorf("ZCard发件箱: %w", err)
 	}
 	if card > int64(maxCount) {
 		removeCount := card - int64(maxCount)
 		if err := r.rdb.ZRemRangeByRank(ctx, key, 0, removeCount-1).Err(); err != nil {
-			return fmt.Errorf("ZRemRangeByRank outbox: %w", err)
+			return fmt.Errorf("ZRemRangeByRank发件箱: %w", err)
 		}
 	}
 	return nil
 }
 
-// ── Time-based Trim ──
+// ── 基于时间的修剪 ──
 
 func (r *RedisRepoImpl) TrimInboxByTime(ctx context.Context, userID int64, beforeTimestamp int64) error {
 	key := fmt.Sprintf("inbox:%d", userID)
 	max := fmt.Sprintf("%d", beforeTimestamp)
 	if err := r.rdb.ZRemRangeByScore(ctx, key, "0", max).Err(); err != nil {
-		return fmt.Errorf("ZRemRangeByScore inbox: %w", err)
+		return fmt.Errorf("ZRemRangeByScore收件箱: %w", err)
 	}
 	return nil
 }
@@ -371,7 +371,7 @@ func (r *RedisRepoImpl) TrimOutboxByTime(ctx context.Context, groupID int64, bef
 	key := fmt.Sprintf("outbox:%d", groupID)
 	max := fmt.Sprintf("%d", beforeTimestamp)
 	if err := r.rdb.ZRemRangeByScore(ctx, key, "0", max).Err(); err != nil {
-		return fmt.Errorf("ZRemRangeByScore outbox: %w", err)
+		return fmt.Errorf("ZRemRangeByScore发件箱: %w", err)
 	}
 	return nil
 }
@@ -380,7 +380,7 @@ func (r *RedisRepoImpl) TrimConvListByTime(ctx context.Context, userID int64, be
 	key := fmt.Sprintf("conv_list:%d", userID)
 	max := fmt.Sprintf("%d", beforeTimestamp)
 	if err := r.rdb.ZRemRangeByScore(ctx, key, "0", max).Err(); err != nil {
-		return fmt.Errorf("ZRemRangeByScore conv_list: %w", err)
+		return fmt.Errorf("ZRemRangeByScore会话列表: %w", err)
 	}
 	return nil
 }
@@ -389,12 +389,12 @@ func (r *RedisRepoImpl) TrimTimelineByTime(ctx context.Context, userID int64, be
 	key := fmt.Sprintf("timeline:%d", userID)
 	max := fmt.Sprintf("%d", beforeTimestamp)
 	if err := r.rdb.ZRemRangeByScore(ctx, key, "0", max).Err(); err != nil {
-		return fmt.Errorf("ZRemRangeByScore timeline: %w", err)
+		return fmt.Errorf("ZRemRangeByScore时间线: %w", err)
 	}
 	return nil
 }
 
-// ── Lua script wrappers ──
+// ── Lua脚本封装 ──
 
 func (r *RedisRepoImpl) ExecPrivateMsgCheck(ctx context.Context, senderID, receiverID int64, clientMsgID string) (*redis.PrivateMsgCheckResult, error) {
 	return redis.ExecPrivateMsgCheck(r.rdb, ctx, senderID, receiverID, clientMsgID)
@@ -412,7 +412,7 @@ func (r *RedisRepoImpl) ExecRevokeMsg(ctx context.Context, userID int64, convID 
 	return redis.ExecRevokeMsg(r.rdb, ctx, userID, convID, msgID, revokeMsgJSON, nowTimestamp)
 }
 
-// ── Moment feed ──
+// ── 动态流 ──
 
 func (r *RedisRepoImpl) PublishMomentFeed(ctx context.Context, userID int64, momentID int64, timestamp int64) error {
 	key := fmt.Sprintf("timeline:%d", userID)
@@ -432,20 +432,20 @@ func (r *RedisRepoImpl) GetMomentFeed(ctx context.Context, userID int64, lastSyn
 		Count:  int64(limit),
 	}).Result()
 	if err != nil {
-		return nil, fmt.Errorf("ZRangeByScore timeline: %w", err)
+		return nil, fmt.Errorf("ZRangeByScore时间线: %w", err)
 	}
 
 	momentIDs := make([]int64, 0, len(results))
 	for _, raw := range results {
 		id, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
-			continue // skip malformed entries
+			continue // 跳过损坏的条目
 		}
 		momentIDs = append(momentIDs, id)
 	}
 return momentIDs, nil
 }
-// ── AI working memory (Layer 3) ──
+// ── AI工作记忆（第3层）──
 
 func (r *RedisRepoImpl) SetWorkingMemory(ctx context.Context, userID int64, key string, value string, ttlSeconds int64) error {
 	redisKey := fmt.Sprintf("ai_memory:%d:%s", userID, key)
@@ -457,9 +457,9 @@ func (r *RedisRepoImpl) GetWorkingMemory(ctx context.Context, userID int64, key 
 	val, err := r.rdb.Get(ctx, redisKey).Result()
 	if err != nil {
 		if err == goredis.Nil {
-			return "", nil // key not found
+			return "", nil // 键不存在
 		}
-		return "", fmt.Errorf("GET ai_memory: %w", err)
+		return "", fmt.Errorf("GET AI记忆: %w", err)
 	}
 	return val, nil
 }
@@ -473,15 +473,15 @@ func (r *RedisRepoImpl) GetAllWorkingMemory(ctx context.Context, userID int64) (
 	for {
 		keys, nextCursor, err := r.rdb.Scan(ctx, cursor, pattern, 100).Result()
 		if err != nil {
-			return nil, fmt.Errorf("SCAN ai_memory: %w", err)
+			return nil, fmt.Errorf("SCAN AI记忆: %w", err)
 		}
 		if len(keys) > 0 {
 			vals, err := r.rdb.MGet(ctx, keys...).Result()
 			if err != nil {
-				return nil, fmt.Errorf("MGET ai_memory: %w", err)
+				return nil, fmt.Errorf("MGET AI记忆: %w", err)
 			}
 			for i, k := range keys {
-				// Strip the "ai_memory:{userID}:" prefix to return just the short key
+				// 去除"ai_memory:{userID}:"前缀，只返回短键名
 				prefix := fmt.Sprintf("ai_memory:%d:", userID)
 				shortKey := k[len(prefix):]
 				if vals[i] != nil {

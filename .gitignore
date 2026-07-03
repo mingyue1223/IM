@@ -4,5 +4,5 @@ uploads/
 .env
 configs/config.yaml
 config.local.yaml
-.claude/worktrees/
+.claude/
 .superpowers/

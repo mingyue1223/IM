@@ -25,3 +25,10 @@ type MomentComment struct {
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// FeedEntry 是 Feed ZSet（收件箱/寄件箱）中的一条记录：
+// 动态 ID 及其发布时间戳（毫秒），用于推拉合并时的排序与游标分页。
+type FeedEntry struct {
+	MomentID int64
+	Ts       int64 // 发布时间戳（毫秒），即 ZSet 的 score
+}

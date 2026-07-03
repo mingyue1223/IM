@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -18,20 +19,24 @@ import (
 // mockMySQLRepo 为动态测试实现 repository.MySQLRepo。
 // 仅实现动态相关方法；其他方法会触发 panic。
 type mockMySQLRepo struct {
-	moments    map[int64]*model.Moment
-	likes      map[string]*model.MomentLike // 键："momentID:userID"
-	comments   map[int64]*model.MomentComment
-	nextID     int64
-	likeErr    error // CreateMomentLike 的可注入错误
-	commentErr error // CreateMomentComment 的可注入错误
+	moments     map[int64]*model.Moment
+	likes       map[string]*model.MomentLike // 键："momentID:userID"
+	comments    map[int64]*model.MomentComment
+	friends     map[int64][]int64 // userID -> friendID 列表
+	friendCount map[int64]int     // userID -> 好友数
+	nextID      int64
+	likeErr     error // CreateMomentLike 的可注入错误
+	commentErr  error // CreateMomentComment 的可注入错误
 }
 
 func newMockMySQLRepo() *mockMySQLRepo {
 	return &mockMySQLRepo{
-		moments:   make(map[int64]*model.Moment),
-		likes:     make(map[string]*model.MomentLike),
-		comments:  make(map[int64]*model.MomentComment),
-		nextID:    1,
+		moments:     make(map[int64]*model.Moment),
+		likes:       make(map[string]*model.MomentLike),
+		comments:    make(map[int64]*model.MomentComment),
+		friends:     make(map[int64][]int64),
+		friendCount: make(map[int64]int),
+		nextID:      1,
 	}
 }
 
@@ -58,6 +63,20 @@ func (m *mockMySQLRepo) GetMomentsByUser(ctx context.Context, userID int64, limi
 		}
 	}
 	return result, nil
+}
+
+func (m *mockMySQLRepo) GetMomentsByIDs(ctx context.Context, ids []int64) ([]model.Moment, error) {
+	result := make([]model.Moment, 0, len(ids))
+	for _, id := range ids {
+		if moment, ok := m.moments[id]; ok {
+			result = append(result, *moment)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockMySQLRepo) CountFriends(_ context.Context, userID int64) (int, error) {
+	return m.friendCount[userID], nil
 }
 
 func (m *mockMySQLRepo) CreateMomentLike(ctx context.Context, like *model.MomentLike) error {
@@ -140,8 +159,13 @@ func (m *mockMySQLRepo) CreateFriendship(_ context.Context, _ *model.Friendship)
 func (m *mockMySQLRepo) DeleteFriendship(_ context.Context, _ int64, _ int64) error {
 	panic("未实现")
 }
-func (m *mockMySQLRepo) GetFriendList(_ context.Context, _ int64) ([]model.Friendship, error) {
-	return nil, nil
+func (m *mockMySQLRepo) GetFriendList(_ context.Context, userID int64) ([]model.Friendship, error) {
+	fids := m.friends[userID]
+	out := make([]model.Friendship, 0, len(fids))
+	for _, fid := range fids {
+		out = append(out, model.Friendship{UserID: userID, FriendID: fid})
+	}
+	return out, nil
 }
 func (m *mockMySQLRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error) {
 	panic("未实现")
@@ -198,29 +222,90 @@ func (m *mockMySQLRepo) SearchPrivateMessages(_ context.Context, _ int64, _ stri
 // momentMockRedisRepo 为动态测试实现 repository.RedisRepo。
 // 仅实现动态信息流方法；其他方法会触发 panic。
 type momentMockRedisRepo struct {
-	timelines map[int64][]int64 // 用户ID -> 动态ID列表
+	timelines map[int64][]model.FeedEntry // userID -> 收件箱条目
+	outboxes  map[int64][]model.FeedEntry // userID -> 寄件箱条目
+	bigUsers  map[int64]bool
 }
 
 func newMomentMockRedisRepo() *momentMockRedisRepo {
 	return &momentMockRedisRepo{
-		timelines: make(map[int64][]int64),
+		timelines: make(map[int64][]model.FeedEntry),
+		outboxes:  make(map[int64][]model.FeedEntry),
+		bigUsers:  make(map[int64]bool),
 	}
 }
 
 func (m *momentMockRedisRepo) PublishMomentFeed(ctx context.Context, userID int64, momentID int64, timestamp int64) error {
-	m.timelines[userID] = append(m.timelines[userID], momentID)
+	m.timelines[userID] = append(m.timelines[userID], model.FeedEntry{MomentID: momentID, Ts: timestamp})
 	return nil
 }
 
 func (m *momentMockRedisRepo) GetMomentFeed(ctx context.Context, userID int64, lastSyncTime int64, limit int) ([]int64, error) {
-	timeline, ok := m.timelines[userID]
-	if !ok {
-		return []int64{}, nil
+	entries := m.timelines[userID]
+	ids := make([]int64, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, e.MomentID)
 	}
-	if limit > len(timeline) {
-		return timeline, nil
+	if limit < len(ids) {
+		ids = ids[:limit]
 	}
-	return timeline[:limit], nil
+	return ids, nil
+}
+
+func (m *momentMockRedisRepo) AddToOutbox(_ context.Context, authorID int64, momentID int64, timestamp int64, _ int) error {
+	m.outboxes[authorID] = append(m.outboxes[authorID], model.FeedEntry{MomentID: momentID, Ts: timestamp})
+	return nil
+}
+
+func (m *momentMockRedisRepo) FanoutMomentFeed(_ context.Context, friendIDs []int64, momentID int64, timestamp int64, _ int) error {
+	for _, fid := range friendIDs {
+		m.timelines[fid] = append(m.timelines[fid], model.FeedEntry{MomentID: momentID, Ts: timestamp})
+	}
+	return nil
+}
+
+func (m *momentMockRedisRepo) MarkBigUser(_ context.Context, userID int64) error {
+	m.bigUsers[userID] = true
+	return nil
+}
+
+func (m *momentMockRedisRepo) FilterBigUsers(_ context.Context, userIDs []int64) ([]int64, error) {
+	var out []int64
+	for _, id := range userIDs {
+		if m.bigUsers[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+func (m *momentMockRedisRepo) GetTimelinePage(_ context.Context, userID int64, maxTs int64, maxID int64, limit int) ([]model.FeedEntry, error) {
+	return pageOf(m.timelines[userID], maxTs, maxID, limit), nil
+}
+
+func (m *momentMockRedisRepo) GetOutboxPage(_ context.Context, userID int64, maxTs int64, maxID int64, limit int) ([]model.FeedEntry, error) {
+	return pageOf(m.outboxes[userID], maxTs, maxID, limit), nil
+}
+
+// pageOf 模拟 getFeedPage 的契约：按 (ts,id) 降序，返回"严格早于游标 (maxTs,maxID)"的前 limit 条。
+// maxTs<0 表示首页（不限游标）。
+func pageOf(entries []model.FeedEntry, maxTs int64, maxID int64, limit int) []model.FeedEntry {
+	filtered := make([]model.FeedEntry, 0, len(entries))
+	for _, e := range entries {
+		if maxTs < 0 || e.Ts < maxTs || (e.Ts == maxTs && e.MomentID < maxID) {
+			filtered = append(filtered, e)
+		}
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].Ts != filtered[j].Ts {
+			return filtered[i].Ts > filtered[j].Ts
+		}
+		return filtered[i].MomentID > filtered[j].MomentID
+	})
+	if limit < len(filtered) {
+		filtered = filtered[:limit]
+	}
+	return filtered
 }
 
 // 用 panic 桩实现所有其他 RedisRepo 方法
@@ -658,30 +743,23 @@ func TestGetFeed_Success(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 
 	// 预填充动态
-	m1 := &model.Moment{
-		AuthorID:   100,
-		Content:    "Moment 1",
-		Visibility: 1,
-		CreatedAt:  time.Now(),
-	}
-	m2 := &model.Moment{
-		AuthorID:   101,
-		Content:    "Moment 2",
-		Visibility: 1,
-		CreatedAt:  time.Now(),
-	}
-	mysqlRepo.CreateMoment(context.Background(), m1)
-	mysqlRepo.CreateMoment(context.Background(), m2)
+	base := time.Now().UnixMilli()
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "Moment 1", Visibility: 1, CreatedAt: time.Now()})
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 101, Content: "Moment 2", Visibility: 1, CreatedAt: time.Now()})
 
-	// 为用户 200 预填充时间线
-	redisRepo.PublishMomentFeed(context.Background(), 200, 1, time.Now().UnixMilli())
-	redisRepo.PublishMomentFeed(context.Background(), 200, 2, time.Now().UnixMilli())
+	// 用户 200 的收件箱（普通好友推来的两条）
+	redisRepo.PublishMomentFeed(context.Background(), 200, 1, base+1)
+	redisRepo.PublishMomentFeed(context.Background(), 200, 2, base+2)
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger)
 
-	moments, err := svc.GetFeed(context.Background(), 200, 0, 10)
+	moments, next, err := svc.GetFeed(context.Background(), 200, "", 10)
 	assert.NoError(t, err)
 	assert.Len(t, moments, 2)
+	assert.Empty(t, next) // 未超过 limit，无下一页
+	// 降序：最新(id=2)在前
+	assert.Equal(t, int64(2), moments[0].ID)
+	assert.Equal(t, int64(1), moments[1].ID)
 }
 
 func TestGetFeed_Empty(t *testing.T) {
@@ -692,7 +770,104 @@ func TestGetFeed_Empty(t *testing.T) {
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger)
 
-	moments, err := svc.GetFeed(context.Background(), 200, 0, 10)
+	moments, next, err := svc.GetFeed(context.Background(), 200, "", 10)
 	assert.NoError(t, err)
 	assert.Len(t, moments, 0)
+	assert.Empty(t, next)
+}
+
+// TestGetFeed_Hybrid 验证推拉合并：自己寄件箱 + 普通好友收件箱 + 大V好友寄件箱三源归并去重。
+func TestGetFeed_Hybrid(t *testing.T) {
+	mysqlRepo := newMockMySQLRepo()
+	redisRepo := newMomentMockRedisRepo()
+	mqRepo := newMomentMockMQRepo()
+	logger, _ := zap.NewDevelopment()
+
+	base := time.Now().UnixMilli()
+	// 动态 1=自己(200)发的, 2=普通好友(101)推来的, 3=大V好友(300)的
+	for i := int64(1); i <= 3; i++ {
+		mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100 + i, Content: fmt.Sprintf("m%d", i), Visibility: 1, CreatedAt: time.Now()})
+	}
+	// 用户 200 的好友：101（普通）、300（大V）
+	mysqlRepo.friends[200] = []int64{101, 300}
+	redisRepo.bigUsers[300] = true
+
+	redisRepo.AddToOutbox(context.Background(), 200, 1, base+1, 0)  // 自己寄件箱
+	redisRepo.PublishMomentFeed(context.Background(), 200, 2, base+2) // 普通好友推入收件箱
+	redisRepo.AddToOutbox(context.Background(), 300, 3, base+3, 0)  // 大V好友寄件箱（拉取）
+
+	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger)
+
+	moments, _, err := svc.GetFeed(context.Background(), 200, "", 10)
+	assert.NoError(t, err)
+	assert.Len(t, moments, 3)
+	// 降序 by ts: 3,2,1
+	assert.Equal(t, int64(3), moments[0].ID)
+	assert.Equal(t, int64(2), moments[1].ID)
+	assert.Equal(t, int64(1), moments[2].ID)
+}
+
+// TestGetFeed_CursorPagination 验证游标分页：连续两页无重复无漏读。
+func TestGetFeed_CursorPagination(t *testing.T) {
+	mysqlRepo := newMockMySQLRepo()
+	redisRepo := newMomentMockRedisRepo()
+	mqRepo := newMomentMockMQRepo()
+	logger, _ := zap.NewDevelopment()
+
+	base := time.Now().UnixMilli()
+	// 5 条动态进入用户 200 收件箱，ts 递增
+	for i := int64(1); i <= 5; i++ {
+		mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: fmt.Sprintf("m%d", i), Visibility: 1, CreatedAt: time.Now()})
+		redisRepo.PublishMomentFeed(context.Background(), 200, i, base+i)
+	}
+
+	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger)
+
+	// 第一页：limit=2 → 应返回 id 5,4，且有 next_cursor
+	page1, next1, err := svc.GetFeed(context.Background(), 200, "", 2)
+	assert.NoError(t, err)
+	assert.Len(t, page1, 2)
+	assert.NotEmpty(t, next1)
+	assert.Equal(t, int64(5), page1[0].ID)
+	assert.Equal(t, int64(4), page1[1].ID)
+
+	// 第二页：用 next_cursor → 应返回 id 3,2，无重复
+	page2, next2, err := svc.GetFeed(context.Background(), 200, next1, 2)
+	assert.NoError(t, err)
+	assert.Len(t, page2, 2)
+	assert.NotEmpty(t, next2)
+	assert.Equal(t, int64(3), page2[0].ID)
+	assert.Equal(t, int64(2), page2[1].ID)
+
+	// 第三页：应返回最后一条 id 1，无下一页
+	page3, next3, err := svc.GetFeed(context.Background(), 200, next2, 2)
+	assert.NoError(t, err)
+	assert.Len(t, page3, 1)
+	assert.Empty(t, next3)
+	assert.Equal(t, int64(1), page3[0].ID)
+}
+
+// TestGetFeed_PrivateFiltered 验证他人的私密动态即便出现在源里也被读时过滤。
+func TestGetFeed_PrivateFiltered(t *testing.T) {
+	mysqlRepo := newMockMySQLRepo()
+	redisRepo := newMomentMockRedisRepo()
+	mqRepo := newMomentMockMQRepo()
+	logger, _ := zap.NewDevelopment()
+
+	base := time.Now().UnixMilli()
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 300, Content: "私密", Visibility: 3, CreatedAt: time.Now()}) // id=1, 大V好友的私密
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 300, Content: "公开", Visibility: 1, CreatedAt: time.Now()}) // id=2
+
+	mysqlRepo.friends[200] = []int64{300}
+	redisRepo.bigUsers[300] = true
+	// 两条都在大V寄件箱（模拟消费者也把私密写进了作者寄件箱）
+	redisRepo.AddToOutbox(context.Background(), 300, 1, base+1, 0)
+	redisRepo.AddToOutbox(context.Background(), 300, 2, base+2, 0)
+
+	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger)
+
+	moments, _, err := svc.GetFeed(context.Background(), 200, "", 10)
+	assert.NoError(t, err)
+	assert.Len(t, moments, 1) // 私密(id=1)被过滤
+	assert.Equal(t, int64(2), moments[0].ID)
 }

@@ -131,6 +131,16 @@ func (m *mockAIRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64,
 func (m *mockAIRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
+func (m *mockAIRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error { return nil }
+func (m *mockAIRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error         { return nil }
+func (m *mockAIRedisRepo) MarkBigUser(_ context.Context, _ int64) error                                 { return nil }
+func (m *mockAIRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error)                 { return nil, nil }
+func (m *mockAIRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
+	return nil, nil
+}
+func (m *mockAIRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
+	return nil, nil
+}
 
 // mockAIMySQLRepo 模拟 MySQLRepo 接口，用于 AI 测试。
 type mockAIMySQLRepo struct {
@@ -235,6 +245,10 @@ func (m *mockAIMySQLRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) 
 func (m *mockAIMySQLRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error { return nil }
 func (m *mockAIMySQLRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
 func (m *mockAIMySQLRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) { return nil, nil }
+func (m *mockAIMySQLRepo) CountFriends(_ context.Context, _ int64) (int, error)              { return 0, nil }
+func (m *mockAIMySQLRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
+	return nil, nil
+}
 
 func (m *mockAIMySQLRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) { return nil, nil }
 func (m *mockAIMySQLRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error { return nil }

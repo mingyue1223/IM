@@ -133,6 +133,10 @@ func (m *mockAuthRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.
 	return nil, nil
 }
 func (m *mockAuthRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
+func (m *mockAuthRepo) CountFriends(_ context.Context, _ int64) (int, error)              { return 0, nil }
+func (m *mockAuthRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
+	return nil, nil
+}
 
 func (m *mockAuthRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }
 func (m *mockAuthRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error { return nil }

@@ -61,7 +61,8 @@ type deleteCommentResponse struct {
 }
 
 type momentFeedResponse struct {
-	Moments []getMomentResponse `json:"moments"`
+	Moments    []getMomentResponse `json:"moments"`
+	NextCursor string              `json:"next_cursor"` // 空串表示无更多
 }
 
 // ── 处理函数 ──
@@ -299,17 +300,15 @@ func (h *MomentHandler) GetFeed(c *gin.Context) {
 		return
 	}
 
-	lastSyncTime := int64(0)
-	if lst, err := strconv.ParseInt(c.DefaultQuery("last_sync_time", "0"), 10, 64); err == nil {
-		lastSyncTime = lst
-	}
+	// 游标分页：首页传空 cursor，后续页传上一页返回的 next_cursor
+	cursor := c.DefaultQuery("cursor", "")
 
 	limit := 20
 	if l, err := strconv.Atoi(c.DefaultQuery("limit", "20")); err == nil && l > 0 {
 		limit = l
 	}
 
-	moments, err := h.momentSvc.GetFeed(c.Request.Context(), userID.(int64), lastSyncTime, limit)
+	moments, nextCursor, err := h.momentSvc.GetFeed(c.Request.Context(), userID.(int64), cursor, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		return
@@ -327,7 +326,7 @@ func (h *MomentHandler) GetFeed(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, momentFeedResponse{Moments: response})
+	c.JSON(http.StatusOK, momentFeedResponse{Moments: response, NextCursor: nextCursor})
 }
 
 // RegisterRoutes 在给定的 Gin 路由组上注册所有朋友圈 HTTP 路由。

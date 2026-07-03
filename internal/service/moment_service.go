@@ -2,7 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -187,8 +191,14 @@ func (s *MomentService) DeleteComment(ctx context.Context, userID int64, comment
 	return nil
 }
 
-// GetFeed 从 Redis 时间线中检索用户的动态流，然后从 MySQL 中获取动态详情。
-func (s *MomentService) GetFeed(ctx context.Context, userID int64, lastSyncTime int64, limit int) ([]model.Moment, error) {
+// GetFeed 以推拉结合方式获取用户的朋友圈 Feed：
+//   - 推：读取用户自己的收件箱 timeline:{userID}（普通好友写扩散来的动态）。
+//   - 拉：读取用户自己的寄件箱 + 大V好友的寄件箱 moment_outbox:{bigFriend}。
+//
+// 各源按 score(时间戳) 降序取一页，Go 内归并、按 momentID 去重，
+// 用复合游标 (ts,id) 分页规避重复/漏读与深分页衰减。
+// 返回补全后的动态列表与 nextCursor（空串表示无更多）。
+func (s *MomentService) GetFeed(ctx context.Context, userID int64, cursor string, limit int) ([]model.Moment, string, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -196,31 +206,148 @@ func (s *MomentService) GetFeed(ctx context.Context, userID int64, lastSyncTime 
 		limit = 100
 	}
 
-	// 从 Redis 时间线 ZSet 中获取动态 ID
-	momentIDs, err := s.redisRepo.GetMomentFeed(ctx, userID, lastSyncTime, limit)
+	maxTs, maxID, err := decodeCursor(cursor)
 	if err != nil {
-		return nil, fmt.Errorf("从 Redis 获取动态流: %w", err)
+		return nil, "", fmt.Errorf("无效的游标: %w", err)
 	}
 
-	if len(momentIDs) == 0 {
-		return []model.Moment{}, nil
+	// ── 1. 确定所有 Feed 源 ──
+	// pull=true 读寄件箱（自己 + 大V好友），pull=false 读收件箱（自己）。
+	type feedSource struct {
+		userID int64
+		pull   bool
+	}
+	sources := []feedSource{
+		{userID: userID, pull: true},  // 自己的寄件箱（自见）
+		{userID: userID, pull: false}, // 自己的收件箱（普通好友推来的）
 	}
 
-	// 从 MySQL 中获取动态详情
-	moments := make([]model.Moment, 0, len(momentIDs))
-	for _, id := range momentIDs {
-		moment, err := s.mysqlRepo.GetMomentByID(ctx, id)
+	friends, err := s.mysqlRepo.GetFriendList(ctx, userID)
+	if err != nil {
+		return nil, "", fmt.Errorf("获取好友列表: %w", err)
+	}
+	if len(friends) > 0 {
+		friendIDs := make([]int64, 0, len(friends))
+		for _, fs := range friends {
+			if fs.FriendID != userID {
+				friendIDs = append(friendIDs, fs.FriendID)
+			}
+		}
+		bigFriends, err := s.redisRepo.FilterBigUsers(ctx, friendIDs)
 		if err != nil {
-			s.logger.Warn("获取动态流中的动态失败",
-				zap.Int64("momentID", id),
-				zap.Error(err),
-			)
-			continue // 跳过加载失败的动态
+			return nil, "", fmt.Errorf("筛选大V好友: %w", err)
 		}
-		if moment != nil {
-			moments = append(moments, *moment)
+		for _, bf := range bigFriends {
+			sources = append(sources, feedSource{userID: bf, pull: true}) // 大V好友的寄件箱（拉取）
 		}
 	}
 
-	return moments, nil
+	// ── 2. 各源取一页并归并 ──
+	// 每源多取 1 条用于判定是否还有下一页。
+	seen := make(map[int64]struct{})
+	merged := make([]model.FeedEntry, 0, limit*2)
+	for _, src := range sources {
+		var entries []model.FeedEntry
+		var err error
+		if src.pull {
+			entries, err = s.redisRepo.GetOutboxPage(ctx, src.userID, maxTs, maxID, limit+1)
+		} else {
+			entries, err = s.redisRepo.GetTimelinePage(ctx, src.userID, maxTs, maxID, limit+1)
+		}
+		if err != nil {
+			s.logger.Warn("读取 Feed 源失败",
+				zap.Int64("srcUserID", src.userID), zap.Bool("pull", src.pull), zap.Error(err))
+			continue // 单源失败不影响其它源
+		}
+		// 边界过滤（严格早于游标）已在 repo 层完成，这里只需按 momentID 去重跨源合并。
+		for _, e := range entries {
+			if _, dup := seen[e.MomentID]; dup {
+				continue
+			}
+			seen[e.MomentID] = struct{}{}
+			merged = append(merged, e)
+		}
+	}
+
+	if len(merged) == 0 {
+		return []model.Moment{}, "", nil
+	}
+
+	// ── 3. 按 (ts desc, id desc) 排序，取 limit 条 ──
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].Ts != merged[j].Ts {
+			return merged[i].Ts > merged[j].Ts
+		}
+		return merged[i].MomentID > merged[j].MomentID
+	})
+
+	nextCursor := ""
+	if len(merged) > limit {
+		last := merged[limit-1]
+		nextCursor = encodeCursor(last.Ts, last.MomentID)
+		merged = merged[:limit]
+	}
+
+	// ── 4. 批量补全动态详情（消除 N+1）──
+	ids := make([]int64, len(merged))
+	for i, e := range merged {
+		ids[i] = e.MomentID
+	}
+	rows, err := s.mysqlRepo.GetMomentsByIDs(ctx, ids)
+	if err != nil {
+		return nil, "", fmt.Errorf("批量补全动态: %w", err)
+	}
+	byID := make(map[int64]model.Moment, len(rows))
+	for _, m := range rows {
+		byID[m.ID] = m
+	}
+
+	// 按归并顺序重排，并做读时可见性过滤（私密动态仅作者本人可见）。
+	moments := make([]model.Moment, 0, len(merged))
+	for _, e := range merged {
+		m, ok := byID[e.MomentID]
+		if !ok {
+			continue // 动态已删除，读时容错跳过
+		}
+		if m.Visibility == 3 && m.AuthorID != userID {
+			continue
+		}
+		moments = append(moments, m)
+	}
+
+	return moments, nextCursor, nil
+}
+
+// ── 游标编解码 ──
+// 游标为 base64("{ts}_{id}")，复合键 (时间戳ms, momentID) 保证同毫秒多条也能稳定分界。
+
+// encodeCursor 将 (ts,id) 编码为不透明游标字符串。
+func encodeCursor(ts int64, id int64) string {
+	raw := strconv.FormatInt(ts, 10) + "_" + strconv.FormatInt(id, 10)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
+// decodeCursor 解析游标字符串，返回 (maxTs, maxID)。
+// 空游标表示首页，返回 (-1, 0)：maxTs<0 由 Redis 层识别为"从最新开始"。
+func decodeCursor(cursor string) (int64, int64, error) {
+	if cursor == "" {
+		return -1, 0, nil
+	}
+	data, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return 0, 0, fmt.Errorf("游标 base64 解码: %w", err)
+	}
+	parts := strings.SplitN(string(data), "_", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("游标格式错误")
+	}
+	ts, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("游标时间戳解析: %w", err)
+	}
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("游标ID解析: %w", err)
+	}
+	return ts, id, nil
 }

@@ -33,3 +33,7 @@ file:
   max_size_mb: 10
   allowed_exts: ["jpg", "png"]
   upload_dir: "./uploads"
+
+moment:
+  big_user_friend_threshold: 3
+  timeline_max_len: 100

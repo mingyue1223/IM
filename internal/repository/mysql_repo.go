@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/goim/goim/internal/model"
 )
@@ -30,6 +31,7 @@ type MySQLRepo interface {
 	CreateFriendship(ctx context.Context, fs *model.Friendship) error
 	DeleteFriendship(ctx context.Context, userID, friendID int64) error
 	GetFriendList(ctx context.Context, userID int64) ([]model.Friendship, error)
+	CountFriends(ctx context.Context, userID int64) (int, error)
 	IsFriend(ctx context.Context, userID, friendID int64) (bool, error)
 	CreateBlacklist(ctx context.Context, bl *model.Blacklist) error
 	DeleteBlacklist(ctx context.Context, userID, blockedID int64) error
@@ -47,6 +49,7 @@ type MySQLRepo interface {
 	// ── 朋友圈 ──
 	CreateMoment(ctx context.Context, moment *model.Moment) error
 	GetMomentByID(ctx context.Context, id int64) (*model.Moment, error)
+	GetMomentsByIDs(ctx context.Context, ids []int64) ([]model.Moment, error)
 	GetMomentsByUser(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error)
 	CreateMomentLike(ctx context.Context, like *model.MomentLike) error
 	DeleteMomentLike(ctx context.Context, momentID, userID int64) error
@@ -317,6 +320,16 @@ func (m *MySQLRepoImpl) GetFriendList(ctx context.Context, userID int64) ([]mode
 	return results, nil
 }
 
+func (m *MySQLRepoImpl) CountFriends(ctx context.Context, userID int64) (int, error) {
+	// 走 friendships 的 idx_user 索引，成本低
+	query := `SELECT COUNT(*) FROM friendships WHERE user_id = ?`
+	var count int
+	if err := m.db.QueryRowContext(ctx, query, userID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("统计好友数: %w", err)
+	}
+	return count, nil
+}
+
 func (m *MySQLRepoImpl) IsFriend(ctx context.Context, userID, friendID int64) (bool, error) {
 	query := `SELECT COUNT(*) FROM friendships WHERE user_id = ? AND friend_id = ?`
 	var count int
@@ -497,6 +510,42 @@ func (m *MySQLRepoImpl) GetMomentByID(ctx context.Context, id int64) (*model.Mom
 		return nil, fmt.Errorf("按ID获取朋友圈动态: %w", err)
 	}
 	return &moment, nil
+}
+
+// GetMomentsByIDs 批量按 ID 查询动态，用于 Feed 补全，消除 N+1 查询。
+// 返回的顺序不保证与入参一致；调用方应按需自行重排（例如按 Feed 游标顺序）。
+func (m *MySQLRepoImpl) GetMomentsByIDs(ctx context.Context, ids []int64) ([]model.Moment, error) {
+	if len(ids) == 0 {
+		return []model.Moment{}, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`SELECT id, author_id, content, media_urls, visibility, created_at
+	          FROM moments WHERE id IN (%s)`, strings.Join(placeholders, ","))
+	rows, err := m.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("按ID批量获取朋友圈动态: %w", err)
+	}
+	defer rows.Close()
+
+	moments := make([]model.Moment, 0, len(ids))
+	for rows.Next() {
+		var moment model.Moment
+		if err := rows.Scan(&moment.ID, &moment.AuthorID, &moment.Content, &moment.MediaUrls, &moment.Visibility, &moment.CreatedAt); err != nil {
+			return nil, fmt.Errorf("扫描朋友圈动态: %w", err)
+		}
+		moments = append(moments, moment)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历结果行错误: %w", err)
+	}
+	return moments, nil
 }
 
 func (m *MySQLRepoImpl) GetMomentsByUser(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error) {

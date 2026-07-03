@@ -129,7 +129,7 @@ func main() {
 	// ── 启动 MQ 消费者 ──
 	privateMsgConsumer := consumer.NewPrivateMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
 	groupMsgConsumer := consumer.NewGroupMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
-	momentFeedConsumer := consumer.NewMomentFeedConsumer(mqCh, mysqlRepo, redisRepo, logger)
+	momentFeedConsumer := consumer.NewMomentFeedConsumer(mqCh, mysqlRepo, redisRepo, logger, cfg.Moment.BigUserFriendThreshold, cfg.Moment.TimelineMaxLen)
 
 	if err := privateMsgConsumer.Start(ctx); err != nil {
 		logger.Fatal("启动私聊消息消费者失败", zap.Error(err))

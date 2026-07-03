@@ -124,6 +124,10 @@ func (m *mockSettingsRepo) GetMomentCommentByID(_ context.Context, _ int64) (*mo
 	return nil, nil
 }
 func (m *mockSettingsRepo) DeleteMomentComment(_ context.Context, _ int64) error { return nil }
+func (m *mockSettingsRepo) CountFriends(_ context.Context, _ int64) (int, error)             { return 0, nil }
+func (m *mockSettingsRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
+	return nil, nil
+}
 
 func (m *mockSettingsRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }
 func (m *mockSettingsRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error { return nil }

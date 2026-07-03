@@ -24,15 +24,23 @@ type MomentFeedConsumer struct {
 	mysqlRepo repository.MySQLRepo
 	redisRepo repository.RedisRepo
 	logger    *zap.Logger
+
+	// bigUserThreshold 是"大V"判定阈值：好友数 > 阈值时不写扩散，仅存寄件箱。
+	bigUserThreshold int
+	// timelineMaxLen 是每个收件箱/寄件箱扇出后裁剪保留的最大条数。
+	timelineMaxLen int
 }
 
 // NewMomentFeedConsumer 创建一个新的 MomentFeedConsumer。
-func NewMomentFeedConsumer(ch *amqp.Channel, mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, logger *zap.Logger) *MomentFeedConsumer {
+// bigUserThreshold/timelineMaxLen 来自配置（config.MomentConfig）。
+func NewMomentFeedConsumer(ch *amqp.Channel, mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, logger *zap.Logger, bigUserThreshold, timelineMaxLen int) *MomentFeedConsumer {
 	return &MomentFeedConsumer{
-		ch:        ch,
-		mysqlRepo: mysqlRepo,
-		redisRepo: redisRepo,
-		logger:    logger,
+		ch:               ch,
+		mysqlRepo:        mysqlRepo,
+		redisRepo:        redisRepo,
+		logger:           logger,
+		bigUserThreshold: bigUserThreshold,
+		timelineMaxLen:   timelineMaxLen,
 	}
 }
 
@@ -89,58 +97,71 @@ func (c *MomentFeedConsumer) handleDelivery(ctx context.Context, d amqp.Delivery
 	d.Ack(false)
 }
 
-// process 执行动态的分发逻辑。
-// 它将动态添加到作者自己的时间线以及所有好友的时间线中。
+// process 执行推拉结合的分发逻辑：
+//  1. 每条动态都写入作者自己的寄件箱（moment_outbox），作为拉取源与作者自见来源。
+//  2. 私密动态(3) 不扩散，仅留在寄件箱。
+//  3. 好友数 > 阈值的作者标记为大V并跳过写扩散（其动态由好友读取时拉取合并）。
+//  4. 好友数 ≤ 阈值时，用 pipeline 批量写扩散到各好友收件箱并裁剪。
 func (c *MomentFeedConsumer) process(ctx context.Context, moment *model.Moment) error {
 	timestamp := moment.CreatedAt.UnixMilli()
 
-	// ── 1. 添加到作者自己的时间线 ──
-	if err := c.redisRepo.PublishMomentFeed(ctx, moment.AuthorID, moment.ID, timestamp); err != nil {
-		c.logger.Warn("添加动态到作者自己的时间线失败",
-			zap.Int64("authorID", moment.AuthorID),
-			zap.Int64("momentID", moment.ID),
-			zap.Error(err),
-		)
-		// 非关键错误 — 不要导致整个投递失败
+	// ── 1. 写入作者自己的寄件箱 ──
+	// 关键操作：失败则返回错误触发重试（ZADD 幂等，重试安全）。
+	if err := c.redisRepo.AddToOutbox(ctx, moment.AuthorID, moment.ID, timestamp, c.timelineMaxLen); err != nil {
+		return fmt.Errorf("写入作者 %d 寄件箱失败: %w", moment.AuthorID, err)
 	}
 
-	// ── 2. 分发给好友 ──
-	// 仅当可见性为"全部"(1) 或 "仅好友"(2) 时才进行分发
-	// 私密动态(3) 仅对作者本人可见
+	// ── 2. 私密动态不扩散 ──
 	if moment.Visibility == 3 {
-		c.logger.Debug("私密动态 — 跳过分发",
+		c.logger.Debug("私密动态 — 跳过扩散",
 			zap.Int64("momentID", moment.ID),
 			zap.Int64("authorID", moment.AuthorID),
 		)
 		return nil
 	}
 
+	// ── 3. 按好友数分流：大V走拉模式 ──
+	friendCount, err := c.mysqlRepo.CountFriends(ctx, moment.AuthorID)
+	if err != nil {
+		return fmt.Errorf("统计作者 %d 好友数失败: %w", moment.AuthorID, err)
+	}
+
+	if friendCount > c.bigUserThreshold {
+		// 标记为大V（sticky），跳过写扩散
+		if err := c.redisRepo.MarkBigUser(ctx, moment.AuthorID); err != nil {
+			// 标记失败会导致好友读取时拉不到该作者，需重试
+			return fmt.Errorf("标记大V用户 %d 失败: %w", moment.AuthorID, err)
+		}
+		c.logger.Debug("大V动态 — 仅存寄件箱，跳过写扩散",
+			zap.Int64("momentID", moment.ID),
+			zap.Int64("authorID", moment.AuthorID),
+			zap.Int("friendCount", friendCount),
+		)
+		return nil
+	}
+
+	// ── 4. 普通用户：批量写扩散到好友收件箱 ──
 	friends, err := c.mysqlRepo.GetFriendList(ctx, moment.AuthorID)
 	if err != nil {
 		return fmt.Errorf("获取作者 %d 的好友列表失败: %w", moment.AuthorID, err)
 	}
 
+	friendIDs := make([]int64, 0, len(friends))
 	for _, fs := range friends {
-		friendID := fs.FriendID
-		if friendID == moment.AuthorID {
-			// 跳过自己（已在上面添加到自己的时间线）
-			continue
+		if fs.FriendID == moment.AuthorID {
+			continue // 作者自己的动态已在寄件箱，不重复推给自己
 		}
-
-		if err := c.redisRepo.PublishMomentFeed(ctx, friendID, moment.ID, timestamp); err != nil {
-			c.logger.Warn("添加动态到好友时间线失败",
-				zap.Int64("friendID", friendID),
-				zap.Int64("momentID", moment.ID),
-				zap.Error(err),
-			)
-			// 单个好友失败是非关键错误 — 继续处理剩余好友
-		}
+		friendIDs = append(friendIDs, fs.FriendID)
 	}
 
-	c.logger.Debug("动态分发完成",
+	if err := c.redisRepo.FanoutMomentFeed(ctx, friendIDs, moment.ID, timestamp, c.timelineMaxLen); err != nil {
+		return fmt.Errorf("扇出动态 %d 到好友收件箱失败: %w", moment.ID, err)
+	}
+
+	c.logger.Debug("动态写扩散完成",
 		zap.Int64("momentID", moment.ID),
 		zap.Int64("authorID", moment.AuthorID),
-		zap.Int("friendCount", len(friends)),
+		zap.Int("friendCount", len(friendIDs)),
 	)
 
 	return nil

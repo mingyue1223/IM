@@ -145,6 +145,10 @@ func (m *mockMsgOpRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model
 	return nil, nil
 }
 func (m *mockMsgOpRepo) DeleteMomentComment(_ context.Context, _ int64) error { return nil }
+func (m *mockMsgOpRepo) CountFriends(_ context.Context, _ int64) (int, error)             { return 0, nil }
+func (m *mockMsgOpRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
+	return nil, nil
+}
 
 func (m *mockMsgOpRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }
 func (m *mockMsgOpRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error { return nil }
@@ -216,6 +220,16 @@ func (m *mockMsgOpRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string,
 }
 func (m *mockMsgOpRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
 func (m *mockMsgOpRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockMsgOpRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error { return nil }
+func (m *mockMsgOpRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error         { return nil }
+func (m *mockMsgOpRedisRepo) MarkBigUser(_ context.Context, _ int64) error                                  { return nil }
+func (m *mockMsgOpRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error)                  { return nil, nil }
+func (m *mockMsgOpRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
+	return nil, nil
+}
+func (m *mockMsgOpRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
 func (m *mockMsgOpRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }

@@ -36,10 +36,17 @@ type MockRedisRepo struct {
 	trimmedInboxUsers   []int64
 	trimmedOutboxGroups []int64
 
+	// 朋友圈推拉结合：捕获寄件箱写入、扇出目标、大V标记
+	momentOutbox  map[int64][]int64 // authorID -> momentID 列表
+	fanoutInbox   map[int64][]int64 // friendID -> momentID 列表（写扩散收件箱）
+	bigUsers      map[int64]bool    // 被标记为大V的用户
+
 	// 控制：注入错误
 	writeInboxErr       error
 	writeOutboxErr      error
 	getGroupMembersErr  error
+	addOutboxErr        error
+	countFriendsErr     error
 }
 
 type convListEntry struct {
@@ -55,6 +62,9 @@ func newMockRedisRepo() *MockRedisRepo {
 		convListUpdates:  make(map[int64][]convListEntry),
 		unreadIncrements: make(map[string]int),
 		groupMembers:     make(map[int64][]int64),
+		momentOutbox:     make(map[int64][]int64),
+		fanoutInbox:      make(map[int64][]int64),
+		bigUsers:         make(map[int64]bool),
 	}
 }
 
@@ -191,6 +201,52 @@ func (m *MockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64)
 func (m *MockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
 func (m *MockRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
 func (m *MockRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
+	return nil, nil
+}
+
+func (m *MockRedisRepo) AddToOutbox(_ context.Context, authorID int64, momentID int64, _ int64, _ int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.addOutboxErr != nil {
+		return m.addOutboxErr
+	}
+	m.momentOutbox[authorID] = append(m.momentOutbox[authorID], momentID)
+	return nil
+}
+
+func (m *MockRedisRepo) FanoutMomentFeed(_ context.Context, friendIDs []int64, momentID int64, _ int64, _ int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, fid := range friendIDs {
+		m.fanoutInbox[fid] = append(m.fanoutInbox[fid], momentID)
+	}
+	return nil
+}
+
+func (m *MockRedisRepo) MarkBigUser(_ context.Context, userID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bigUsers[userID] = true
+	return nil
+}
+
+func (m *MockRedisRepo) FilterBigUsers(_ context.Context, userIDs []int64) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []int64
+	for _, id := range userIDs {
+		if m.bigUsers[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+func (m *MockRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
+	return nil, nil
+}
+
+func (m *MockRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
 

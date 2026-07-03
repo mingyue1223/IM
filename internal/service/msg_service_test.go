@@ -219,6 +219,16 @@ func (m *mockRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _
 func (m *mockRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
+func (m *mockRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error { return nil }
+func (m *mockRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error        { return nil }
+func (m *mockRedisRepo) MarkBigUser(_ context.Context, _ int64) error                                 { return nil }
+func (m *mockRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error)                 { return nil, nil }
+func (m *mockRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
+	return nil, nil
+}
+func (m *mockRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
+	return nil, nil
+}
 func (m *mockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
 func (m *mockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
 func (m *mockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }

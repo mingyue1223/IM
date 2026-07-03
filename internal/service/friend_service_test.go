@@ -262,6 +262,10 @@ func (m *mockFriendRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike
 func (m *mockFriendRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error       { return nil }
 func (m *mockFriendRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error { return nil }
 func (m *mockFriendRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
+func (m *mockFriendRepo) CountFriends(_ context.Context, _ int64) (int, error)              { return 0, nil }
+func (m *mockFriendRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
+	return nil, nil
+}
 
 func (m *mockFriendRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }
 func (m *mockFriendRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error { return nil }
@@ -329,6 +333,16 @@ func (m *mockFriendRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ 
 func (m *mockFriendRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
 func (m *mockFriendRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
 func (m *mockFriendRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockFriendRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error { return nil }
+func (m *mockFriendRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error         { return nil }
+func (m *mockFriendRedisRepo) MarkBigUser(_ context.Context, _ int64) error                                 { return nil }
+func (m *mockFriendRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error)                 { return nil, nil }
+func (m *mockFriendRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
+	return nil, nil
+}
+func (m *mockFriendRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
 func (m *mockFriendRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }

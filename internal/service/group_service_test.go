@@ -190,6 +190,10 @@ func (m *mockGroupMySQLRepo) CreateMomentLike(_ context.Context, _ *model.Moment
 func (m *mockGroupMySQLRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error       { return nil }
 func (m *mockGroupMySQLRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error { return nil }
 func (m *mockGroupMySQLRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
+func (m *mockGroupMySQLRepo) CountFriends(_ context.Context, _ int64) (int, error)             { return 0, nil }
+func (m *mockGroupMySQLRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
+	return nil, nil
+}
 
 func (m *mockGroupMySQLRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }
 func (m *mockGroupMySQLRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error { return nil }
@@ -342,6 +346,16 @@ func (r *mockGroupRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string,
 }
 func (r *mockGroupRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
 func (r *mockGroupRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
+	return nil, nil
+}
+func (r *mockGroupRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error { return nil }
+func (r *mockGroupRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error         { return nil }
+func (r *mockGroupRedisRepo) MarkBigUser(_ context.Context, _ int64) error                                  { return nil }
+func (r *mockGroupRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error)                  { return nil, nil }
+func (r *mockGroupRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
+	return nil, nil
+}
+func (r *mockGroupRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
 func (r *mockGroupRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }

@@ -14,6 +14,7 @@ type Config struct {
 	JWT      JWTConfig      `yaml:"jwt"`
 	LLM      LLMConfig      `yaml:"llm"`
 	File     FileConfig     `yaml:"file"`
+	Moment   MomentConfig   `yaml:"moment"`
 }
 
 type ServerConfig struct {
@@ -60,6 +61,17 @@ type FileConfig struct {
 	UploadDir   string   `yaml:"upload_dir"`
 }
 
+// MomentConfig 控制朋友圈 Feed 的推拉结合策略。
+type MomentConfig struct {
+	// BigUserFriendThreshold 是"大V"判定的好友数阈值。
+	// 好友数 > 阈值的作者发布动态时不再写扩散到好友收件箱，
+	// 仅存入作者自己的寄件箱，由好友读取时拉取合并。默认 500。
+	BigUserFriendThreshold int `yaml:"big_user_friend_threshold"`
+	// TimelineMaxLen 是每个用户收件箱/寄件箱 ZSet 的最大保留条数，
+	// 扇出后按此长度裁剪最旧的条目，防止无限膨胀。默认 1000。
+	TimelineMaxLen int `yaml:"timeline_max_len"`
+}
+
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -69,5 +81,14 @@ func LoadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+
+	// 朋友圈 Feed 默认值（未配置时生效）
+	if cfg.Moment.BigUserFriendThreshold <= 0 {
+		cfg.Moment.BigUserFriendThreshold = 500
+	}
+	if cfg.Moment.TimelineMaxLen <= 0 {
+		cfg.Moment.TimelineMaxLen = 1000
+	}
+
 	return &cfg, nil
 }

@@ -17,6 +17,7 @@ type MQRepo interface {
 	PublishPrivateMsg(ctx context.Context, msg *model.PrivateMessage) error
 	PublishGroupMsg(ctx context.Context, msg *model.GroupMessage) error
 	PublishMomentPush(ctx context.Context, moment *model.Moment) error
+	PublishLikeEvent(ctx context.Context, evt *model.LikeEvent) error
 }
 
 // ──────────────────────────────────────────────────────
@@ -97,6 +98,31 @@ func (m *MQRepoImpl) PublishMomentPush(ctx context.Context, moment *model.Moment
 		"moment_push",    // routing key = 队列名称
 		false,            // 强制
 		false,            // 立即
+		amqp.Publishing{
+			ContentType:  "application/json",
+			Body:         body,
+			DeliveryMode: 2, // 持久化
+		},
+	)
+}
+
+// PublishLikeEvent 将点赞/取消赞事件投递到 like_persist 队列，由消费者异步批量削峰写入 MySQL。
+func (m *MQRepoImpl) PublishLikeEvent(ctx context.Context, evt *model.LikeEvent) error {
+	if m.ch == nil {
+		return fmt.Errorf("amqp 通道为空")
+	}
+	body, err := json.Marshal(evt)
+	if err != nil {
+		return fmt.Errorf("marshal 点赞事件失败: %w", err)
+	}
+	publishCtx, cancel := context.WithTimeout(ctx, mqPublishTimeout)
+	defer cancel()
+	return m.ch.PublishWithContext(
+		publishCtx,
+		"",             // exchange（默认）
+		"like_persist", // routing key = 队列名称
+		false,          // 强制
+		false,          // 立即
 		amqp.Publishing{
 			ContentType:  "application/json",
 			Body:         body,

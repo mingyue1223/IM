@@ -44,7 +44,7 @@ func TestServeWebSocket_InvalidToken(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
-	assert.Contains(t, w.Body.String(), "无效令牌")
+	assert.Contains(t, w.Body.String(), "无效的令牌")
 }
 
 func TestServeWebSocket_ValidToken_Upgrades(t *testing.T) {

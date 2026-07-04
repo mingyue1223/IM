@@ -366,3 +366,9 @@ func TestSettings_RemoveMuteConv_RemoveLast(t *testing.T) {
 	repo.mu.Unlock()
 	assert.Equal(t, "[]", stored.MuteList)
 }
+
+// ── 高并发点赞新增接口的 mock 桩 ──
+
+func (m *mockSettingsRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
+func (m *mockSettingsRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
+func (m *mockSettingsRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }

@@ -607,3 +607,14 @@ func TestAI_GenerateSummary(t *testing.T) {
 	assert.Equal(t, "beginner in Go", mysqlRepo.profileItems[0].Value)
 	mysqlRepo.mu.Unlock()
 }
+
+// ── 高并发点赞新增接口的 mock 桩 ──
+
+func (m *mockAIMySQLRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
+func (m *mockAIMySQLRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
+func (m *mockAIMySQLRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }
+
+func (m *mockAIRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)   { return false, 0, nil }
+func (m *mockAIRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) { return false, 0, nil }
+func (m *mockAIRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
+func (m *mockAIRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }

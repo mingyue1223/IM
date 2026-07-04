@@ -9,6 +9,10 @@ type Moment struct {
 	MediaUrls  *string   `json:"media_urls,omitempty"` // 以JSON字符串形式存储在数据库中；可为空
 	Visibility int       `json:"visibility"` // 1=所有人可见，2=仅好友可见，3=私密
 	CreatedAt  time.Time `json:"created_at"`
+
+	// 以下字段不落库，仅在读取时由点赞缓存（Redis）填充：
+	LikeCount int64 `json:"like_count"`   // 点赞数
+	LikedByMe bool  `json:"liked_by_me"`  // 当前查看者是否已赞
 }
 
 type MomentLike struct {
@@ -17,6 +21,26 @@ type MomentLike struct {
 	UserID    int64     `json:"user_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// MomentLikeKey 是点赞明细的联合主键 (momentID,userID)，用于批量删除。
+type MomentLikeKey struct {
+	MomentID int64
+	UserID   int64
+}
+
+// LikeEvent 是点赞/取消赞的持久化事件，经 like_persist 队列异步批量写入 MySQL。
+type LikeEvent struct {
+	MomentID int64  `json:"moment_id"`
+	UserID   int64  `json:"user_id"`
+	Action   string `json:"action"` // "like" | "unlike"
+	Ts       int64  `json:"ts"`     // 事件时间戳（毫秒），用作 moment_likes.created_at
+}
+
+// 点赞事件动作常量。
+const (
+	LikeActionLike   = "like"
+	LikeActionUnlike = "unlike"
+)
 
 type MomentComment struct {
 	ID        int64     `json:"id"`

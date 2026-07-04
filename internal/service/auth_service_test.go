@@ -228,7 +228,7 @@ func TestAuth_Register_RepoCreateError(t *testing.T) {
 	_, _, err := svc.Register(context.Background(), "dave", "password123")
 	assert.Error(t, err)
 	// 应包含底层错误信息
-	assert.Contains(t, err.Error(), "create user")
+	assert.Contains(t, err.Error(), "创建用户")
 }
 
 // ──────────────────────────────────────────────────────
@@ -357,3 +357,9 @@ func TestAuth_Refresh_ExpiredRefreshToken(t *testing.T) {
 	_, _, err = middleware.ParseToken(refreshToken, "test-secret-key")
 	assert.Error(t, err) // 令牌应已过期
 }
+
+// ── 高并发点赞新增接口的 mock 桩 ──
+
+func (m *mockAuthRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
+func (m *mockAuthRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
+func (m *mockAuthRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }

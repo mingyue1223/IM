@@ -101,7 +101,7 @@ func main() {
 	authSvc := service.NewAuthService(mysqlRepo, cfg.JWT.Secret, cfg.JWT.AccessExpHours, cfg.JWT.RefreshExpDays)
 	friendSvc := service.NewFriendService(mysqlRepo, redisRepo, logger)
 	groupSvc := service.NewGroupService(mysqlRepo, redisRepo, logger)
-	momentSvc := service.NewMomentService(mysqlRepo, redisRepo, mqRepo, logger)
+	momentSvc := service.NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Duration(cfg.Moment.LikeCacheTTLHours)*time.Hour)
 	aiSvc := service.NewAIService(mysqlRepo, redisRepo, llmClient, logger)
 	msgOpSvc := service.NewMsgOpService(mysqlRepo, redisRepo, logger)
 	settingsSvc := service.NewSettingsService(mysqlRepo, logger)
@@ -130,6 +130,7 @@ func main() {
 	privateMsgConsumer := consumer.NewPrivateMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
 	groupMsgConsumer := consumer.NewGroupMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
 	momentFeedConsumer := consumer.NewMomentFeedConsumer(mqCh, mysqlRepo, redisRepo, logger, cfg.Moment.BigUserFriendThreshold, cfg.Moment.TimelineMaxLen)
+	likePersistConsumer := consumer.NewLikePersistConsumer(mqCh, mysqlRepo, logger, cfg.Moment.LikePersistBatchSize, cfg.Moment.LikePersistFlushMs)
 
 	if err := privateMsgConsumer.Start(ctx); err != nil {
 		logger.Fatal("启动私聊消息消费者失败", zap.Error(err))
@@ -139,6 +140,9 @@ func main() {
 	}
 	if err := momentFeedConsumer.Start(ctx); err != nil {
 		logger.Fatal("启动动态推送消费者失败", zap.Error(err))
+	}
+	if err := likePersistConsumer.Start(ctx); err != nil {
+		logger.Fatal("启动点赞持久化消费者失败", zap.Error(err))
 	}
 	logger.Info("MQ 消费者已启动")
 

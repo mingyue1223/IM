@@ -38,14 +38,20 @@ type getMomentResponse struct {
 	MediaUrls  *string   `json:"media_urls,omitempty"`
 	Visibility int       `json:"visibility"`
 	CreatedAt  string    `json:"created_at"` // RFC3339 格式
+	LikeCount  int64     `json:"like_count"`   // 点赞数
+	LikedByMe  bool      `json:"liked_by_me"`  // 当前用户是否已赞
 }
 
 type likeMomentResponse struct {
-	Ok bool `json:"ok"`
+	Ok    bool  `json:"ok"`
+	Liked bool  `json:"liked"` // 操作后是否处于已赞状态
+	Count int64 `json:"count"` // 最新点赞数
 }
 
 type unlikeMomentResponse struct {
-	Ok bool `json:"ok"`
+	Ok    bool  `json:"ok"`
+	Liked bool  `json:"liked"`
+	Count int64 `json:"count"`
 }
 
 type commentMomentRequest struct {
@@ -105,6 +111,8 @@ func (h *MomentHandler) PublishMoment(c *gin.Context) {
 
 // GetMoment 处理 GET /api/v1/moment/:momentID 请求。
 func (h *MomentHandler) GetMoment(c *gin.Context) {
+	viewerID, _ := c.Get("userID") // 受保护路由，一定存在；用于计算 liked_by_me
+
 	momentIDStr := c.Param("momentID")
 	momentID, err := strconv.ParseInt(momentIDStr, 10, 64)
 	if err != nil {
@@ -112,7 +120,7 @@ func (h *MomentHandler) GetMoment(c *gin.Context) {
 		return
 	}
 
-	moment, err := h.momentSvc.GetMoment(c.Request.Context(), momentID)
+	moment, err := h.momentSvc.GetMoment(c.Request.Context(), toInt64(viewerID), momentID)
 	if err != nil {
 		switch err.Error() {
 		case service.ErrMomentNotFound:
@@ -130,11 +138,15 @@ func (h *MomentHandler) GetMoment(c *gin.Context) {
 		MediaUrls:  moment.MediaUrls,
 		Visibility: moment.Visibility,
 		CreatedAt:  moment.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		LikeCount:  moment.LikeCount,
+		LikedByMe:  moment.LikedByMe,
 	})
 }
 
 // GetUserMoments 处理 GET /api/v1/moment/user/:userID 请求。
 func (h *MomentHandler) GetUserMoments(c *gin.Context) {
+	viewerID, _ := c.Get("userID")
+
 	userIDStr := c.Param("userID")
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
@@ -151,7 +163,7 @@ func (h *MomentHandler) GetUserMoments(c *gin.Context) {
 		offset = o
 	}
 
-	moments, err := h.momentSvc.GetUserMoments(c.Request.Context(), userID, limit, offset)
+	moments, err := h.momentSvc.GetUserMoments(c.Request.Context(), toInt64(viewerID), userID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		return
@@ -166,6 +178,8 @@ func (h *MomentHandler) GetUserMoments(c *gin.Context) {
 			MediaUrls:  m.MediaUrls,
 			Visibility: m.Visibility,
 			CreatedAt:  m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			LikeCount:  m.LikeCount,
+			LikedByMe:  m.LikedByMe,
 		})
 	}
 
@@ -187,19 +201,18 @@ func (h *MomentHandler) LikeMoment(c *gin.Context) {
 		return
 	}
 
-	if err := h.momentSvc.LikeMoment(c.Request.Context(), userID.(int64), momentID); err != nil {
+	count, err := h.momentSvc.LikeMoment(c.Request.Context(), userID.(int64), momentID)
+	if err != nil {
 		switch err.Error() {
 		case service.ErrMomentNotFound:
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		case service.ErrAlreadyLiked:
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		}
 		return
 	}
 
-	c.JSON(http.StatusOK, likeMomentResponse{Ok: true})
+	c.JSON(http.StatusOK, likeMomentResponse{Ok: true, Liked: true, Count: count})
 }
 
 // UnlikeMoment 处理 DELETE /api/v1/moment/:momentID/like 请求。
@@ -217,12 +230,13 @@ func (h *MomentHandler) UnlikeMoment(c *gin.Context) {
 		return
 	}
 
-	if err := h.momentSvc.UnlikeMoment(c.Request.Context(), userID.(int64), momentID); err != nil {
+	count, err := h.momentSvc.UnlikeMoment(c.Request.Context(), userID.(int64), momentID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "内部错误"})
 		return
 	}
 
-	c.JSON(http.StatusOK, unlikeMomentResponse{Ok: true})
+	c.JSON(http.StatusOK, unlikeMomentResponse{Ok: true, Liked: false, Count: count})
 }
 
 // CommentMoment 处理 POST /api/v1/moment/:momentID/comment 请求。
@@ -323,6 +337,8 @@ func (h *MomentHandler) GetFeed(c *gin.Context) {
 			MediaUrls:  m.MediaUrls,
 			Visibility: m.Visibility,
 			CreatedAt:  m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			LikeCount:  m.LikeCount,
+			LikedByMe:  m.LikedByMe,
 		})
 	}
 
@@ -340,4 +356,12 @@ func (h *MomentHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	moment.POST("/:momentID/comment", h.CommentMoment)
 	moment.DELETE("/comment/:commentID", h.DeleteComment)
 	moment.GET("/feed", h.GetFeed)
+}
+
+// toInt64 安全地把 gin 上下文里的 userID（any）转成 int64；缺失/类型不符返回 0。
+func toInt64(v interface{}) int64 {
+	if id, ok := v.(int64); ok {
+		return id
+	}
+	return 0
 }

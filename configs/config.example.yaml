@@ -42,3 +42,6 @@ file:
 moment:
   big_user_friend_threshold: 500    # 好友数超过此值的用户为"大V"，发布走拉模式（仅存寄件箱，不写扩散）
   timeline_max_len: 1000            # 每个用户收件箱/寄件箱最多保留的动态条数（扇出后裁剪最旧的）
+  like_persist_batch_size: 200      # 点赞落库消费者攒批阈值（攒够即批量写入 MySQL）
+  like_persist_flush_ms: 500        # 点赞落库消费者最大攒批间隔（毫秒）
+  like_cache_ttl_hours: 168         # 点赞 Redis 缓存（集合/计数/预热标记）TTL（小时），默认 7 天

@@ -379,3 +379,14 @@ func TestMsgOp_SearchMessages_Error(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, msgs)
 }
+
+// ── 高并发点赞新增接口的 mock 桩 ──
+
+func (m *mockMsgOpRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
+func (m *mockMsgOpRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
+func (m *mockMsgOpRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }
+
+func (m *mockMsgOpRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)   { return false, 0, nil }
+func (m *mockMsgOpRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) { return false, 0, nil }
+func (m *mockMsgOpRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
+func (m *mockMsgOpRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }

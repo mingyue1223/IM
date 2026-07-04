@@ -975,7 +975,7 @@ func TestRevokeMsg_InvalidConvID(t *testing.T) {
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
 	assert.Equal(t, 400, wsErr.Code)
-	assert.Equal(t, "无效的 convId 格式", wsErr.Message)
+	assert.Equal(t, "convId 格式无效", wsErr.Message)
 }
 
 func TestHandleSendMessage_InvalidJSON(t *testing.T) {
@@ -1032,7 +1032,7 @@ func TestHandleSendMessage_UnknownConvType(t *testing.T) {
 	var wsErr model.WsError
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
 	assert.Equal(t, 400, wsErr.Code)
-	assert.Equal(t, "未知的 convType", wsErr.Message)
+	assert.Equal(t, "未知的会话类型", wsErr.Message)
 }
 
 func TestPrivateMsgSend_MQPublishFail(t *testing.T) {
@@ -1113,3 +1113,12 @@ func TestReadAck_LuaError(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(wsMsg.Data, &wsErr))
 	assert.Equal(t, 500, wsErr.Code)
 }
+
+// ── 高并发点赞新增接口的 mock 桩 ──
+
+func (m *mockRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)      { return false, 0, nil }
+func (m *mockRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)    { return false, 0, nil }
+func (m *mockRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
+func (m *mockRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }
+
+func (m *mockMQRepo) PublishLikeEvent(_ context.Context, _ *model.LikeEvent) error { return nil }

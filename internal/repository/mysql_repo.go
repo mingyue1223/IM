@@ -51,8 +51,10 @@ type MySQLRepo interface {
 	GetMomentByID(ctx context.Context, id int64) (*model.Moment, error)
 	GetMomentsByIDs(ctx context.Context, ids []int64) ([]model.Moment, error)
 	GetMomentsByUser(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error)
-	CreateMomentLike(ctx context.Context, like *model.MomentLike) error
-	DeleteMomentLike(ctx context.Context, momentID, userID int64) error
+	// 点赞明细的持久化：写路径走 Redis，MySQL 由 like_persist 消费者批量镜像。
+	GetMomentLikers(ctx context.Context, momentID int64) ([]int64, error)               // 预热回源：某动态的全部点赞用户
+	BatchUpsertMomentLikes(ctx context.Context, likes []model.MomentLike) error          // 批量落库（INSERT IGNORE）
+	BatchDeleteMomentLikes(ctx context.Context, keys []model.MomentLikeKey) error        // 批量删除取消赞
 	CreateMomentComment(ctx context.Context, comment *model.MomentComment) error
 	GetMomentCommentByID(ctx context.Context, id int64) (*model.MomentComment, error)
 	DeleteMomentComment(ctx context.Context, id int64) error
@@ -571,25 +573,64 @@ func (m *MySQLRepoImpl) GetMomentsByUser(ctx context.Context, userID int64, limi
 	return moments, nil
 }
 
-func (m *MySQLRepoImpl) CreateMomentLike(ctx context.Context, like *model.MomentLike) error {
-	query := `INSERT INTO moment_likes (moment_id, user_id, created_at) VALUES (?, ?, ?)`
-	result, err := m.db.ExecContext(ctx, query, like.MomentID, like.UserID, like.CreatedAt)
+// GetMomentLikers 返回某条动态的全部点赞用户 ID，用于 Redis 点赞缓存的冷启动预热。走 idx_moment。
+func (m *MySQLRepoImpl) GetMomentLikers(ctx context.Context, momentID int64) ([]int64, error) {
+	query := `SELECT user_id FROM moment_likes WHERE moment_id = ?`
+	rows, err := m.db.QueryContext(ctx, query, momentID)
 	if err != nil {
-		return fmt.Errorf("插入朋友圈点赞: %w", err)
+		return nil, fmt.Errorf("查询动态点赞用户: %w", err)
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("插入朋友圈点赞 获取最后插入ID: %w", err)
+	defer rows.Close()
+
+	userIDs := make([]int64, 0)
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("扫描点赞用户: %w", err)
+		}
+		userIDs = append(userIDs, uid)
 	}
-	like.ID = id
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历点赞用户结果: %w", err)
+	}
+	return userIDs, nil
+}
+
+// BatchUpsertMomentLikes 批量写入点赞明细。INSERT IGNORE 依赖唯一键 uk_moment_user 幂等去重，
+// 因此消费者重投（requeue）重复执行安全。
+func (m *MySQLRepoImpl) BatchUpsertMomentLikes(ctx context.Context, likes []model.MomentLike) error {
+	if len(likes) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(likes))
+	args := make([]interface{}, 0, len(likes)*3)
+	for i, lk := range likes {
+		placeholders[i] = "(?, ?, ?)"
+		args = append(args, lk.MomentID, lk.UserID, lk.CreatedAt)
+	}
+	query := fmt.Sprintf(`INSERT IGNORE INTO moment_likes (moment_id, user_id, created_at) VALUES %s`,
+		strings.Join(placeholders, ","))
+	if _, err := m.db.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("批量插入朋友圈点赞: %w", err)
+	}
 	return nil
 }
 
-func (m *MySQLRepoImpl) DeleteMomentLike(ctx context.Context, momentID, userID int64) error {
-	query := `DELETE FROM moment_likes WHERE moment_id = ? AND user_id = ?`
-	_, err := m.db.ExecContext(ctx, query, momentID, userID)
-	if err != nil {
-		return fmt.Errorf("删除朋友圈点赞: %w", err)
+// BatchDeleteMomentLikes 批量删除点赞明细（取消赞）。DELETE 幂等，重投安全。
+func (m *MySQLRepoImpl) BatchDeleteMomentLikes(ctx context.Context, keys []model.MomentLikeKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(keys))
+	args := make([]interface{}, 0, len(keys)*2)
+	for i, k := range keys {
+		placeholders[i] = "(?, ?)"
+		args = append(args, k.MomentID, k.UserID)
+	}
+	query := fmt.Sprintf(`DELETE FROM moment_likes WHERE (moment_id, user_id) IN (%s)`,
+		strings.Join(placeholders, ","))
+	if _, err := m.db.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("批量删除朋友圈点赞: %w", err)
 	}
 	return nil
 }

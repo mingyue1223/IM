@@ -15,6 +15,8 @@ func LoadLuaScripts(rdb *goredis.Client, ctx context.Context) error {
 		luaGroupMsgCheck,
 		luaInboxMarkRead,
 		luaRevokeMsg,
+		luaMomentLike,
+		luaMomentUnlike,
 	}
 	for _, s := range scripts {
 		if err := rdb.ScriptLoad(ctx, s).Err(); err != nil {

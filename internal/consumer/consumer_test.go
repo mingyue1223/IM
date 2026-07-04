@@ -254,6 +254,12 @@ func (m *MockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _
 func (m *MockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
 func (m *MockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 
+// ── 高并发点赞新增接口 ──
+func (m *MockRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)      { return false, 0, nil }
+func (m *MockRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)    { return false, 0, nil }
+func (m *MockRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
+func (m *MockRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }
+
 // ──────────────────────────────────────────────────────
 // 辅助函数：创建一个不带真实 websocket.Conn 的 ClientConnection
 // 我们直接设置字段，避免依赖真实的 WebSocket 连接。

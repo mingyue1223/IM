@@ -22,25 +22,30 @@ const (
 	ErrMomentNotFound     = "动态未找到"
 	ErrNotCommentOwner    = "不是该评论的所有者"
 	ErrInvalidVisibility  = "可见性必须为 1（全部）、2（好友）或 3（私密）"
-	ErrAlreadyLiked       = "已经赞过该动态"
 	ErrCommentNotFound    = "评论未找到"
 )
 
 // MomentService 处理动态发布、点赞/评论操作以及动态流获取。
 type MomentService struct {
-	mysqlRepo repository.MySQLRepo
-	redisRepo repository.RedisRepo
-	mqRepo    repository.MQRepo
-	logger    *zap.Logger
+	mysqlRepo    repository.MySQLRepo
+	redisRepo    repository.RedisRepo
+	mqRepo       repository.MQRepo
+	logger       *zap.Logger
+	likeCacheTTL time.Duration // 点赞 Redis 缓存（集合/计数/标记）的 TTL
 }
 
 // NewMomentService 使用所有必需的依赖项创建一个 MomentService。
-func NewMomentService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, mqRepo repository.MQRepo, logger *zap.Logger) *MomentService {
+// likeCacheTTL 为点赞缓存的过期时间（来自 config.MomentConfig.LikeCacheTTLHours）。
+func NewMomentService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, mqRepo repository.MQRepo, logger *zap.Logger, likeCacheTTL time.Duration) *MomentService {
+	if likeCacheTTL <= 0 {
+		likeCacheTTL = 7 * 24 * time.Hour
+	}
 	return &MomentService{
-		mysqlRepo: mysqlRepo,
-		redisRepo: redisRepo,
-		mqRepo:    mqRepo,
-		logger:    logger,
+		mysqlRepo:    mysqlRepo,
+		redisRepo:    redisRepo,
+		mqRepo:       mqRepo,
+		logger:       logger,
+		likeCacheTTL: likeCacheTTL,
 	}
 }
 
@@ -80,8 +85,8 @@ func (s *MomentService) PublishMoment(ctx context.Context, userID int64, content
 	return moment.ID, nil
 }
 
-// GetMoment 根据 ID 返回单条动态。
-func (s *MomentService) GetMoment(ctx context.Context, momentID int64) (*model.Moment, error) {
+// GetMoment 根据 ID 返回单条动态（含点赞数与"我是否已赞"）。
+func (s *MomentService) GetMoment(ctx context.Context, viewerID int64, momentID int64) (*model.Moment, error) {
 	moment, err := s.mysqlRepo.GetMomentByID(ctx, momentID)
 	if err != nil {
 		return nil, fmt.Errorf("获取动态: %w", err)
@@ -89,11 +94,13 @@ func (s *MomentService) GetMoment(ctx context.Context, momentID int64) (*model.M
 	if moment == nil {
 		return nil, fmt.Errorf(ErrMomentNotFound)
 	}
-	return moment, nil
+	batch := []model.Moment{*moment}
+	s.enrichLikes(ctx, viewerID, batch)
+	return &batch[0], nil
 }
 
-// GetUserMoments 返回用户自己的分页动态列表。
-func (s *MomentService) GetUserMoments(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error) {
+// GetUserMoments 返回用户自己的分页动态列表（含点赞数与"我是否已赞"）。
+func (s *MomentService) GetUserMoments(ctx context.Context, viewerID int64, userID int64, limit, offset int) ([]model.Moment, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -104,38 +111,100 @@ func (s *MomentService) GetUserMoments(ctx context.Context, userID int64, limit,
 	if err != nil {
 		return nil, fmt.Errorf("按用户获取动态: %w", err)
 	}
+	s.enrichLikes(ctx, viewerID, moments)
 	return moments, nil
 }
 
-// LikeMoment 为动态创建一条点赞记录。
-func (s *MomentService) LikeMoment(ctx context.Context, userID int64, momentID int64) error {
+// LikeMoment 为动态点赞。写路径走 Redis（SADD 判重 + INCR 计数，Lua 原子），
+// 点赞状态变化时发 like_persist 事件由消费者异步落库。幂等：重复点赞返回当前点赞数、不报错。
+// 返回该动态最新点赞数。
+func (s *MomentService) LikeMoment(ctx context.Context, userID int64, momentID int64) (int64, error) {
 	// 验证动态是否存在
 	moment, err := s.mysqlRepo.GetMomentByID(ctx, momentID)
 	if err != nil {
-		return fmt.Errorf("检查动态: %w", err)
+		return 0, fmt.Errorf("检查动态: %w", err)
 	}
 	if moment == nil {
-		return fmt.Errorf(ErrMomentNotFound)
+		return 0, fmt.Errorf(ErrMomentNotFound)
 	}
 
-	like := &model.MomentLike{
-		MomentID:  momentID,
-		UserID:    userID,
-		CreatedAt: time.Now(),
+	// 确保点赞缓存已从 MySQL 预热（避免冷 Set 把老用户的赞误判为新赞）。
+	if err := s.ensureLikesLoaded(ctx, momentID); err != nil {
+		return 0, fmt.Errorf("预热点赞缓存: %w", err)
 	}
-	if err := s.mysqlRepo.CreateMomentLike(ctx, like); err != nil {
-		// 重复点赞（moment_id、user_id 上的唯一键约束）
-		return fmt.Errorf("%s: %w", ErrAlreadyLiked, err)
+
+	changed, count, err := s.redisRepo.LikeMomentAtomic(ctx, momentID, userID)
+	if err != nil {
+		return 0, fmt.Errorf("点赞: %w", err)
 	}
-	return nil
+	if changed {
+		s.publishLikeEvent(ctx, momentID, userID, model.LikeActionLike)
+	}
+	return count, nil
 }
 
-// UnlikeMoment 移除动态的点赞记录。
-func (s *MomentService) UnlikeMoment(ctx context.Context, userID int64, momentID int64) error {
-	if err := s.mysqlRepo.DeleteMomentLike(ctx, momentID, userID); err != nil {
-		return fmt.Errorf("取消点赞: %w", err)
+// UnlikeMoment 取消点赞。SREM + DECR（Lua 原子，计数不低于 0），幂等返回当前点赞数。
+func (s *MomentService) UnlikeMoment(ctx context.Context, userID int64, momentID int64) (int64, error) {
+	if err := s.ensureLikesLoaded(ctx, momentID); err != nil {
+		return 0, fmt.Errorf("预热点赞缓存: %w", err)
 	}
-	return nil
+	changed, count, err := s.redisRepo.UnlikeMomentAtomic(ctx, momentID, userID)
+	if err != nil {
+		return 0, fmt.Errorf("取消点赞: %w", err)
+	}
+	if changed {
+		s.publishLikeEvent(ctx, momentID, userID, model.LikeActionUnlike)
+	}
+	return count, nil
+}
+
+// ensureLikesLoaded 触发点赞缓存的按需预热（loader 从 MySQL 拉取该动态全部点赞用户）。
+func (s *MomentService) ensureLikesLoaded(ctx context.Context, momentID int64) error {
+	return s.redisRepo.EnsureMomentLikesLoaded(ctx, momentID, func(c context.Context) ([]int64, error) {
+		return s.mysqlRepo.GetMomentLikers(c, momentID)
+	}, s.likeCacheTTL)
+}
+
+// publishLikeEvent 发布点赞持久化事件；失败仅告警（Redis 已生效，不阻塞用户）。
+func (s *MomentService) publishLikeEvent(ctx context.Context, momentID, userID int64, action string) {
+	evt := &model.LikeEvent{
+		MomentID: momentID,
+		UserID:   userID,
+		Action:   action,
+		Ts:       time.Now().UnixMilli(),
+	}
+	if err := s.mqRepo.PublishLikeEvent(ctx, evt); err != nil {
+		s.logger.Error("发布点赞持久化事件失败",
+			zap.Int64("momentID", momentID),
+			zap.Int64("userID", userID),
+			zap.String("action", action),
+			zap.Error(err),
+		)
+	}
+}
+
+// enrichLikes 为一批动态填充 LikeCount / LikedByMe：先逐条确保缓存已预热，再一次性批量读取。
+// 读取失败为非致命，保持零值。
+func (s *MomentService) enrichLikes(ctx context.Context, viewerID int64, moments []model.Moment) {
+	if len(moments) == 0 {
+		return
+	}
+	ids := make([]int64, len(moments))
+	for i := range moments {
+		ids[i] = moments[i].ID
+		if err := s.ensureLikesLoaded(ctx, moments[i].ID); err != nil {
+			s.logger.Warn("预热点赞缓存失败", zap.Int64("momentID", moments[i].ID), zap.Error(err))
+		}
+	}
+	counts, liked, err := s.redisRepo.GetMomentLikeStats(ctx, viewerID, ids)
+	if err != nil {
+		s.logger.Warn("批量读取点赞统计失败", zap.Error(err))
+		return
+	}
+	for i := range moments {
+		moments[i].LikeCount = counts[moments[i].ID]
+		moments[i].LikedByMe = liked[moments[i].ID]
+	}
 }
 
 // CommentMoment 在动态上创建一条评论。
@@ -314,6 +383,9 @@ func (s *MomentService) GetFeed(ctx context.Context, userID int64, cursor string
 		}
 		moments = append(moments, m)
 	}
+
+	// 富化点赞数与"我是否已赞"
+	s.enrichLikes(ctx, userID, moments)
 
 	return moments, nextCursor, nil
 }

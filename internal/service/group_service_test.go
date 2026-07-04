@@ -771,3 +771,14 @@ func TestGroup_GetMembers_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, members, 3) // 群主 + 2名成员
 }
+
+// ── 高并发点赞新增接口的 mock 桩 ──
+
+func (m *mockGroupMySQLRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
+func (m *mockGroupMySQLRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
+func (m *mockGroupMySQLRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }
+
+func (r *mockGroupRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)   { return false, 0, nil }
+func (r *mockGroupRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) { return false, 0, nil }
+func (r *mockGroupRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
+func (r *mockGroupRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }

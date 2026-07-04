@@ -61,7 +61,7 @@ type FileConfig struct {
 	UploadDir   string   `yaml:"upload_dir"`
 }
 
-// MomentConfig 控制朋友圈 Feed 的推拉结合策略。
+// MomentConfig 控制朋友圈 Feed 的推拉结合策略与点赞缓存/落库。
 type MomentConfig struct {
 	// BigUserFriendThreshold 是"大V"判定的好友数阈值。
 	// 好友数 > 阈值的作者发布动态时不再写扩散到好友收件箱，
@@ -70,6 +70,13 @@ type MomentConfig struct {
 	// TimelineMaxLen 是每个用户收件箱/寄件箱 ZSet 的最大保留条数，
 	// 扇出后按此长度裁剪最旧的条目，防止无限膨胀。默认 1000。
 	TimelineMaxLen int `yaml:"timeline_max_len"`
+	// LikePersistBatchSize 是点赞落库消费者的攒批阈值（攒够即 flush）。默认 200。
+	LikePersistBatchSize int `yaml:"like_persist_batch_size"`
+	// LikePersistFlushMs 是点赞落库消费者的最大攒批间隔（毫秒）。默认 500。
+	LikePersistFlushMs int `yaml:"like_persist_flush_ms"`
+	// LikeCacheTTLHours 是点赞 Redis 缓存（集合/计数/预热标记）的 TTL（小时），
+	// 冷动态到期后自动淘汰、下次交互重新预热。默认 168（7 天）。
+	LikeCacheTTLHours int `yaml:"like_cache_ttl_hours"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -88,6 +95,15 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Moment.TimelineMaxLen <= 0 {
 		cfg.Moment.TimelineMaxLen = 1000
+	}
+	if cfg.Moment.LikePersistBatchSize <= 0 {
+		cfg.Moment.LikePersistBatchSize = 200
+	}
+	if cfg.Moment.LikePersistFlushMs <= 0 {
+		cfg.Moment.LikePersistFlushMs = 500
+	}
+	if cfg.Moment.LikeCacheTTLHours <= 0 {
+		cfg.Moment.LikeCacheTTLHours = 168
 	}
 
 	return &cfg, nil

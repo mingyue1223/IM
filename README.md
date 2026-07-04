@@ -7,7 +7,7 @@
 | 分类 | 功能 |
 |----------|----------|
 | **消息** | 私聊（推送模式）、群聊（拉取模式）、消息撤回、送达/已读回执、离线同步 |
-| **社交** | 好友请求/接受/拒绝/拉黑、双向好友关系、朋友圈发布/点赞/评论/动态流 |
+| **社交** | 好友请求/接受/拒绝/拉黑、双向好友关系、朋友圈发布/推拉结合Feed流/高并发点赞(Lua原子+批量削峰)/评论 |
 | **群组** | 创建/更新/退出群组、成员管理（添加/移除/踢出）、角色体系（群主/管理员/成员） |
 | **AI** | 4层记忆架构、集成大语言模型的 AI 聊天、对话摘要、用户画像提取 |
 | **设置** | 通知偏好、消息预览开关、会话免打扰列表 |
@@ -30,6 +30,14 @@
                     │   │ Lua EVAL │◀───│     │ │ 持久化 │ │
                     │   └──────────┘    │     │ └────────┘ │
                     └──────────────────┘     └────────────┘
+
+MQ 消费者:
+  private_msg_persist  → 写 inbox ZSet + 推 WS + 写 MySQL
+  group_msg_fanout     → 写 outbox ZSet + 推在线成员 + 写 MySQL
+  moment_push          → 推拉结合: 写寄件箱 + 大V判定 + 普通用户写扩散到好友收件箱
+  like_persist         → 攒批削峰: last-action-wins 折叠 + 批量 INSERT IGNORE / DELETE
+  comment_persist      → 评论异步写 MySQL
+  ai_summary/profile   → AI 摘要/画像异步写 MySQL
 ```
 
 ### 核心设计决策
@@ -41,6 +49,8 @@
 5. **Lua 原子操作**：好友校验、去重、msgID 分配、收件箱写入、标记已读、撤回等操作均通过 Redis Lua 脚本原子执行。
 6. **3天 TTL**：收件箱/发件箱/时间线通过 `ZREMRANGEBYSCORE`（按时间）+ `ZREMRANGEBYRANK`（按数量上限）自动过期。
 7. **单设备登录策略**：新的 WebSocket 连接会踢出旧连接，发送 `{"type":"kick","reason":"new_login"}`。
+8. **朋友圈推拉结合 Feed 流**：普通用户发布时写扩散到好友收件箱 `timeline:{userID}`（推）；所有动态同时写入作者寄件箱 `moment_outbox:{authorID}`（拉）。好友数超阈值的大V用户跳过写扩散，其动态由好友从寄件箱拉取合并。读取时多源（自己的寄件箱 + 收件箱 + 大V好友寄件箱）归并去重，复合游标 `(ts, id)` 分页。
+9. **点赞高并发优化**：点赞/取消赞用 Lua 脚本原子执行 SADD/SREM + INCR/DECR，消除竞态。首次访问时从 MySQL 按需预热（loaded 标记 + NX 锁防缓存击穿）。点赞落库采用攒批策略（batchSize + flushInterval），批内 last-action-wins 折叠后批量 INSERT IGNORE / DELETE，削峰且幂等。
 
 ### 会话 ID 格式
 
@@ -122,9 +132,9 @@ GoIM/
 │   └── config.test.yaml  # 端到端测试配置
 ├── docker-compose.yaml   # Docker 基础设施
 ├── docs/                 # 文档
-│   ├── architecture.md   # 系统架构详情
-│   ├── api_reference.md  # REST + WS API 参考
-│   └── deployment.md     # 部署指南
+│   ├── 产品技术设计.md     # 系统架构详情
+│   ├── API 参考文档.md    # REST + WS API 参考
+│   └── 项目部署指南.md     # 部署指南
 ├── scripts/migrations/   # MySQL 迁移 SQL 文件
 │   ├── 001_create_users.sql
 │   ├── 002_create_friendships.sql
@@ -138,17 +148,31 @@ GoIM/
 │   ├── e2e_helper.go     # 测试辅助函数
 │   └── e2e_test.go       # 端到端测试套件
 └── internal/
-    ├── api/              # Gin HTTP 处理器 (7 个文件)
-    ├── config/           # 配置加载
+    ├── api/              # Gin HTTP 处理器 (7 个 handler)
+    ├── config/           # 配置加载 (含 MomentConfig)
     ├── conn/             # 连接管理器 + 客户端连接
-    ├── consumer/         # MQ 消费者 (3 个文件)
+    ├── consumer/         # MQ 消费者 (5 个文件)
+    │   ├── private_msg_consumer.go
+    │   ├── group_msg_consumer.go
+    │   ├── moment_feed_consumer.go    # 推拉结合 Feed 扇出
+    │   ├── like_persist_consumer.go   # 点赞攒批削峰落库
+    │   └── consumer_test.go
     ├── infra/            # MySQL/Redis/RabbitMQ 连接 + 清理
     ├── llm/              # 大语言模型客户端 (兼容 OpenAI)
     ├── middleware/        # JWT 认证中间件
     ├── model/            # 数据模型 (7 个文件)
     ├── protocol/         # WebSocket 消息类型 + 编解码
-    ├── redis/            # Lua 脚本 (4 个文件 + 加载器)
+    ├── redis/            # Lua 脚本 (5 个文件 + 加载器)
+    │   ├── lua_private_msg.go
+    │   ├── lua_group_msg.go
+    │   ├── lua_inbox_mark_read.go
+    │   ├── lua_revoke_msg.go
+    │   ├── lua_moment_like.go        # 点赞/取消赞原子 Lua
+    │   └── lua_scripts.go
     ├── repository/       # MySQL/Redis/MQ 仓库接口 + 实现
+    │   ├── mysql_repo.go
+    │   ├── redis_repo.go             # 含推拉 Feed + 点赞预热 + 大V筛选
+    │   └── mq_repo.go
     ├── service/          # 业务逻辑 (8 个服务)
     └── ws/               # WebSocket 升级 + 消息分发器
 ```
@@ -197,6 +221,7 @@ GoIM/
 - `jwt`：secret, access_exp_hours, refresh_exp_days
 - `llm`：provider, api_key, base_url, model, max_tokens
 - `file`：max_size_mb, allowed_exts, upload_dir
+- `moment`：big_user_friend_threshold (大V阈值, 默认500), timeline_max_len (收件箱/寄件箱上限, 默认1000), like_persist_batch_size (点赞落库攒批, 默认200), like_persist_flush_ms (攒批间隔ms, 默认500), like_cache_ttl_hours (点赞缓存TTL, 默认168h/7天)
 
 ## 📄 许可证
 

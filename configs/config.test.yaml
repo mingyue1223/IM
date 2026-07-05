@@ -16,7 +16,7 @@ redis:
   db: 1
 
 rabbitmq:
-  url: "amqp://guest:guest@localhost:5672/"
+  url: "amqp://guest:guest@localhost:5673/"
 
 jwt:
   secret: "test-secret"

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -148,6 +149,14 @@ func main() {
 
 	// ── 启动清理任务 ──
 	infra.StartCleanupTask(rdb, logger, 1*time.Hour)
+
+	// ── 启动 pprof 调试端口 ──
+	go func() {
+		logger.Info("pprof 已启动", zap.String("addr", ":6060"))
+		if err := http.ListenAndServe(":6060", nil); err != nil {
+			logger.Warn("pprof 服务器错误", zap.Error(err))
+		}
+	}()
 
 	// ── 启动 HTTP 服务器 ──
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

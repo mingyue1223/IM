@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   mysql:
-    image: mysql:8.0
+    image: mysql:8.4
     container_name: goim-mysql
     restart: unless-stopped
     environment:
@@ -23,7 +23,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2-alpine
     container_name: goim-redis
     restart: unless-stopped
     ports:
@@ -37,15 +37,15 @@ services:
       retries: 5
 
   rabbitmq:
-    image: rabbitmq:3-management-alpine
+    image: rabbitmq:3.13-management
     container_name: goim-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     ports:
-      - "5672:5672"    # AMQP 端口
-      - "15672:15672"  # 管理界面端口
+      - "5673:5672"    # AMQP 端口（宿主机 5673，避免和 feed-backend 冲突）
+      - "15673:15672"  # 管理界面端口
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:

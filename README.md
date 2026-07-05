@@ -1,6 +1,6 @@
 # GoIM — 高并发即时通讯系统
 
-一个基于 Go 语言构建的生产级 IM（即时通讯）系统，采用微信风格的隐私设计、Redis 优先架构配合异步 MySQL 持久化，并集成 AI 驱动的对话智能。
+一个基于 Go 语言构建的生产级 IM（即时通讯）系统，采用微信风格的隐私设计、Redis 优先架构配合异步 MySQL 持久化。
 
 ## ✨ 功能特性
 
@@ -9,7 +9,6 @@
 | **消息** | 私聊（推送模式）、群聊（拉取模式）、消息撤回、送达/已读回执、离线同步 |
 | **社交** | 好友请求/接受/拒绝/拉黑、双向好友关系、朋友圈发布/推拉结合Feed流/高并发点赞(Lua原子+批量削峰)/评论 |
 | **群组** | 创建/更新/退出群组、成员管理（添加/移除/踢出）、角色体系（群主/管理员/成员） |
-| **AI** | 4层记忆架构、集成大语言模型的 AI 聊天、对话摘要、用户画像提取 |
 | **设置** | 通知偏好、消息预览开关、会话免打扰列表 |
 | **实时通信** | 基于 JWT 认证的 WebSocket、单设备登录策略（踢出旧连接）、心跳、推送通知 |
 | **可靠性** | Redis Lua 原子操作、RabbitMQ 异步持久化、3天 TTL 自动清理 |
@@ -37,7 +36,6 @@ MQ 消费者:
   moment_push          → 推拉结合: 写寄件箱 + 大V判定 + 普通用户写扩散到好友收件箱
   like_persist         → 攒批削峰: last-action-wins 折叠 + 批量 INSERT IGNORE / DELETE
   comment_persist      → 评论异步写 MySQL
-  ai_summary/profile   → AI 摘要/画像异步写 MySQL
 ```
 
 ### 核心设计决策
@@ -56,15 +54,6 @@ MQ 消费者:
 
 - 私聊：`p_{较小ID}_{较大ID}`（例如 `p_1_2`）
 - 群聊：`g_{groupID}`（例如 `g_42`）
-
-### AI 4层记忆架构
-
-| 层级 | 存储位置 | 内容 | 用途 |
-|-------|---------|---------|---------|
-| 0 | MySQL `private_messages` | 原始消息 | 完整对话历史 |
-| 1 | MySQL `ai_summaries` | 话题、关键点、结论 | 结构化摘要 |
-| 2 | MySQL `ai_user_profiles` | 字段、值、置信度、来源 | 带置信度评分的用户画像 |
-| 3 | Redis `ai_memory:{userID}:{key}` | 带 TTL 的工作记忆 | AI 响应的快速上下文 |
 
 ## 🚀 快速开始
 
@@ -122,6 +111,59 @@ go test ./tests/... -v -tags e2e -timeout 120s
 go test ./internal/... -v
 ```
 
+## ⚡ 性能压测
+
+单机 Docker 环境（MySQL 8.4 + Redis 7.2 + RabbitMQ 3.13）下的压测结果。
+
+### 目标达成
+
+| 指标 | 目标 | 实测 | 达成率 |
+|------|------|------|--------|
+| WebSocket 并发连接 | ≥ 10,000 | **50,000** | 500% |
+| 私聊消息 QPS | ≥ 5,000 | **29,000** | 580% |
+| P99 延迟 | ≤ 100ms | **7.42ms**（200 连接） | 13.5× 优于目标 |
+| goroutine 泄漏 | 无 | ✅ 线性增长 | 通过 |
+
+### WebSocket 并发连接
+
+每连接固定增加 2 个 goroutine（ReadPump + WritePump），零泄漏。
+
+| 同时在线 | goroutine 总数 | 成功率 | 备注 |
+|----------|---------------|--------|------|
+| 10,000 | 20,018 | 100% | 达到目标 |
+| 28,000 | 56,018 | 100% | 单客户端临时端口池极限 |
+| 50,000 | 100,008 | 100% | 服务端极限 |
+
+### 消息写入 QPS
+
+采用 发→收 serverAck→立即发下一条 的流水线模式，每个消息走完整同步路径（Redis Lua 原子校验 → MQ 异步发布 → serverAck）。
+
+| 连接数 | QPS | P50 | P95 | P99 | 成功率 |
+|--------|-----|-----|-----|-----|--------|
+| 10 | 29,532 | 0.23ms | 0.38ms | 0.47ms | 100% |
+| 100 | 28,993 | 1.70ms | 2.71ms | 3.70ms | 99.96% |
+| 1,000 | 27,432 | 18.73ms | 25.04ms | 577ms | 99.58% |
+
+### 瓶颈分析
+
+- **QPS 天花板 ≈ 29,000 msg/s**：10 连接与 1000 连接产生的 QPS 基本持平，确认瓶颈在 **Redis Lua 单线程** 而非连接调度
+- **延迟随连接数恶化**：连接数增加后每连接排队等 Redis，P99 从 0.47ms 升至 577ms
+- **少量失败来自 MQ 阻塞**：`PublishWithContext` 在 RabbitMQ 堆积时阻塞最多 5 秒
+
+### 运行压测
+
+压测脚本位于 `benchmark/` 目录，使用方法详见 [压测文档](docs/压力测试总结.md#6-压测脚本使用指南)：
+
+```bash
+# 第一轮：WS 并发连接数（k6）
+go run benchmark/register_users.go -count=2000 -url=http://localhost:8080
+cd benchmark && k6 run --env VUS=10000 --env HOLD=60 ws-conn-hold.js
+
+# 第二轮：消息 QPS（Go 脚本）
+go run benchmark/setup_friends.go -pairs=1000 -url=http://localhost:8080
+go run benchmark/msg_bench.go -conns=100 -duration=15s
+```
+
 ## 📁 项目结构
 
 ```
@@ -131,10 +173,21 @@ GoIM/
 │   ├── config.yaml       # 生产环境配置模板
 │   └── config.test.yaml  # 端到端测试配置
 ├── docker-compose.yaml   # Docker 基础设施
+├── benchmark/            # 压测脚本 (k6 + 自研 Go)
+│   ├── register_users.go        # 批量注册 + 生成 JWT
+│   ├── setup_friends.go         # 配对好友 + 预热 Redis
+│   ├── ws-conn-test.js          # k6 建连吞吐
+│   ├── ws-conn-hold.js          # k6 长连接保持
+│   ├── msg_bench.go             # 消息 QPS + 端到端延迟
+│   └── msg_debug.go             # 单连接诊断
 ├── docs/                 # 文档
 │   ├── 产品技术设计.md     # 系统架构详情
+│   ├── 产品功能需求.md     # 产品需求
+│   ├── 项目系统架构.md     # 架构说明
 │   ├── API 参考文档.md    # REST + WS API 参考
-│   └── 项目部署指南.md     # 部署指南
+│   ├── 压力测试总结.md     # 压测报告
+│   ├── 项目部署指南.md     # 部署指南
+│   └── 项目开发计划.md     # 开发计划
 ├── scripts/migrations/   # MySQL 迁移 SQL 文件
 │   ├── 001_create_users.sql
 │   ├── 002_create_friendships.sql
@@ -142,7 +195,6 @@ GoIM/
 │   ├── 004_create_messages.sql
 │   ├── 005_create_moments.sql
 │   ├── 006_create_misc.sql
-│   ├── 007_create_ai.sql
 │   └── 008_create_user_settings.sql
 ├── tests/                # 端到端集成测试
 │   ├── e2e_helper.go     # 测试辅助函数
@@ -158,8 +210,7 @@ GoIM/
     │   ├── like_persist_consumer.go   # 点赞攒批削峰落库
     │   └── consumer_test.go
     ├── infra/            # MySQL/Redis/RabbitMQ 连接 + 清理
-    ├── llm/              # 大语言模型客户端 (兼容 OpenAI)
-    ├── middleware/        # JWT 认证中间件
+    ├── middleware/       # JWT 认证中间件
     ├── model/            # 数据模型 (7 个文件)
     ├── protocol/         # WebSocket 消息类型 + 编解码
     ├── redis/            # Lua 脚本 (5 个文件 + 加载器)
@@ -204,7 +255,6 @@ GoIM/
 | 好友 | request, accept, reject, list, block, unblock | JWT |
 | 群组 | create, update, info, members, add/remove member, leave | JWT |
 | 朋友圈 | publish, get, like, comment, feed | JWT |
-| AI | chat, profile, summary | JWT |
 | 消息操作 | revoke, delete, search | JWT |
 | 设置 | get, update, mute, unmute | JWT |
 | WebSocket | `GET /ws?token=JWT` | JWT |
@@ -219,7 +269,6 @@ GoIM/
 - `redis`：addr, password, db
 - `rabbitmq`：url (amqp://)
 - `jwt`：secret, access_exp_hours, refresh_exp_days
-- `llm`：provider, api_key, base_url, model, max_tokens
 - `file`：max_size_mb, allowed_exts, upload_dir
 - `moment`：big_user_friend_threshold (大V阈值, 默认500), timeline_max_len (收件箱/寄件箱上限, 默认1000), like_persist_batch_size (点赞落库攒批, 默认200), like_persist_flush_ms (攒批间隔ms, 默认500), like_cache_ttl_hours (点赞缓存TTL, 默认168h/7天)
 

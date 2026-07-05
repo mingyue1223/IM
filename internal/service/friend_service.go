@@ -141,6 +141,12 @@ func (s *FriendService) AcceptFriendRequest(ctx context.Context, userID, request
 		return nil, fmt.Errorf("创建好友关系: %w", err)
 	}
 
+	// 5. 写入 Redis 好友缓存（Lua 消息校验依赖此 key）
+	if err := s.redisRepo.SetFriendCache(ctx, req.FromUserID, req.ToUserID); err != nil {
+		s.logger.Warn("设置好友缓存失败", zap.Error(err))
+		// 非致命：MySQL 已写入，缓存可在后续 IsFriend 查询时按需回填
+	}
+
 	s.logger.Debug("好友请求已接受",
 		zap.Int64("userID", userID),
 		zap.Int64("requestID", requestID),

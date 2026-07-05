@@ -89,6 +89,9 @@ type RedisRepo interface {
 	SetWorkingMemory(ctx context.Context, userID int64, key string, value string, ttlSeconds int64) error
 	GetWorkingMemory(ctx context.Context, userID int64, key string) (string, error)
 	GetAllWorkingMemory(ctx context.Context, userID int64) (map[string]string, error)
+
+	// ── 好友缓存 ──
+	SetFriendCache(ctx context.Context, uidA, uidB int64) error
 }
 
 // ──────────────────────────────────────────────────────
@@ -772,4 +775,18 @@ func (r *RedisRepoImpl) GetAllWorkingMemory(ctx context.Context, userID int64) (
 		}
 	}
 	return result, nil
+}
+
+// ── 好友缓存 ──
+
+// SetFriendCache 在 Redis 中写入双向好友关系缓存。
+// Lua 消息校验脚本依赖此 key 判断好友关系。
+func (r *RedisRepoImpl) SetFriendCache(ctx context.Context, uidA, uidB int64) error {
+	pipe := r.rdb.Pipeline()
+	pipe.Set(ctx, fmt.Sprintf("friend:%d:%d", uidA, uidB), "1", 0)
+	pipe.Set(ctx, fmt.Sprintf("friend:%d:%d", uidB, uidA), "1", 0)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("设置好友缓存 %d<->%d: %w", uidA, uidB, err)
+	}
+	return nil
 }

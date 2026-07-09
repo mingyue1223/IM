@@ -1,9 +1,21 @@
-uploads/
+# Go build artifacts
 *.exe
 *.test
+server
+
+# Backend
+backend/uploads/
+backend/configs/config.yaml
+backend/config.local.yaml
+backend/server
+
+# Frontend
+frontend/dist/
+frontend/node_modules/
+
+# Environment
 .env
-configs/config.yaml
-config.local.yaml
+
+# Claude Code
 .claude/
 .superpowers/
-server

@@ -63,16 +63,19 @@ MQ 消费者:
 - Docker 与 Docker Compose
 - MySQL 8、Redis 7、RabbitMQ 3（或使用下方的 Docker Compose）
 
+> **所有命令在 `backend/` 目录下执行。**
+
 ### 1. 启动基础设施
 
 ```bash
+cd backend
 docker-compose up -d
 ```
 
 ### 2. 运行数据库迁移
 
 ```bash
-# 按顺序执行迁移文件
+cd backend
 for f in scripts/migrations/*.sql; do
   mysql -u goim -pgoim123 goim < "$f"
 done
@@ -81,6 +84,7 @@ done
 ### 3. 构建并运行
 
 ```bash
+cd backend
 go build -o goim-server ./cmd/server
 ./goim-server -c configs/config.yaml
 ```
@@ -88,6 +92,7 @@ go build -o goim-server ./cmd/server
 或直接运行：
 
 ```bash
+cd backend
 go run ./cmd/server -c configs/config.yaml
 ```
 
@@ -98,17 +103,33 @@ curl http://localhost:8080/health
 # {"status":"ok","service":"goim"}
 ```
 
-### 5. 运行端到端测试
+### 5. 运行测试
 
 ```bash
-# 先启动 Docker 服务，然后执行：
+cd backend
+# 单元测试
+go test ./internal/... -v
+
+# 端到端测试（需先启动 Docker）
 go test ./tests/... -v -tags e2e -timeout 120s
 ```
 
-### 6. 运行单元测试
+### 运行压测
+
+压测脚本位于 `backend/benchmark/`，详见 [压测文档](backend/docs/压力测试总结.md)。
 
 ```bash
-go test ./internal/... -v
+cd backend
+
+# 注册压测用户
+go run benchmark/register_users.go -count=2000 -url=http://localhost:8080
+
+# WebSocket 长连接压测
+cd benchmark && k6 run --env VUS=10000 --env HOLD=60 ws-conn-hold.js && cd ..
+
+# 配对好友 + 消息 QPS 压测
+go run benchmark/setup_friends.go -pairs=1000 -url=http://localhost:8080
+go run benchmark/msg_bench.go -conns=100 -duration=15s
 ```
 
 ## ⚡ 性能压测
@@ -150,82 +171,40 @@ go test ./internal/... -v
 - **延迟随连接数恶化**：连接数增加后每连接排队等 Redis，P99 从 0.47ms 升至 577ms
 - **少量失败来自 MQ 阻塞**：`PublishWithContext` 在 RabbitMQ 堆积时阻塞最多 5 秒
 
-### 运行压测
-
-压测脚本位于 `benchmark/` 目录，使用方法详见 [压测文档](docs/压力测试总结.md#6-压测脚本使用指南)：
-
-```bash
-# 第一轮：WS 并发连接数（k6）
-go run benchmark/register_users.go -count=2000 -url=http://localhost:8080
-cd benchmark && k6 run --env VUS=10000 --env HOLD=60 ws-conn-hold.js
-
-# 第二轮：消息 QPS（Go 脚本）
-go run benchmark/setup_friends.go -pairs=1000 -url=http://localhost:8080
-go run benchmark/msg_bench.go -conns=100 -duration=15s
-```
-
 ## 📁 项目结构
 
 ```
 GoIM/
-├── cmd/server/           # 入口点 (main.go)
-├── configs/              # 配置 YAML 文件
-│   ├── config.yaml       # 生产环境配置模板
-│   └── config.test.yaml  # 端到端测试配置
-├── docker-compose.yaml   # Docker 基础设施
-├── benchmark/            # 压测脚本 (k6 + 自研 Go)
-│   ├── register_users.go        # 批量注册 + 生成 JWT
-│   ├── setup_friends.go         # 配对好友 + 预热 Redis
-│   ├── ws-conn-test.js          # k6 建连吞吐
-│   ├── ws-conn-hold.js          # k6 长连接保持
-│   ├── msg_bench.go             # 消息 QPS + 端到端延迟
-│   └── msg_debug.go             # 单连接诊断
-├── docs/                 # 文档
-│   ├── 产品技术设计.md     # 系统架构详情
-│   ├── 产品功能需求.md     # 产品需求
-│   ├── 项目系统架构.md     # 架构说明
-│   ├── API 参考文档.md    # REST + WS API 参考
-│   ├── 压力测试总结.md     # 压测报告
-│   ├── 项目部署指南.md     # 部署指南
-│   └── 项目开发计划.md     # 开发计划
-├── scripts/migrations/   # MySQL 迁移 SQL 文件
-│   ├── 001_create_users.sql
-│   ├── 002_create_friendships.sql
-│   ├── 003_create_groups.sql
-│   ├── 004_create_messages.sql
-│   ├── 005_create_moments.sql
-│   ├── 006_create_misc.sql
-│   └── 008_create_user_settings.sql
-├── tests/                # 端到端集成测试
-│   ├── e2e_helper.go     # 测试辅助函数
-│   └── e2e_test.go       # 端到端测试套件
-└── internal/
-    ├── api/              # Gin HTTP 处理器 (7 个 handler)
-    ├── config/           # 配置加载 (含 MomentConfig)
-    ├── conn/             # 连接管理器 + 客户端连接
-    ├── consumer/         # MQ 消费者 (5 个文件)
-    │   ├── private_msg_consumer.go
-    │   ├── group_msg_consumer.go
-    │   ├── moment_feed_consumer.go    # 推拉结合 Feed 扇出
-    │   ├── like_persist_consumer.go   # 点赞攒批削峰落库
-    │   └── consumer_test.go
-    ├── infra/            # MySQL/Redis/RabbitMQ 连接 + 清理
-    ├── middleware/       # JWT 认证中间件
-    ├── model/            # 数据模型 (7 个文件)
-    ├── protocol/         # WebSocket 消息类型 + 编解码
-    ├── redis/            # Lua 脚本 (5 个文件 + 加载器)
-    │   ├── lua_private_msg.go
-    │   ├── lua_group_msg.go
-    │   ├── lua_inbox_mark_read.go
-    │   ├── lua_revoke_msg.go
-    │   ├── lua_moment_like.go        # 点赞/取消赞原子 Lua
-    │   └── lua_scripts.go
-    ├── repository/       # MySQL/Redis/MQ 仓库接口 + 实现
-    │   ├── mysql_repo.go
-    │   ├── redis_repo.go             # 含推拉 Feed + 点赞预热 + 大V筛选
-    │   └── mq_repo.go
-    ├── service/          # 业务逻辑 (8 个服务)
-    └── ws/               # WebSocket 升级 + 消息分发器
+├── backend/                  # Go 后端服务
+│   ├── cmd/server/           # 入口点 (main.go)
+│   ├── configs/              # 配置 YAML 文件
+│   │   ├── config.example.yaml  # 配置模板
+│   │   └── config.test.yaml     # 测试配置
+│   ├── internal/             # 内部包
+│   │   ├── api/              # Gin HTTP 处理器
+│   │   ├── config/           # 配置加载
+│   │   ├── conn/             # 连接管理器 + 客户端连接
+│   │   ├── consumer/         # MQ 消费者
+│   │   ├── infra/            # MySQL/Redis/RabbitMQ 连接 + 清理
+│   │   ├── llm/              # LLM 客户端 (OpenAI 兼容)
+│   │   ├── middleware/       # JWT 认证 + CORS 中间件
+│   │   ├── model/            # 数据模型
+│   │   ├── protocol/         # WebSocket 消息类型 + 编解码
+│   │   ├── redis/            # Lua 脚本封装
+│   │   ├── repository/       # MySQL/Redis/MQ 仓库
+│   │   ├── service/          # 业务逻辑 (8 个服务)
+│   │   └── ws/               # WebSocket 升级 + 消息分发器
+│   ├── scripts/              # SQL 迁移 + Lua 脚本
+│   │   ├── migrations/       # MySQL DDL
+│   │   └── lua/              # Redis Lua 脚本
+│   ├── benchmark/            # 压测工具 (k6 + Go)
+│   ├── tests/                # 端到端集成测试
+│   ├── docs/                 # 项目文档 + Swagger
+│   ├── go.mod / go.sum
+│   └── docker-compose.yaml
+│
+└── frontend/                 # 前端 (浏览器客户端)
+    └── goim-ws-types.ts      # WebSocket 协议 TS 类型定义
 ```
 
 ## 🛠 技术栈
@@ -243,10 +222,11 @@ GoIM/
 | 日志 | zap | v1.27+ |
 | 密码 | bcrypt | — |
 | 容器 | Docker Compose | v3.8 |
+| API 文档 | Swagger / OpenAPI 3.0 | — |
 
 ## 📊 API 概览
 
-完整详情请参见 [docs/api_reference.md](docs/api_reference.md)。
+完整详情请参见 [backend/docs/](backend/docs/)，或启动服务后访问 Swagger UI：`http://localhost:8080/swagger/index.html`
 
 | 分类 | 端点 | 认证 |
 |----------|-----------|------|
@@ -257,11 +237,13 @@ GoIM/
 | 朋友圈 | publish, get, like, comment, feed | JWT |
 | 消息操作 | revoke, delete, search | JWT |
 | 设置 | get, update, mute, unmute | JWT |
+| 文件 | upload avatar, get avatar | JWT/公开 |
+| AI | chat, chat/stream, profile, summary | JWT |
 | WebSocket | `GET /ws?token=JWT` | JWT |
 
 ## 🔧 配置
 
-完整配置模板及所有字段说明请参见 `configs/config.yaml`。
+完整配置模板参见 `backend/configs/config.example.yaml`。
 
 主要配置项：
 - `server`：port, ws_path, upload_dir

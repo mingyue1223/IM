@@ -30,7 +30,7 @@ export interface CreateGroupRequest { name: string; notice?: string; }
 export interface CreateGroupResponse { group_id: ApiId; }
 export interface UpdateGroupRequest { name: string; notice: string; }
 export interface AddGroupMemberRequest { member_id: ApiId; }
-export interface UpdateGroupMemberRoleRequest { role: 1; }
+export interface UpdateGroupMemberRoleRequest { role: 0 | 1; }
 export interface PublishMomentRequest { content: string; media_urls?: string; visibility: 1 | 2 | 3; }
 export interface PublishMomentResponse { moment_id: ApiId; }
 export interface MomentActionResponse { ok: boolean; liked: boolean; count: number; }

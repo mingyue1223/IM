@@ -12,6 +12,7 @@ backend/server
 # Frontend
 frontend/dist/
 frontend/node_modules/
+frontend/*.tsbuildinfo
 
 # Environment
 .env

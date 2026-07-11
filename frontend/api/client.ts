@@ -3,7 +3,8 @@ import type { ApiResponse } from "../goim-api-types";
 export interface ApiClientOptions {
   baseUrl: string;
   getAccessToken?: () => string | null | Promise<string | null>;
-  onUnauthorized?: () => void | Promise<void>;
+  /** Return true after recovering the session to retry the request once. */
+  onUnauthorized?: () => boolean | Promise<boolean>;
   fetch?: typeof fetch;
 }
 
@@ -27,7 +28,7 @@ export class GoIMApiClient {
     this.fetchImpl = options.fetch ?? fetch;
   }
 
-  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  async request<T>(path: string, init: RequestInit = {}, mayRetry = true): Promise<T> {
     const token = await this.options.getAccessToken?.();
     const headers = new Headers(init.headers);
     if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -36,7 +37,10 @@ export class GoIMApiClient {
     const isJson = response.headers.get("content-type")?.includes("application/json");
     const body: ApiResponse<T> | undefined = isJson ? await response.json() : undefined;
 
-    if (response.status === 401) await this.options.onUnauthorized?.();
+    if (response.status === 401 && mayRetry && this.options.onUnauthorized) {
+      const recovered = await this.options.onUnauthorized();
+      if (recovered) return this.request<T>(path, init, false);
+    }
     if (!response.ok || !body || body.code !== 0) {
       throw new ApiError(body?.message ?? response.statusText, body?.code ?? -1, response.status);
     }

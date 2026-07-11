@@ -12,8 +12,6 @@ var QueueNames = []string{
 	"moment_push",
 	"like_persist",
 	"comment_persist",
-	"ai_summary_persist",
-	"ai_profile_persist",
 }
 
 // NewRabbitMQConn 建立 RabbitMQ 连接并打开一个通道。
@@ -32,7 +30,7 @@ func NewRabbitMQConn(cfg *config.RabbitMQConfig) (*amqp.Connection, *amqp.Channe
 	return conn, ch, nil
 }
 
-// DeclareQueues 在给定通道上声明所有 7 个持久队列。
+// DeclareQueues 在给定通道上声明所有 5 个持久队列。
 func DeclareQueues(ch *amqp.Channel) error {
 	for _, name := range QueueNames {
 		_, err := ch.QueueDeclare(name, true, false, false, false, nil)

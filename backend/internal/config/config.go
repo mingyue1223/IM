@@ -12,13 +12,13 @@ type Config struct {
 	Redis    RedisConfig    `yaml:"redis"`
 	RabbitMQ RabbitMQConfig `yaml:"rabbitmq"`
 	JWT      JWTConfig      `yaml:"jwt"`
-	LLM      LLMConfig      `yaml:"llm"`
 	File     FileConfig     `yaml:"file"`
 	Moment   MomentConfig   `yaml:"moment"`
 }
 
 type ServerConfig struct {
 	Port      int    `yaml:"port"`
+	PprofPort int    `yaml:"pprof_port"`
 	WsPath    string `yaml:"ws_path"`
 	UploadDir string `yaml:"upload_dir"`
 }
@@ -45,14 +45,6 @@ type JWTConfig struct {
 	Secret         string `yaml:"secret"`
 	AccessExpHours int    `yaml:"access_exp_hours"`
 	RefreshExpDays int    `yaml:"refresh_exp_days"`
-}
-
-type LLMConfig struct {
-	Provider  string `yaml:"provider"`   // "openai" 或 "domestic"
-	APIKey    string `yaml:"api_key"`
-	BaseURL   string `yaml:"base_url"`
-	Model     string `yaml:"model"`
-	MaxTokens int    `yaml:"max_tokens"` // LLM响应的最大token数（默认2048）
 }
 
 type FileConfig struct {

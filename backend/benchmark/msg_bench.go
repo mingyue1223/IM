@@ -7,6 +7,8 @@
 //
 // 每个 goroutine 持一个 WS 连接，发→收serverAck→立刻发下一条，持续到 duration 结束。
 
+//go:build benchmark_messages
+
 package main
 
 import (

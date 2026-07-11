@@ -520,62 +520,6 @@ GET /ws?token=<access_token>
 
 ---
 
-## AI（需要 JWT）
-
-### POST /ai/chat
-
-向 AI 助手发送消息。
-
-**请求：**
-```json
-{
-  "content": "What are my hobbies?"
-}
-```
-
-**响应 (200)：**
-```json
-{
-  "response": "Based on our conversations, you enjoy hiking, photography, and cooking."
-}
-```
-
-### GET /ai/profile
-
-获取 AI 对用户的理解（第 2 层记忆）。
-
-**响应 (200)：**
-```json
-{
-  "items": [
-    {
-      "field_name": "hobbies",
-      "value": "hiking, photography",
-      "confidence": 0.85,
-      "source": "conversation_summary"
-    }
-  ]
-}
-```
-
-### POST /ai/summary/:convID
-
-为会话生成 AI 摘要。
-
-**响应 (200)：**
-```json
-{
-  "id": 1,
-  "topic": "Travel planning",
-  "key_points": "Discussed trip to Japan in March",
-  "conclusion": "Decided on Tokyo and Kyoto itinerary",
-  "user_intent": "Plan spring trip to Japan",
-  "message_range": "msg1-msg45"
-}
-```
-
----
-
 ## 消息操作（需要 JWT）
 
 ### POST /msg/revoke
@@ -715,7 +659,6 @@ GET /ws?token=<access_token>
 | `readAck` | 标记会话已读 | `convId` |
 | `syncReq` | 请求离线同步 | `lastSyncTime`、`batchSize` |
 | `revokeMsg` | 撤回一条消息 | `convId`、`serverMsgId` |
-| `aiStream` | AI 聊天流 | `content` |
 | `friendApply` | 好友申请（通过 WS） | （占位） |
 | `ping` | 心跳 | — |
 
@@ -741,7 +684,6 @@ GET /ws?token=<access_token>
 | MsgTypeText | 1 | 纯文本消息 |
 | MsgTypeImage | 2 | 图片消息 |
 | MsgTypeVideo | 3 | 视频消息 |
-| MsgTypeAI | 4 | AI 生成的消息 |
 | MsgTypeSystem | 5 | 系统通知 |
 | MsgTypeRevoked | 6 | 撤回占位符 |
 

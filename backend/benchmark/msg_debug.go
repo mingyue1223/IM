@@ -1,6 +1,8 @@
 // benchmark/msg_debug.go — 单连接单消息诊断
 // go run benchmark/msg_debug.go
 
+//go:build benchmark_debug
+
 package main
 
 import (

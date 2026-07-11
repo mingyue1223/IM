@@ -14,7 +14,6 @@ export enum MsgType {
   Text    = 1,  // 纯文本消息
   Image   = 2,  // 图片消息
   Video   = 3,  // 视频消息
-  AI      = 4,  // AI 生成的消息
   System  = 5,  // 系统通知
   Revoked = 6,  // 撤回占位符
 }
@@ -46,9 +45,6 @@ export const ClientMsgType = {
   ReadAck:     "readAck",
   SyncReq:     "syncReq",
   RevokeMsg:   "revokeMsg",
-  AiStream:    "aiStream",
-  FriendApply: "friendApply",
-  Ping:        "ping",
 } as const;
 
 /** WS 消息 type 字段 — 服务端→客户端 */
@@ -59,10 +55,7 @@ export const ServerMsgType = {
   ConvSync:       "convSync",
   MsgRevoked:     "msgRevoked",
   Kick:           "kick",
-  FriendAccepted: "friendAccepted",
-  Presence:       "presence",
   Error:          "error",
-  Pong:           "pong",
 } as const;
 
 // ──────────────────────────────────────────────────────
@@ -156,30 +149,12 @@ export interface RevokedNotification {
 
 /** 被踢出通知 */
 export interface KickNotification {
-  type:   "kick";
   reason: "new_login";
 }
 
-/** AI 流式数据块 */
-export interface AiStreamChunk {
-  content?:           string;
-  reasoning_content?: string;
-  done?:              boolean;
-  full_response?:     string;
-  error?:             string;
-}
-
 /** 好友申请 (通过WS) */
-export interface FriendApply {
-  toUserId: number;
-  message?: string;
-}
 
 /** 好友申请被接受通知 */
-export interface FriendAccepted {
-  userId:   number;
-  friendId: number;
-}
 
 /** 错误通知 */
 export interface WsError {
@@ -196,10 +171,7 @@ export type ClientWsMessage =
   | { type: "deliverAck";   data: DeliverAck }
   | { type: "readAck";      data: ReadAck }
   | { type: "syncReq";      data: SyncReq }
-  | { type: "revokeMsg";    data: RevokeMsgReq }
-  | { type: "aiStream";     data: { content: string } }
-  | { type: "friendApply";  data: FriendApply }
-  | { type: "ping";         data?: never };
+  | { type: "revokeMsg";    data: RevokeMsgReq };
 
 // ──────────────────────────────────────────────────────
 // 联合类型：服务端 → 客户端
@@ -211,11 +183,9 @@ export type ServerWsMessage =
   | { type: "syncBatch";      data: SyncBatch }
   | { type: "convSync";       data: ConvSync }
   | { type: "msgRevoked";     data: RevokedNotification }
-  | { type: "kick";           data: KickNotification }
-  | { type: "friendAccepted"; data: FriendAccepted }
-  | { type: "presence";       data: { userId: number; online: boolean } }
-  | { type: "error";          data: WsError }
-  | { type: "pong";           data?: never };
+  // `kick` is emitted by the connection manager without a `data` envelope.
+  | { type: "kick";           reason: KickNotification["reason"] }
+  | { type: "error";          data: WsError };
 
 // ──────────────────────────────────────────────────────
 // 会话 ID 构建辅助函数
@@ -294,13 +264,6 @@ export enum ApiErrorCode {
   NotCommentOwner    = 1503,
   InvalidVisibility  = 1504,
   CommentNotFound    = 1505,
-
-  // AI 1600+
-  LLMCallFailed      = 1601,
-  NoLLMResponse      = 1602,
-  StoreMsgFailed     = 1603,
-  StoreSummaryFailed = 1604,
-  StoreProfileFailed = 1605,
 
   // 设置 1700+
   SettingsNotFound = 1701,

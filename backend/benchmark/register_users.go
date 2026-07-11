@@ -5,6 +5,8 @@
 //
 // 输出 benchmark/tokens.csv（userID,token,username），供 k6 压测脚本读取。
 
+//go:build benchmark_register
+
 package main
 
 import (
@@ -23,10 +25,10 @@ import (
 )
 
 var (
-	count    = flag.Int("count", 10000, "要注册的用户数")
-	baseURL  = flag.String("url", "http://localhost:8080", "GoIM 服务端地址")
-	outFile  = flag.String("out", "", "输出 CSV 路径（默认 benchmark/tokens.csv）")
-	workers  = flag.Int("workers", 50, "并发注册 goroutine 数")
+	count   = flag.Int("count", 10000, "要注册的用户数")
+	baseURL = flag.String("url", "http://localhost:8080", "GoIM 服务端地址")
+	outFile = flag.String("out", "", "输出 CSV 路径（默认 benchmark/tokens.csv）")
+	workers = flag.Int("workers", 50, "并发注册 goroutine 数")
 )
 
 type registerReq struct {

@@ -15,221 +15,6 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/ai/chat": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "向AI发送消息并获取非流式回复",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "AI对话",
-                "parameters": [
-                    {
-                        "description": "聊天消息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.aiChatRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "对话成功",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/internal_api.aiChatResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "未授权",
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/ai/chat/stream": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "以SSE流式方式与AI助手对话，实时返回生成内容",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "AI流式聊天",
-                "parameters": [
-                    {
-                        "description": "聊天消息",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.aiChatRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "SSE事件流",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "未授权",
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/ai/profile": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "获取当前用户的AI画像条目（第二层记忆）",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "获取AI画像",
-                "responses": {
-                    "200": {
-                        "description": "获取成功",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/internal_api.aiProfileResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "未授权",
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/ai/summary/{convID}": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "为指定会话生成AI摘要",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "AI"
-                ],
-                "summary": "生成会话摘要",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "会话ID",
-                        "name": "convID",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "生成成功",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/internal_api.aiSummaryResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "未授权",
-                        "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/auth/login": {
             "post": {
                 "description": "使用用户名和密码登录，返回访问令牌和刷新令牌",
@@ -250,7 +35,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.loginRequest"
+                            "$ref": "#/definitions/api.loginRequest"
                         }
                     }
                 ],
@@ -260,13 +45,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.loginResponse"
+                                            "$ref": "#/definitions/api.loginResponse"
                                         }
                                     }
                                 }
@@ -276,13 +61,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "401": {
                         "description": "用户名或密码错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -308,7 +93,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.refreshRequest"
+                            "$ref": "#/definitions/api.refreshRequest"
                         }
                     }
                 ],
@@ -318,13 +103,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.refreshResponse"
+                                            "$ref": "#/definitions/api.refreshResponse"
                                         }
                                     }
                                 }
@@ -334,13 +119,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "401": {
                         "description": "令牌无效或已过期",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -366,7 +151,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.registerRequest"
+                            "$ref": "#/definitions/api.registerRequest"
                         }
                     }
                 ],
@@ -376,13 +161,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.registerResponse"
+                                            "$ref": "#/definitions/api.registerResponse"
                                         }
                                     }
                                 }
@@ -392,13 +177,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "409": {
                         "description": "用户名已存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -465,7 +250,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.acceptFriendRequestReq"
+                            "$ref": "#/definitions/api.acceptFriendRequestReq"
                         }
                     }
                 ],
@@ -475,13 +260,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.acceptFriendRequestResp"
+                                            "$ref": "#/definitions/api.acceptFriendRequestResp"
                                         }
                                     }
                                 }
@@ -491,19 +276,19 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "无权操作",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "申请不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -534,7 +319,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.blockUserReq"
+                            "$ref": "#/definitions/api.blockUserReq"
                         }
                     }
                 ],
@@ -542,19 +327,19 @@ const docTemplate = `{
                     "200": {
                         "description": "拉黑成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "409": {
                         "description": "已拉黑",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -584,7 +369,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
@@ -600,7 +385,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器内部错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -631,7 +416,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.rejectFriendRequestReq"
+                            "$ref": "#/definitions/api.rejectFriendRequestReq"
                         }
                     }
                 ],
@@ -639,25 +424,25 @@ const docTemplate = `{
                     "200": {
                         "description": "拒绝成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "无权操作",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "申请不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -688,7 +473,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.sendFriendRequestReq"
+                            "$ref": "#/definitions/api.sendFriendRequestReq"
                         }
                     }
                 ],
@@ -698,13 +483,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.sendFriendRequestResp"
+                                            "$ref": "#/definitions/api.sendFriendRequestResp"
                                         }
                                     }
                                 }
@@ -714,13 +499,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "409": {
                         "description": "已是好友或重复申请",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -750,7 +535,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
@@ -766,7 +551,7 @@ const docTemplate = `{
                     "500": {
                         "description": "服务器内部错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -797,7 +582,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.unblockUserReq"
+                            "$ref": "#/definitions/api.unblockUserReq"
                         }
                     }
                 ],
@@ -805,13 +590,13 @@ const docTemplate = `{
                     "200": {
                         "description": "取消拉黑成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -849,19 +634,19 @@ const docTemplate = `{
                     "200": {
                         "description": "删除成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "500": {
                         "description": "服务器内部错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -892,7 +677,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.createGroupRequest"
+                            "$ref": "#/definitions/api.createGroupRequest"
                         }
                     }
                 ],
@@ -902,13 +687,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.createGroupResponse"
+                                            "$ref": "#/definitions/api.createGroupResponse"
                                         }
                                     }
                                 }
@@ -918,13 +703,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "401": {
                         "description": "未授权",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -964,7 +749,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
@@ -980,13 +765,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "群组不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1023,7 +808,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.updateGroupRequest"
+                            "$ref": "#/definitions/api.updateGroupRequest"
                         }
                     }
                 ],
@@ -1031,25 +816,25 @@ const docTemplate = `{
                     "200": {
                         "description": "更新成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "无权限",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "群组不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1087,25 +872,25 @@ const docTemplate = `{
                     "200": {
                         "description": "退出成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "群主不能退群",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "群组不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1144,7 +929,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.addMemberRequest"
+                            "$ref": "#/definitions/api.addMemberRequest"
                         }
                     }
                 ],
@@ -1152,31 +937,31 @@ const docTemplate = `{
                     "200": {
                         "description": "添加成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "无权限",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "群组不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "409": {
                         "description": "已是成员或群组已满",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1222,25 +1007,25 @@ const docTemplate = `{
                     "200": {
                         "description": "移除成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "无权限",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "群组不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1287,7 +1072,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.updateMemberRoleRequest"
+                            "$ref": "#/definitions/api.updateMemberRoleRequest"
                         }
                     }
                 ],
@@ -1295,25 +1080,25 @@ const docTemplate = `{
                     "200": {
                         "description": "更新成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "无权限",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "群组不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1353,7 +1138,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1369,7 +1154,7 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1400,7 +1185,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.publishMomentRequest"
+                            "$ref": "#/definitions/api.publishMomentRequest"
                         }
                     }
                 ],
@@ -1410,13 +1195,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.publishMomentResponse"
+                                            "$ref": "#/definitions/api.publishMomentResponse"
                                         }
                                     }
                                 }
@@ -1426,7 +1211,7 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1466,13 +1251,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.deleteCommentResponse"
+                                            "$ref": "#/definitions/api.deleteCommentResponse"
                                         }
                                     }
                                 }
@@ -1482,19 +1267,19 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "不是自己的评论",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "评论不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1538,13 +1323,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.momentFeedResponse"
+                                            "$ref": "#/definitions/api.momentFeedResponse"
                                         }
                                     }
                                 }
@@ -1600,7 +1385,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
@@ -1616,7 +1401,7 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1656,13 +1441,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.getMomentResponse"
+                                            "$ref": "#/definitions/api.getMomentResponse"
                                         }
                                     }
                                 }
@@ -1672,13 +1457,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "动态不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1717,7 +1502,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.commentMomentRequest"
+                            "$ref": "#/definitions/api.commentMomentRequest"
                         }
                     }
                 ],
@@ -1727,13 +1512,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.commentMomentResponse"
+                                            "$ref": "#/definitions/api.commentMomentResponse"
                                         }
                                     }
                                 }
@@ -1743,13 +1528,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "动态不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1789,13 +1574,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.likeMomentResponse"
+                                            "$ref": "#/definitions/api.likeMomentResponse"
                                         }
                                     }
                                 }
@@ -1805,13 +1590,13 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "动态不存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1849,13 +1634,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.unlikeMomentResponse"
+                                            "$ref": "#/definitions/api.unlikeMomentResponse"
                                         }
                                     }
                                 }
@@ -1865,7 +1650,7 @@ const docTemplate = `{
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1896,7 +1681,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.revokeMsgReq"
+                            "$ref": "#/definitions/api.revokeMsgReq"
                         }
                     }
                 ],
@@ -1904,19 +1689,19 @@ const docTemplate = `{
                     "200": {
                         "description": "撤回成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "消息不可撤回",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "403": {
                         "description": "非发送者",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -1962,7 +1747,7 @@ const docTemplate = `{
                     "200": {
                         "description": "搜索结果",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -2003,13 +1788,13 @@ const docTemplate = `{
                     "200": {
                         "description": "删除成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -2036,7 +1821,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
@@ -2075,7 +1860,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.updateSettingsReq"
+                            "$ref": "#/definitions/api.updateSettingsReq"
                         }
                     }
                 ],
@@ -2083,13 +1868,13 @@ const docTemplate = `{
                     "200": {
                         "description": "更新成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -2120,7 +1905,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.muteConvReq"
+                            "$ref": "#/definitions/api.muteConvReq"
                         }
                     }
                 ],
@@ -2128,19 +1913,19 @@ const docTemplate = `{
                     "200": {
                         "description": "添加成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "409": {
                         "description": "会话已存在",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -2174,19 +1959,19 @@ const docTemplate = `{
                     "200": {
                         "description": "移除成功",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "400": {
                         "description": "参数错误",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     },
                     "404": {
                         "description": "会话未找到",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -2225,13 +2010,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.ApiResponse"
+                                    "$ref": "#/definitions/api.ApiResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.uploadAvatarResponse"
+                                            "$ref": "#/definitions/api.uploadAvatarResponse"
                                         }
                                     }
                                 }
@@ -2241,7 +2026,7 @@ const docTemplate = `{
                     "400": {
                         "description": "文件格式不支持或文件过大",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ApiResponse"
+                            "$ref": "#/definitions/api.ApiResponse"
                         }
                     }
                 }
@@ -2249,7 +2034,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_api.ApiResponse": {
+        "api.ApiResponse": {
             "type": "object",
             "properties": {
                 "code": {
@@ -2261,7 +2046,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.acceptFriendRequestReq": {
+        "api.acceptFriendRequestReq": {
             "type": "object",
             "required": [
                 "request_id"
@@ -2272,7 +2057,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.acceptFriendRequestResp": {
+        "api.acceptFriendRequestResp": {
             "type": "object",
             "properties": {
                 "friend_id": {
@@ -2283,7 +2068,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.addMemberRequest": {
+        "api.addMemberRequest": {
             "type": "object",
             "required": [
                 "member_id"
@@ -2294,74 +2079,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.aiChatRequest": {
-            "type": "object",
-            "required": [
-                "content"
-            ],
-            "properties": {
-                "content": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_api.aiChatResponse": {
-            "type": "object",
-            "properties": {
-                "response": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_api.aiProfileItemDTO": {
-            "type": "object",
-            "properties": {
-                "confidence": {
-                    "type": "number"
-                },
-                "field_name": {
-                    "type": "string"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_api.aiProfileResponse": {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_api.aiProfileItemDTO"
-                    }
-                }
-            }
-        },
-        "internal_api.aiSummaryResponse": {
-            "type": "object",
-            "properties": {
-                "conclusion": {
-                    "type": "string"
-                },
-                "key_points": {
-                    "type": "string"
-                },
-                "message_range": {
-                    "type": "string"
-                },
-                "topic": {
-                    "type": "string"
-                },
-                "user_intent": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_api.blockUserReq": {
+        "api.blockUserReq": {
             "type": "object",
             "required": [
                 "blocked_id"
@@ -2372,7 +2090,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.commentMomentRequest": {
+        "api.commentMomentRequest": {
             "type": "object",
             "required": [
                 "content"
@@ -2383,7 +2101,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.commentMomentResponse": {
+        "api.commentMomentResponse": {
             "type": "object",
             "properties": {
                 "comment_id": {
@@ -2391,7 +2109,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.createGroupRequest": {
+        "api.createGroupRequest": {
             "type": "object",
             "required": [
                 "name"
@@ -2405,7 +2123,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.createGroupResponse": {
+        "api.createGroupResponse": {
             "type": "object",
             "properties": {
                 "group_id": {
@@ -2413,7 +2131,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.deleteCommentResponse": {
+        "api.deleteCommentResponse": {
             "type": "object",
             "properties": {
                 "ok": {
@@ -2421,7 +2139,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.getMomentResponse": {
+        "api.getMomentResponse": {
             "type": "object",
             "properties": {
                 "author_id": {
@@ -2453,7 +2171,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.likeMomentResponse": {
+        "api.likeMomentResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -2469,7 +2187,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.loginRequest": {
+        "api.loginRequest": {
             "type": "object",
             "required": [
                 "password",
@@ -2484,7 +2202,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.loginResponse": {
+        "api.loginResponse": {
             "type": "object",
             "properties": {
                 "access_token": {
@@ -2498,13 +2216,13 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.momentFeedResponse": {
+        "api.momentFeedResponse": {
             "type": "object",
             "properties": {
                 "moments": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_api.getMomentResponse"
+                        "$ref": "#/definitions/api.getMomentResponse"
                     }
                 },
                 "next_cursor": {
@@ -2513,7 +2231,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.muteConvReq": {
+        "api.muteConvReq": {
             "type": "object",
             "required": [
                 "convId"
@@ -2524,7 +2242,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.publishMomentRequest": {
+        "api.publishMomentRequest": {
             "type": "object",
             "required": [
                 "content"
@@ -2543,7 +2261,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.publishMomentResponse": {
+        "api.publishMomentResponse": {
             "type": "object",
             "properties": {
                 "moment_id": {
@@ -2551,7 +2269,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.refreshRequest": {
+        "api.refreshRequest": {
             "type": "object",
             "required": [
                 "refresh_token"
@@ -2562,7 +2280,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.refreshResponse": {
+        "api.refreshResponse": {
             "type": "object",
             "properties": {
                 "access_token": {
@@ -2573,7 +2291,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.registerRequest": {
+        "api.registerRequest": {
             "type": "object",
             "required": [
                 "password",
@@ -2588,7 +2306,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.registerResponse": {
+        "api.registerResponse": {
             "type": "object",
             "properties": {
                 "user_id": {
@@ -2599,7 +2317,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.rejectFriendRequestReq": {
+        "api.rejectFriendRequestReq": {
             "type": "object",
             "required": [
                 "request_id"
@@ -2610,7 +2328,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.revokeMsgReq": {
+        "api.revokeMsgReq": {
             "type": "object",
             "required": [
                 "convId",
@@ -2625,7 +2343,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.sendFriendRequestReq": {
+        "api.sendFriendRequestReq": {
             "type": "object",
             "required": [
                 "to_user_id"
@@ -2639,7 +2357,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.sendFriendRequestResp": {
+        "api.sendFriendRequestResp": {
             "type": "object",
             "properties": {
                 "from_user_id": {
@@ -2656,7 +2374,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.unblockUserReq": {
+        "api.unblockUserReq": {
             "type": "object",
             "required": [
                 "blocked_id"
@@ -2667,7 +2385,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.unlikeMomentResponse": {
+        "api.unlikeMomentResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -2681,7 +2399,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.updateGroupRequest": {
+        "api.updateGroupRequest": {
             "type": "object",
             "required": [
                 "name"
@@ -2695,7 +2413,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.updateMemberRoleRequest": {
+        "api.updateMemberRoleRequest": {
             "type": "object",
             "required": [
                 "role"
@@ -2706,7 +2424,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.updateSettingsReq": {
+        "api.updateSettingsReq": {
             "type": "object",
             "properties": {
                 "msg_preview_enabled": {
@@ -2720,7 +2438,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.uploadAvatarResponse": {
+        "api.uploadAvatarResponse": {
             "type": "object",
             "properties": {
                 "file_path": {
@@ -2752,7 +2470,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "GoIM API",
-	Description:      "GoIM 即时通讯系统 API — 支持私聊、群聊、朋友圈动态、AI 助手。",
+	Description:      "GoIM 即时通讯系统 API — 支持私聊、群聊、朋友圈动态。",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

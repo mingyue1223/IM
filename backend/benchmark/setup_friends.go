@@ -6,6 +6,8 @@
 // 将 bench 用户两两配对：p0↔p1, p2↔p3, ...，互相加为好友。
 // 输出 benchmark/pairs.csv（sender_token, receiver_id）。
 
+//go:build benchmark_friends
+
 package main
 
 import (

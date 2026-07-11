@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS moment_likes (
 );
 
 CREATE TABLE IF NOT EXISTS moment_comments (
-    id            BIGINT PRIMARY KEY,
+    id            BIGINT PRIMARY KEY AUTO_INCREMENT,
     moment_id     BIGINT NOT NULL,
     user_id       BIGINT NOT NULL,
     content       VARCHAR(500) NOT NULL,

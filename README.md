@@ -186,7 +186,6 @@ GoIM/
 │   │   ├── conn/             # 连接管理器 + 客户端连接
 │   │   ├── consumer/         # MQ 消费者
 │   │   ├── infra/            # MySQL/Redis/RabbitMQ 连接 + 清理
-│   │   ├── llm/              # LLM 客户端 (OpenAI 兼容)
 │   │   ├── middleware/       # JWT 认证 + CORS 中间件
 │   │   ├── model/            # 数据模型
 │   │   ├── protocol/         # WebSocket 消息类型 + 编解码
@@ -238,7 +237,6 @@ GoIM/
 | 消息操作 | revoke, delete, search | JWT |
 | 设置 | get, update, mute, unmute | JWT |
 | 文件 | upload avatar, get avatar | JWT/公开 |
-| AI | chat, chat/stream, profile, summary | JWT |
 | WebSocket | `GET /ws?token=JWT` | JWT |
 
 ## 🔧 配置

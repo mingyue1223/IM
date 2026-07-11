@@ -129,11 +129,6 @@ func (m *mockSettingsRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]mode
 	return nil, nil
 }
 
-func (m *mockSettingsRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }
-func (m *mockSettingsRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error { return nil }
-func (m *mockSettingsRepo) GetAIProfileByUser(_ context.Context, _ int64) ([]model.AIProfileItem, error) {
-	return nil, nil
-}
 
 func (m *mockSettingsRepo) SearchPrivateMessages(_ context.Context, _ int64, _ string, _ int, _ int) ([]model.PrivateMessage, error) {
 	return nil, nil

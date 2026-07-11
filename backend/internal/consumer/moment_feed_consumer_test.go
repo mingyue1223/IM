@@ -137,15 +137,6 @@ func (m *momentConsumerMySQLMock) GetMomentCommentByID(context.Context, int64) (
 	panic("未实现")
 }
 func (m *momentConsumerMySQLMock) DeleteMomentComment(context.Context, int64) error { panic("未实现") }
-func (m *momentConsumerMySQLMock) CreateAISummary(context.Context, *model.AISummary) error {
-	panic("未实现")
-}
-func (m *momentConsumerMySQLMock) CreateAIProfileItem(context.Context, *model.AIProfileItem) error {
-	panic("未实现")
-}
-func (m *momentConsumerMySQLMock) GetAIProfileByUser(context.Context, int64) ([]model.AIProfileItem, error) {
-	panic("未实现")
-}
 func (m *momentConsumerMySQLMock) GetUserSettings(context.Context, int64) (*model.UserSettings, error) {
 	panic("未实现")
 }

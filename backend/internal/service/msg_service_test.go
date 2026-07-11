@@ -229,9 +229,6 @@ func (m *mockRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ i
 func (m *mockRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
-func (m *mockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
-func (m *mockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
-func (m *mockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 func (m *mockRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
 
 // mockMQRepo 实现 repository.MQRepo 接口，用于测试。

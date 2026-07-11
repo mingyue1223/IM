@@ -250,9 +250,6 @@ func (m *MockRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int
 	return nil, nil
 }
 
-func (m *MockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
-func (m *MockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
-func (m *MockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 func (m *MockRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
 
 // ── 高并发点赞新增接口 ──

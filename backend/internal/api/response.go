@@ -71,13 +71,6 @@ const (
 	CodeInvalidVisibility  = 1504
 	CodeCommentNotFound    = 1505
 
-	// ── AI 1600~1699 ──
-	CodeLLMCallFailed      = 1601
-	CodeNoLLMResponse      = 1602
-	CodeStoreMsgFailed     = 1603
-	CodeStoreSummaryFailed = 1604
-	CodeStoreProfileFailed = 1605
-
 	// ── 设置 1700~1799 ──
 	CodeSettingsNotFound = 1701
 	CodeMuteConvExists   = 1702
@@ -129,13 +122,6 @@ var errorCodeMap = map[string]int{
 	"不是该评论的所有者":                           CodeNotCommentOwner,
 	"可见性必须为 1（全部）、2（好友）或 3（私密）":          CodeInvalidVisibility,
 	"评论未找到":                               CodeCommentNotFound,
-
-	// AI
-	"LLM调用失败":       CodeLLMCallFailed,
-	"LLM返回空响应":      CodeNoLLMResponse,
-	"消息存储失败":        CodeStoreMsgFailed,
-	"摘要存储失败":        CodeStoreSummaryFailed,
-	"用户画像条目存储失败":    CodeStoreProfileFailed,
 
 	// 设置
 	"设置未找到":       CodeSettingsNotFound,

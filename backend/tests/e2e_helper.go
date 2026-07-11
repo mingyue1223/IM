@@ -3,7 +3,7 @@
 // Package e2e 包含 GoIM 服务器的端到端集成测试。
 // 这些测试覆盖完整技术栈：HTTP API、WebSocket、MQ 消费者、
 // Redis、MySQL 和 RabbitMQ。测试要求 Docker 服务处于运行状态
-//（按 configs/config.test.yaml 中的配置）。
+// （按 configs/config.test.yaml 中的配置）。
 //
 // 运行命令：go test ./tests/... -v -tags e2e -timeout 120s
 package e2e
@@ -80,6 +80,29 @@ type sendMsgData struct {
 	Timestamp   int64  `json:"timestamp"`
 }
 
+type apiResponse struct {
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
+}
+
+func decodeSuccessResponse(t *testing.T, body []byte, dest interface{}) {
+	t.Helper()
+
+	var envelope apiResponse
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("parse API response: %v", err)
+	}
+	if envelope.Code != 0 {
+		t.Fatalf("API returned code=%d message=%s", envelope.Code, envelope.Message)
+	}
+	if dest != nil {
+		if err := json.Unmarshal(envelope.Data, dest); err != nil {
+			t.Fatalf("parse API response data: %v", err)
+		}
+	}
+}
+
 // ── HTTP 辅助函数 ──
 
 // doRequest 执行一个 HTTP 请求并返回响应体及状态码。
@@ -140,6 +163,7 @@ func registerUser(t *testing.T, baseURL, username, password string) int64 {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		t.Fatalf("反序列化注册响应: %v", err)
 	}
+	decodeSuccessResponse(t, body, &resp)
 	return resp.UserID
 }
 
@@ -155,6 +179,7 @@ func loginUser(t *testing.T, baseURL, username, password string) string {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		t.Fatalf("反序列化登录响应: %v", err)
 	}
+	decodeSuccessResponse(t, body, &resp)
 	return resp.AccessToken
 }
 
@@ -170,6 +195,7 @@ func loginUserFull(t *testing.T, baseURL, username, password string) authLoginRe
 	if err := json.Unmarshal(body, &resp); err != nil {
 		t.Fatalf("反序列化登录响应: %v", err)
 	}
+	decodeSuccessResponse(t, body, &resp)
 	return resp
 }
 
@@ -185,6 +211,7 @@ func refreshToken(t *testing.T, baseURL, refreshTokenStr string) authRefreshResp
 	if err := json.Unmarshal(body, &resp); err != nil {
 		t.Fatalf("反序列化刷新响应: %v", err)
 	}
+	decodeSuccessResponse(t, body, &resp)
 	return resp
 }
 

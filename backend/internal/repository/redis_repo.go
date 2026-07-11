@@ -85,11 +85,6 @@ type RedisRepo interface {
 	// GetMomentLikeStats 批量读取多条动态的点赞数与"viewer 是否已赞"（单次 pipeline）。
 	GetMomentLikeStats(ctx context.Context, viewerID int64, momentIDs []int64) (counts map[int64]int64, liked map[int64]bool, err error)
 
-	// ── AI工作记忆（第3层）──
-	SetWorkingMemory(ctx context.Context, userID int64, key string, value string, ttlSeconds int64) error
-	GetWorkingMemory(ctx context.Context, userID int64, key string) (string, error)
-	GetAllWorkingMemory(ctx context.Context, userID int64) (map[string]string, error)
-
 	// ── 好友缓存 ──
 	SetFriendCache(ctx context.Context, uidA, uidB int64) error
 }
@@ -474,7 +469,7 @@ func (r *RedisRepoImpl) GetMomentFeed(ctx context.Context, userID int64, lastSyn
 }
 
 // timelineKey / momentOutboxKey 集中管理 Feed 相关 Redis key，避免与群消息 outbox:{groupID} 冲突。
-func timelineKey(userID int64) string    { return fmt.Sprintf("timeline:%d", userID) }
+func timelineKey(userID int64) string     { return fmt.Sprintf("timeline:%d", userID) }
 func momentOutboxKey(userID int64) string { return fmt.Sprintf("moment_outbox:%d", userID) }
 
 const bigUsersKey = "moment:big_users"
@@ -617,10 +612,12 @@ func (r *RedisRepoImpl) zrevPage(ctx context.Context, key, max, min string, coun
 
 // ── 朋友圈点赞（高并发）──
 // 四个 key 集中管理，避免散落魔法字符串。
-func momentLikesKey(momentID int64) string      { return fmt.Sprintf("moment:likes:%d", momentID) }
-func momentLikeCountKey(momentID int64) string  { return fmt.Sprintf("moment:like_count:%d", momentID) }
-func momentLikeLoadedKey(momentID int64) string { return fmt.Sprintf("moment:like_loaded:%d", momentID) }
-func momentLikeLockKey(momentID int64) string   { return fmt.Sprintf("moment:like_lock:%d", momentID) }
+func momentLikesKey(momentID int64) string     { return fmt.Sprintf("moment:likes:%d", momentID) }
+func momentLikeCountKey(momentID int64) string { return fmt.Sprintf("moment:like_count:%d", momentID) }
+func momentLikeLoadedKey(momentID int64) string {
+	return fmt.Sprintf("moment:like_loaded:%d", momentID)
+}
+func momentLikeLockKey(momentID int64) string { return fmt.Sprintf("moment:like_lock:%d", momentID) }
 
 func (r *RedisRepoImpl) LikeMomentAtomic(ctx context.Context, momentID, userID int64) (bool, int64, error) {
 	res, err := redis.ExecMomentLike(r.rdb, ctx, momentLikesKey(momentID), momentLikeCountKey(momentID), userID)
@@ -723,58 +720,6 @@ func (r *RedisRepoImpl) GetMomentLikeStats(ctx context.Context, viewerID int64, 
 		}
 	}
 	return counts, liked, nil
-}
-
-// ── AI工作记忆（第3层）──
-
-func (r *RedisRepoImpl) SetWorkingMemory(ctx context.Context, userID int64, key string, value string, ttlSeconds int64) error {
-	redisKey := fmt.Sprintf("ai_memory:%d:%s", userID, key)
-	return r.rdb.Set(ctx, redisKey, value, time.Duration(ttlSeconds)*time.Second).Err()
-}
-
-func (r *RedisRepoImpl) GetWorkingMemory(ctx context.Context, userID int64, key string) (string, error) {
-	redisKey := fmt.Sprintf("ai_memory:%d:%s", userID, key)
-	val, err := r.rdb.Get(ctx, redisKey).Result()
-	if err != nil {
-		if err == goredis.Nil {
-			return "", nil // 键不存在
-		}
-		return "", fmt.Errorf("GET AI记忆: %w", err)
-	}
-	return val, nil
-}
-
-func (r *RedisRepoImpl) GetAllWorkingMemory(ctx context.Context, userID int64) (map[string]string, error) {
-	pattern := fmt.Sprintf("ai_memory:%d:*", userID)
-	var result map[string]string
-	var cursor uint64
-
-	result = make(map[string]string)
-	for {
-		keys, nextCursor, err := r.rdb.Scan(ctx, cursor, pattern, 100).Result()
-		if err != nil {
-			return nil, fmt.Errorf("SCAN AI记忆: %w", err)
-		}
-		if len(keys) > 0 {
-			vals, err := r.rdb.MGet(ctx, keys...).Result()
-			if err != nil {
-				return nil, fmt.Errorf("MGET AI记忆: %w", err)
-			}
-			for i, k := range keys {
-				// 去除"ai_memory:{userID}:"前缀，只返回短键名
-				prefix := fmt.Sprintf("ai_memory:%d:", userID)
-				shortKey := k[len(prefix):]
-				if vals[i] != nil {
-					result[shortKey] = vals[i].(string)
-				}
-			}
-		}
-		cursor = nextCursor
-		if cursor == 0 {
-			break
-		}
-	}
-	return result, nil
 }
 
 // ── 好友缓存 ──

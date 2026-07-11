@@ -222,11 +222,7 @@ func (s *MomentService) CommentMoment(ctx context.Context, userID int64, momentI
 		return 0, fmt.Errorf(ErrMomentNotFound)
 	}
 
-	// 生成评论 ID（moment_comments 使用 BIGINT 主键，无 AUTO_INCREMENT）
-	commentID := time.Now().UnixNano()
-
 	comment := &model.MomentComment{
-		ID:        commentID,
 		MomentID:  momentID,
 		UserID:    userID,
 		Content:   content,
@@ -237,7 +233,7 @@ func (s *MomentService) CommentMoment(ctx context.Context, userID int64, momentI
 		return 0, fmt.Errorf("创建评论: %w", err)
 	}
 
-	return commentID, nil
+	return comment.ID, nil
 }
 
 // DeleteComment 在删除评论前验证用户是否拥有该评论。

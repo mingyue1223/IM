@@ -18,7 +18,6 @@ const (
 	TypeRevokeMsg      = "revokeMsg"
 	TypeMsgRevoked     = "msgRevoked"
 	TypeKick           = "kick"
-	TypeAiStream       = "aiStream"
 	TypeFriendApply    = "friendApply"
 	TypeFriendAccepted = "friendAccepted"
 	TypePresence       = "presence"

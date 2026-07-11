@@ -3,20 +3,22 @@
 // Package e2e 包含 GoIM 服务器的端到端集成测试。
 // 这些测试覆盖完整技术栈：HTTP API、WebSocket、MQ 消费者、
 // Redis、MySQL 和 RabbitMQ。测试要求 Docker 服务处于运行状态
-//（按 configs/config.test.yaml 中的配置）。
+// （按 configs/config.test.yaml 中的配置）。
 //
 // 运行命令：go test ./tests/... -v -tags e2e -timeout 120s
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +32,6 @@ import (
 	"github.com/goim/goim/internal/conn"
 	"github.com/goim/goim/internal/consumer"
 	"github.com/goim/goim/internal/infra"
-	"github.com/goim/goim/internal/llm"
 	"github.com/goim/goim/internal/middleware"
 	goredis "github.com/goim/goim/internal/redis"
 	"github.com/goim/goim/internal/repository"
@@ -44,26 +45,26 @@ import (
 
 // testEnv 保存完整的测试环境：服务器、连接、基础 URL。
 type testEnv struct {
-	baseURL  string
-	db       *sql.DB
-	rdb      *goredisv9.Client
-	mqConn   *amqp.Connection
-	mqCh     *amqp.Channel
-	logger   *zap.Logger
-	server   *httptest.Server
-	cancel   context.CancelFunc
+	baseURL string
+	db      *sql.DB
+	rdb     *goredisv9.Client
+	mqConn  *amqp.Connection
+	mqCh    *amqp.Channel
+	logger  *zap.Logger
+	server  *httptest.Server
+	cancel  context.CancelFunc
 }
 
 var env *testEnv
 
 // TestMain 为 E2E 测试搭建完整的 GoIM 服务器。
 // 需要 MySQL、Redis 和 RabbitMQ 在本地运行
-//（按 configs/config.test.yaml 中的配置）。
+// （按 configs/config.test.yaml 中的配置）。
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
 
 	// 加载测试配置
-	cfgPath := "configs/config.test.yaml"
+	cfgPath := "../configs/config.test.yaml"
 	if v := os.Getenv("GOIM_CONFIG"); v != "" {
 		cfgPath = v
 	}
@@ -75,6 +76,13 @@ func TestMain(m *testing.M) {
 
 	// 覆盖服务器端口（httptest 会自动分配）
 	cfg.Server.Port = 0
+	uploadDir, err := os.MkdirTemp("", "goim-e2e-uploads-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create upload directory: %v\n", err)
+		os.Exit(1)
+	}
+	cfg.Server.UploadDir = uploadDir
+	cfg.File.UploadDir = uploadDir
 
 	// 初始化日志
 	logger, err := zap.NewDevelopment()
@@ -130,41 +138,38 @@ func TestMain(m *testing.M) {
 	// ── 构建连接管理器 ──
 	cm := conn.NewConnectionManager()
 
-	// ── 构建 LLM 客户端 ──
-	llmClient := llm.NewLLMClient(cfg.LLM)
-
 	// ── 构建服务层 ──
 	msgSvc := service.NewMsgService(redisRepo, mqRepo, cm, logger)
 	authSvc := service.NewAuthService(mysqlRepo, cfg.JWT.Secret, cfg.JWT.AccessExpHours, cfg.JWT.RefreshExpDays)
 	friendSvc := service.NewFriendService(mysqlRepo, redisRepo, logger)
 	groupSvc := service.NewGroupService(mysqlRepo, redisRepo, logger)
-	momentSvc := service.NewMomentService(mysqlRepo, redisRepo, mqRepo, logger)
-	aiSvc := service.NewAIService(mysqlRepo, redisRepo, llmClient, logger)
+	momentSvc := service.NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Duration(cfg.Moment.LikeCacheTTLHours)*time.Hour)
 	msgOpSvc := service.NewMsgOpService(mysqlRepo, redisRepo, logger)
 	settingsSvc := service.NewSettingsService(mysqlRepo, logger)
 
 	// ── 构建 WS 消息分发器 ──
-	dispatcher := ws.NewMessageDispatcher(msgSvc, friendSvc, aiSvc)
+	dispatcher := ws.NewMessageDispatcher(msgSvc, friendSvc)
 
 	// ── 构建 HTTP 处理器 ──
 	authHandler := api.NewAuthHandler(authSvc)
 	friendHandler := api.NewFriendHandler(friendSvc)
 	groupHandler := api.NewGroupHandler(groupSvc)
 	momentHandler := api.NewMomentHandler(momentSvc)
-	aiHandler := api.NewAIHandler(aiSvc)
 	msgOpHandler := api.NewMsgOpHandler(msgOpSvc)
 	settingsHandler := api.NewSettingsHandler(settingsSvc)
+	uploadHandler := api.NewUploadHandler(cfg.Server.UploadDir, cfg.File.MaxSizeMB, cfg.File.AllowedExts)
+	avatarHandler := api.NewAvatarHandler()
 
 	// ── 构建 Gin 路由器 ──
 	router := buildRouter(cfg, rdb, cm, dispatcher, logger,
 		authHandler, friendHandler, groupHandler,
-		momentHandler, aiHandler, msgOpHandler, settingsHandler)
+		momentHandler, msgOpHandler, settingsHandler, uploadHandler, avatarHandler)
 
 	// ── 启动 MQ 消费者 ──
 	consumerCtx, consumerCancel := context.WithCancel(ctx)
 	privateMsgConsumer := consumer.NewPrivateMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
 	groupMsgConsumer := consumer.NewGroupMsgConsumer(mqCh, mysqlRepo, redisRepo, cm, logger)
-	momentFeedConsumer := consumer.NewMomentFeedConsumer(mqCh, mysqlRepo, redisRepo, logger)
+	momentFeedConsumer := consumer.NewMomentFeedConsumer(mqCh, mysqlRepo, redisRepo, logger, cfg.Moment.BigUserFriendThreshold, cfg.Moment.TimelineMaxLen)
 
 	if err := privateMsgConsumer.Start(consumerCtx); err != nil {
 		fmt.Fprintf(os.Stderr, "启动私聊消息消费者: %v\n", err)
@@ -187,14 +192,14 @@ func TestMain(m *testing.M) {
 	server := httptest.NewServer(router)
 
 	env = &testEnv{
-		baseURL:  server.URL,
-		db:       db,
-		rdb:      rdb,
-		mqConn:   mqConn,
-		mqCh:     mqCh,
-		logger:   logger,
-		server:   server,
-		cancel:   consumerCancel,
+		baseURL: server.URL,
+		db:      db,
+		rdb:     rdb,
+		mqConn:  mqConn,
+		mqCh:    mqCh,
+		logger:  logger,
+		server:  server,
+		cancel:  consumerCancel,
 	}
 
 	logger.Info("GoIM E2E 服务器已启动", zap.String("url", env.baseURL))
@@ -205,6 +210,7 @@ func TestMain(m *testing.M) {
 	// ── 清理 ──
 	consumerCancel()
 	server.Close()
+	os.RemoveAll(uploadDir)
 	mqConn.Close()
 	rdb.Close()
 	db.Close()
@@ -223,9 +229,10 @@ func buildRouter(
 	friendHandler *api.FriendHandler,
 	groupHandler *api.GroupHandler,
 	momentHandler *api.MomentHandler,
-	aiHandler *api.AIHandler,
 	msgOpHandler *api.MsgOpHandler,
 	settingsHandler *api.SettingsHandler,
+	uploadHandler *api.UploadHandler,
+	avatarHandler *api.AvatarHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -238,6 +245,7 @@ func buildRouter(
 	// ── 公开路由 ──
 	public := r.Group("/api/v1")
 	authHandler.RegisterRoutes(public)
+	avatarHandler.RegisterRoutes(public)
 
 	// ── 受保护路由 ──
 	protected := r.Group("/api/v1")
@@ -245,13 +253,14 @@ func buildRouter(
 	friendHandler.RegisterRoutes(protected)
 	groupHandler.RegisterRoutes(protected)
 	momentHandler.RegisterRoutes(protected)
-	aiHandler.RegisterRoutes(protected)
 	msgOpHandler.RegisterRoutes(protected)
 	settingsHandler.RegisterRoutes(protected)
+	uploadHandler.RegisterRoutes(protected)
 
 	// ── WebSocket 端点 ──
 	wsHandler := ws.ServeWebSocket(cfg.JWT.Secret, rdb, cm, dispatcher.Callback())
 	r.GET(cfg.Server.WsPath, wsHandler)
+	r.Static("/uploads", cfg.Server.UploadDir)
 
 	return r
 }
@@ -272,6 +281,102 @@ func TestE2E_HealthCheck(t *testing.T) {
 	}
 	if resp["status"] != "ok" {
 		t.Fatalf("期望 status=ok, 得到 %v", resp["status"])
+	}
+}
+
+func TestE2E_AvatarAndUpload(t *testing.T) {
+	avatarResp, err := http.Get(env.baseURL + "/api/v1/avatar/1?name=alice")
+	if err != nil {
+		t.Fatalf("get generated avatar: %v", err)
+	}
+	defer avatarResp.Body.Close()
+	avatarBody, err := io.ReadAll(avatarResp.Body)
+	if err != nil {
+		t.Fatalf("read generated avatar: %v", err)
+	}
+	if avatarResp.StatusCode != http.StatusOK || avatarResp.Header.Get("Content-Type") != "image/svg+xml" || !bytes.Contains(avatarBody, []byte(">A<")) {
+		t.Fatalf("unexpected generated avatar: status=%d type=%q body=%s", avatarResp.StatusCode, avatarResp.Header.Get("Content-Type"), avatarBody)
+	}
+
+	username := fmt.Sprintf("e2e_upload_%d", time.Now().UnixNano())
+	registerUser(t, env.baseURL, username, "pass1234")
+	token := loginUser(t, env.baseURL, username, "pass1234")
+
+	var payload bytes.Buffer
+	writer := multipart.NewWriter(&payload)
+	part, err := writer.CreateFormFile("file", "avatar.png")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := part.Write([]byte("png test payload")); err != nil {
+		t.Fatalf("write multipart file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, env.baseURL+"/api/v1/upload/avatar", &payload)
+	if err != nil {
+		t.Fatalf("create upload request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("upload avatar: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read upload response: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upload avatar: status=%d body=%s", resp.StatusCode, body)
+	}
+	var upload struct {
+		URL  string `json:"url"`
+		Size int64  `json:"size"`
+	}
+	decodeSuccessResponse(t, body, &upload)
+	if upload.URL == "" || upload.Size == 0 {
+		t.Fatalf("invalid upload response: %+v", upload)
+	}
+
+	fileResp, err := http.Get(env.baseURL + upload.URL)
+	if err != nil {
+		t.Fatalf("get uploaded avatar: %v", err)
+	}
+	defer fileResp.Body.Close()
+	stored, err := io.ReadAll(fileResp.Body)
+	if err != nil {
+		t.Fatalf("read uploaded avatar: %v", err)
+	}
+	if fileResp.StatusCode != http.StatusOK || !bytes.Equal(stored, []byte("png test payload")) {
+		t.Fatalf("uploaded avatar mismatch: status=%d body=%s", fileResp.StatusCode, stored)
+	}
+}
+
+func TestE2E_WebSocketSingleDeviceKick(t *testing.T) {
+	username := fmt.Sprintf("e2e_ws_kick_%d", time.Now().UnixNano())
+	registerUser(t, env.baseURL, username, "pass1234")
+	token := loginUser(t, env.baseURL, username, "pass1234")
+
+	first := connectWS(t, env.baseURL, token)
+	defer first.Close()
+	second := connectWS(t, env.baseURL, token)
+	defer closeWS(t, second)
+
+	first.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_, rawBytes, err := first.ReadMessage()
+	if err != nil {
+		t.Fatalf("read kick message: %v", err)
+	}
+	var raw struct {
+		Type   string `json:"type"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal(rawBytes, &raw); err != nil || raw.Reason != "new_login" {
+		t.Fatalf("unexpected kick message: %s", rawBytes)
 	}
 }
 
@@ -323,7 +428,7 @@ func TestE2E_AuthFlow(t *testing.T) {
 func TestE2E_FriendFlow(t *testing.T) {
 	u1Name := fmt.Sprintf("e2e_fr1_%d", time.Now().UnixNano())
 	u2Name := fmt.Sprintf("e2e_fr2_%d", time.Now().UnixNano())
-	u1ID := registerUser(t, env.baseURL, u1Name, "pass1234")
+	_ = registerUser(t, env.baseURL, u1Name, "pass1234")
 	u2ID := registerUser(t, env.baseURL, u2Name, "pass1234")
 	u1Token := loginUser(t, env.baseURL, u1Name, "pass1234")
 	u2Token := loginUser(t, env.baseURL, u2Name, "pass1234")
@@ -341,6 +446,7 @@ func TestE2E_FriendFlow(t *testing.T) {
 	t.Logf("好友请求: id=%d from=%d to=%d", frResp.RequestID, frResp.FromUserID, frResp.ToUserID)
 
 	// 步骤 2：接受（u2）
+	decodeSuccessResponse(t, body, &frResp)
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
 		map[string]interface{}{"request_id": frResp.RequestID}, u2Token)
 	if status != http.StatusOK {
@@ -353,6 +459,7 @@ func TestE2E_FriendFlow(t *testing.T) {
 	t.Logf("已接受好友: user=%d friend=%d", acceptResp.UserID, acceptResp.FriendID)
 
 	// 步骤 3：获取好友列表（u1）
+	decodeSuccessResponse(t, body, &acceptResp)
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, "/api/v1/friend/list", nil, u1Token)
 	if status != http.StatusOK {
 		t.Fatalf("获取好友列表: status=%d body=%s", status, body)
@@ -386,7 +493,7 @@ func TestE2E_FriendFlow(t *testing.T) {
 func TestE2E_GroupMessaging(t *testing.T) {
 	u1Name := fmt.Sprintf("e2e_grp1_%d", time.Now().UnixNano())
 	u2Name := fmt.Sprintf("e2e_grp2_%d", time.Now().UnixNano())
-	u1ID := registerUser(t, env.baseURL, u1Name, "pass1234")
+	_ = registerUser(t, env.baseURL, u1Name, "pass1234")
 	u2ID := registerUser(t, env.baseURL, u2Name, "pass1234")
 	u1Token := loginUser(t, env.baseURL, u1Name, "pass1234")
 	u2Token := loginUser(t, env.baseURL, u2Name, "pass1234")
@@ -401,6 +508,7 @@ func TestE2E_GroupMessaging(t *testing.T) {
 	if err := json.Unmarshal(body, &grpResp); err != nil {
 		t.Fatalf("反序列化创建群组响应: %v", err)
 	}
+	decodeSuccessResponse(t, body, &grpResp)
 	groupID := grpResp.GroupID
 	t.Logf("群组已创建: id=%d", groupID)
 
@@ -487,7 +595,7 @@ func TestE2E_PrivateMessaging(t *testing.T) {
 		t.Fatalf("好友请求: status=%d body=%s", status, body)
 	}
 	var frResp friendRequestResp
-	json.Unmarshal(body, &frResp)
+	decodeSuccessResponse(t, body, &frResp)
 
 	status, _ = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
 		map[string]interface{}{"request_id": frResp.RequestID}, u2Token)
@@ -536,8 +644,8 @@ func TestE2E_PrivateMessaging(t *testing.T) {
 
 	// 从 u2 发送 deliverAck
 	var receivedMsg struct {
-		MsgID    int64  `json:"msgId"`
-		ConvID   string `json:"convId"`
+		MsgID  int64  `json:"msgId"`
+		ConvID string `json:"convId"`
 	}
 	if err := json.Unmarshal(msgOnU2.Data, &receivedMsg); err == nil && receivedMsg.MsgID > 0 {
 		sendWSMessage(t, wsConn2, "deliverAck", map[string]interface{}{
@@ -557,7 +665,7 @@ func TestE2E_PrivateMessaging(t *testing.T) {
 func TestE2E_MomentFlow(t *testing.T) {
 	u1Name := fmt.Sprintf("e2e_mom1_%d", time.Now().UnixNano())
 	u2Name := fmt.Sprintf("e2e_mom2_%d", time.Now().UnixNano())
-	u1ID := registerUser(t, env.baseURL, u1Name, "pass1234")
+	_ = registerUser(t, env.baseURL, u1Name, "pass1234")
 	u2ID := registerUser(t, env.baseURL, u2Name, "pass1234")
 	u1Token := loginUser(t, env.baseURL, u1Name, "pass1234")
 	u2Token := loginUser(t, env.baseURL, u2Name, "pass1234")
@@ -569,7 +677,7 @@ func TestE2E_MomentFlow(t *testing.T) {
 		t.Fatalf("好友请求: status=%d body=%s", status, body)
 	}
 	var frResp friendRequestResp
-	json.Unmarshal(body, &frResp)
+	decodeSuccessResponse(t, body, &frResp)
 	doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
 		map[string]interface{}{"request_id": frResp.RequestID}, u2Token)
 
@@ -586,6 +694,7 @@ func TestE2E_MomentFlow(t *testing.T) {
 	if err := json.Unmarshal(body, &momResp); err != nil {
 		t.Fatalf("反序列化动态: %v", err)
 	}
+	decodeSuccessResponse(t, body, &momResp)
 	momentID := momResp.MomentID
 	t.Logf("动态已发布: id=%d", momentID)
 
@@ -620,7 +729,7 @@ func TestE2E_MomentFlow(t *testing.T) {
 	var commentResp struct {
 		CommentID int64 `json:"comment_id"`
 	}
-	json.Unmarshal(body, &commentResp)
+	decodeSuccessResponse(t, body, &commentResp)
 	t.Logf("评论已添加: id=%d", commentResp.CommentID)
 
 	// 步骤 6：获取动态流（u2）—— 等待 MQ 消费者分发完成
@@ -639,6 +748,153 @@ func TestE2E_MomentFlow(t *testing.T) {
 		if status != http.StatusOK {
 			t.Fatalf("删除评论: status=%d body=%s", status, body)
 		}
+	}
+}
+
+func TestE2E_FriendRequestManagement(t *testing.T) {
+	aName := fmt.Sprintf("e2e_reject_a_%d", time.Now().UnixNano())
+	bName := fmt.Sprintf("e2e_reject_b_%d", time.Now().UnixNano())
+	_ = registerUser(t, env.baseURL, aName, "pass1234")
+	bID := registerUser(t, env.baseURL, bName, "pass1234")
+	aToken := loginUser(t, env.baseURL, aName, "pass1234")
+	bToken := loginUser(t, env.baseURL, bName, "pass1234")
+
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request", map[string]interface{}{"to_user_id": bID}, aToken)
+	if status != http.StatusCreated {
+		t.Fatalf("create request: status=%d body=%s", status, body)
+	}
+	var request friendRequestResp
+	decodeSuccessResponse(t, body, &request)
+
+	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, "/api/v1/friend/requests?limit=1", nil, bToken)
+	if status != http.StatusOK {
+		t.Fatalf("list requests: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/reject", map[string]interface{}{"request_id": request.RequestID}, bToken)
+	if status != http.StatusOK {
+		t.Fatalf("reject request: status=%d body=%s", status, body)
+	}
+}
+
+func TestE2E_GroupManagement(t *testing.T) {
+	ownerName := fmt.Sprintf("e2e_group_owner_%d", time.Now().UnixNano())
+	memberName := fmt.Sprintf("e2e_group_member_%d", time.Now().UnixNano())
+	_ = registerUser(t, env.baseURL, ownerName, "pass1234")
+	memberID := registerUser(t, env.baseURL, memberName, "pass1234")
+	ownerToken := loginUser(t, env.baseURL, ownerName, "pass1234")
+	memberToken := loginUser(t, env.baseURL, memberName, "pass1234")
+
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/group", map[string]string{"name": "management group"}, ownerToken)
+	if status != http.StatusCreated {
+		t.Fatalf("create group: status=%d body=%s", status, body)
+	}
+	var created createGroupResp
+	decodeSuccessResponse(t, body, &created)
+	groupPath := fmt.Sprintf("/api/v1/group/%d", created.GroupID)
+
+	status, body = doAuthedRequest(t, http.MethodPut, env.baseURL, groupPath, map[string]string{"name": "updated group", "notice": "updated"}, ownerToken)
+	if status != http.StatusOK {
+		t.Fatalf("update group: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, groupPath, nil, ownerToken)
+	if status != http.StatusOK {
+		t.Fatalf("get group: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, groupPath+"/member", map[string]int64{"member_id": memberID}, ownerToken)
+	if status != http.StatusOK {
+		t.Fatalf("add member: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, groupPath+"/members?limit=1", nil, ownerToken)
+	if status != http.StatusOK {
+		t.Fatalf("list members: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodPut, env.baseURL, fmt.Sprintf("%s/member/%d/role", groupPath, memberID), map[string]int{"role": 1}, ownerToken)
+	if status != http.StatusOK {
+		t.Fatalf("promote member: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, groupPath+"/leave", nil, memberToken)
+	if status != http.StatusOK {
+		t.Fatalf("leave group: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, groupPath+"/member", map[string]int64{"member_id": memberID}, ownerToken)
+	if status != http.StatusOK {
+		t.Fatalf("re-add member: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodDelete, env.baseURL, fmt.Sprintf("%s/member/%d", groupPath, memberID), nil, ownerToken)
+	if status != http.StatusOK {
+		t.Fatalf("remove member: status=%d body=%s", status, body)
+	}
+}
+
+func TestE2E_UserMoments(t *testing.T) {
+	username := fmt.Sprintf("e2e_user_moments_%d", time.Now().UnixNano())
+	userID := registerUser(t, env.baseURL, username, "pass1234")
+	token := loginUser(t, env.baseURL, username, "pass1234")
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment", map[string]interface{}{"content": "author timeline", "visibility": 1}, token)
+	if status != http.StatusCreated {
+		t.Fatalf("publish moment: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, fmt.Sprintf("/api/v1/moment/user/%d?limit=1", userID), nil, token)
+	if status != http.StatusOK {
+		t.Fatalf("get user moments: status=%d body=%s", status, body)
+	}
+}
+
+func TestE2E_MessageOperations(t *testing.T) {
+	senderName := fmt.Sprintf("e2e_msgop_sender_%d", time.Now().UnixNano())
+	receiverName := fmt.Sprintf("e2e_msgop_receiver_%d", time.Now().UnixNano())
+	senderID := registerUser(t, env.baseURL, senderName, "pass1234")
+	receiverID := registerUser(t, env.baseURL, receiverName, "pass1234")
+	senderToken := loginUser(t, env.baseURL, senderName, "pass1234")
+	receiverToken := loginUser(t, env.baseURL, receiverName, "pass1234")
+
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request", map[string]int64{"to_user_id": receiverID}, senderToken)
+	if status != http.StatusCreated {
+		t.Fatalf("create friendship request: status=%d body=%s", status, body)
+	}
+	var friendRequest friendRequestResp
+	decodeSuccessResponse(t, body, &friendRequest)
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept", map[string]int64{"request_id": friendRequest.RequestID}, receiverToken)
+	if status != http.StatusOK {
+		t.Fatalf("accept friendship request: status=%d body=%s", status, body)
+	}
+
+	senderWS := connectWS(t, env.baseURL, senderToken)
+	defer closeWS(t, senderWS)
+	receiverWS := connectWS(t, env.baseURL, receiverToken)
+	defer closeWS(t, receiverWS)
+	convID := fmt.Sprintf("p_%d_%d", min64(senderID, receiverID), max64(senderID, receiverID))
+
+	send := func(clientMsgID, content string) int64 {
+		sendWSMessage(t, senderWS, "msg", sendMsgData{ClientMsgID: clientMsgID, ConvType: 1, ToID: receiverID, MsgType: 1, Content: content, Timestamp: time.Now().UnixMilli()})
+		ack := readWSMessageType(t, senderWS, "serverAck", 10*time.Second)
+		var ackData serverAckData
+		if err := json.Unmarshal(ack.Data, &ackData); err != nil {
+			t.Fatalf("parse server acknowledgement: %v", err)
+		}
+		if ackData.ServerMsgID == 0 {
+			t.Fatal("expected server message ID")
+		}
+		readWSMessageType(t, receiverWS, "msg", 10*time.Second)
+		return ackData.ServerMsgID
+	}
+
+	firstID := send(fmt.Sprintf("e2e_msgop_search_%d", time.Now().UnixNano()), "searchable integration message")
+	time.Sleep(200 * time.Millisecond)
+	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, "/api/v1/msg/search?q=searchable&limit=10", nil, senderToken)
+	if status != http.StatusOK {
+		t.Fatalf("search messages: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/msg/revoke", map[string]interface{}{"convId": convID, "msgId": firstID}, senderToken)
+	if status != http.StatusOK {
+		t.Fatalf("revoke message: status=%d body=%s", status, body)
+	}
+
+	secondID := send(fmt.Sprintf("e2e_msgop_delete_%d", time.Now().UnixNano()), "deletable integration message")
+	time.Sleep(200 * time.Millisecond)
+	status, body = doAuthedRequest(t, http.MethodDelete, env.baseURL, fmt.Sprintf("/api/v1/msg/%d?convId=%s", secondID, convID), nil, senderToken)
+	if status != http.StatusOK {
+		t.Fatalf("delete message: status=%d body=%s", status, body)
 	}
 }
 

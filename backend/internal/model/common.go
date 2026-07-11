@@ -10,7 +10,6 @@ const (
 	MsgTypeText    = 1
 	MsgTypeImage   = 2
 	MsgTypeVideo   = 3
-	MsgTypeAI      = 4
 	MsgTypeSystem  = 5
 	MsgTypeRevoked = 6
 
@@ -20,13 +19,12 @@ const (
 	RoleMember = 0
 	RoleAdmin  = 1
 	RoleOwner  = 2
-
-	AI_SYSTEM_ID = 0
 )
 
 // BuildConvID 生成会话 ID：
-//   private: p_{较小ID}_{较大ID}
-//   group:   g_{群组ID}
+//
+//	private: p_{较小ID}_{较大ID}
+//	group:   g_{群组ID}
 func BuildConvID(convType int, id1, id2 int64) string {
 	if convType == ConvTypeGroup {
 		return fmt.Sprintf("g_%d", id1)

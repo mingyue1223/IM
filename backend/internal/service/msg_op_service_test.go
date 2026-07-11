@@ -150,11 +150,6 @@ func (m *mockMsgOpRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.M
 	return nil, nil
 }
 
-func (m *mockMsgOpRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }
-func (m *mockMsgOpRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error { return nil }
-func (m *mockMsgOpRepo) GetAIProfileByUser(_ context.Context, _ int64) ([]model.AIProfileItem, error) {
-	return nil, nil
-}
 
 func (m *mockMsgOpRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) { return nil, nil }
 func (m *mockMsgOpRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error { return nil }
@@ -232,9 +227,6 @@ func (m *mockMsgOpRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64
 func (m *mockMsgOpRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
-func (m *mockMsgOpRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
-func (m *mockMsgOpRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
-func (m *mockMsgOpRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 func (m *mockMsgOpRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
 
 // ──────────────────────────────────────────────────────

@@ -52,17 +52,12 @@ type MySQLRepo interface {
 	GetMomentsByIDs(ctx context.Context, ids []int64) ([]model.Moment, error)
 	GetMomentsByUser(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error)
 	// 点赞明细的持久化：写路径走 Redis，MySQL 由 like_persist 消费者批量镜像。
-	GetMomentLikers(ctx context.Context, momentID int64) ([]int64, error)               // 预热回源：某动态的全部点赞用户
-	BatchUpsertMomentLikes(ctx context.Context, likes []model.MomentLike) error          // 批量落库（INSERT IGNORE）
-	BatchDeleteMomentLikes(ctx context.Context, keys []model.MomentLikeKey) error        // 批量删除取消赞
+	GetMomentLikers(ctx context.Context, momentID int64) ([]int64, error)         // 预热回源：某动态的全部点赞用户
+	BatchUpsertMomentLikes(ctx context.Context, likes []model.MomentLike) error   // 批量落库（INSERT IGNORE）
+	BatchDeleteMomentLikes(ctx context.Context, keys []model.MomentLikeKey) error // 批量删除取消赞
 	CreateMomentComment(ctx context.Context, comment *model.MomentComment) error
 	GetMomentCommentByID(ctx context.Context, id int64) (*model.MomentComment, error)
 	DeleteMomentComment(ctx context.Context, id int64) error
-
-	// ── AI ──
-	CreateAISummary(ctx context.Context, summary *model.AISummary) error
-	CreateAIProfileItem(ctx context.Context, item *model.AIProfileItem) error
-	GetAIProfileByUser(ctx context.Context, userID int64) ([]model.AIProfileItem, error)
 
 	// ── 用户设置 ──
 	GetUserSettings(ctx context.Context, userID int64) (*model.UserSettings, error)
@@ -378,8 +373,7 @@ func (m *MySQLRepoImpl) IsBlocked(ctx context.Context, userID, blockedID int64) 
 // ── 群组（在任务 14 中完善） ──
 
 func (m *MySQLRepoImpl) CreateGroup(ctx context.Context, group *model.Group) (int64, error) {
-	query := `INSERT INTO groups (name, notice, owner_id, max_members, created_at, updated_at)
-	          VALUES (?, ?, ?, 500, NOW(), NOW())`
+	query := "INSERT INTO `groups` (name, notice, owner_id, max_members, created_at, updated_at) VALUES (?, ?, ?, 500, NOW(), NOW())"
 	result, err := m.db.ExecContext(ctx, query,
 		group.Name,
 		group.Notice,
@@ -396,7 +390,7 @@ func (m *MySQLRepoImpl) CreateGroup(ctx context.Context, group *model.Group) (in
 }
 
 func (m *MySQLRepoImpl) UpdateGroup(ctx context.Context, group *model.Group) error {
-	query := `UPDATE groups SET name=?, notice=?, updated_at=NOW() WHERE id=?`
+	query := "UPDATE `groups` SET name=?, notice=?, updated_at=NOW() WHERE id=?"
 	_, err := m.db.ExecContext(ctx, query, group.Name, group.Notice, group.ID)
 	if err != nil {
 		return fmt.Errorf("更新群组: %w", err)
@@ -405,8 +399,7 @@ func (m *MySQLRepoImpl) UpdateGroup(ctx context.Context, group *model.Group) err
 }
 
 func (m *MySQLRepoImpl) GetGroupByID(ctx context.Context, groupID int64) (*model.Group, error) {
-	query := `SELECT id, name, notice, owner_id, max_members, created_at, updated_at
-	          FROM groups WHERE id = ?`
+	query := "SELECT id, name, notice, owner_id, max_members, created_at, updated_at FROM `groups` WHERE id = ?"
 	row := m.db.QueryRowContext(ctx, query, groupID)
 	var g model.Group
 	err := row.Scan(&g.ID, &g.Name, &g.Notice, &g.OwnerID, &g.MaxMembers, &g.CreatedAt, &g.UpdatedAt)
@@ -636,11 +629,16 @@ func (m *MySQLRepoImpl) BatchDeleteMomentLikes(ctx context.Context, keys []model
 }
 
 func (m *MySQLRepoImpl) CreateMomentComment(ctx context.Context, comment *model.MomentComment) error {
-	query := `INSERT INTO moment_comments (id, moment_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)`
-	_, err := m.db.ExecContext(ctx, query, comment.ID, comment.MomentID, comment.UserID, comment.Content, comment.CreatedAt)
+	query := `INSERT INTO moment_comments (moment_id, user_id, content, created_at) VALUES (?, ?, ?, ?)`
+	result, err := m.db.ExecContext(ctx, query, comment.MomentID, comment.UserID, comment.Content, comment.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("插入朋友圈评论: %w", err)
 	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("获取朋友圈评论最后插入 ID: %w", err)
+	}
+	comment.ID = id
 	return nil
 }
 
@@ -666,67 +664,6 @@ func (m *MySQLRepoImpl) DeleteMomentComment(ctx context.Context, id int64) error
 		return fmt.Errorf("删除朋友圈评论: %w", err)
 	}
 	return nil
-}
-
-// ── AI（在任务 16 中完善） ──
-
-func (m *MySQLRepoImpl) CreateAISummary(ctx context.Context, summary *model.AISummary) error {
-	query := `INSERT INTO ai_summaries (user_id, topic, key_points, conclusion, user_intent, message_range, created_at)
-	          VALUES (?, ?, ?, ?, ?, ?, ?)`
-	_, err := m.db.ExecContext(ctx, query,
-		summary.UserID,
-		summary.Topic,
-		summary.KeyPoints,
-		summary.Conclusion,
-		summary.UserIntent,
-		summary.MessageRange,
-		summary.CreatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("插入 ai_summaries: %w", err)
-	}
-	return nil
-}
-
-func (m *MySQLRepoImpl) CreateAIProfileItem(ctx context.Context, item *model.AIProfileItem) error {
-	query := `INSERT INTO ai_user_profiles (user_id, field_name, value, confidence, source, updated_at)
-	          VALUES (?, ?, ?, ?, ?, ?)
-	          ON DUPLICATE KEY UPDATE value=VALUES(value), confidence=VALUES(confidence), source=VALUES(source), updated_at=VALUES(updated_at)`
-	_, err := m.db.ExecContext(ctx, query,
-		item.UserID,
-		item.FieldName,
-		item.Value,
-		item.Confidence,
-		item.Source,
-		item.UpdatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("插入 ai_user_profiles: %w", err)
-	}
-	return nil
-}
-
-func (m *MySQLRepoImpl) GetAIProfileByUser(ctx context.Context, userID int64) ([]model.AIProfileItem, error) {
-	query := `SELECT id, user_id, field_name, value, confidence, source, updated_at
-	          FROM ai_user_profiles WHERE user_id = ? ORDER BY confidence DESC`
-	rows, err := m.db.QueryContext(ctx, query, userID)
-	if err != nil {
-		return nil, fmt.Errorf("查询 ai_user_profiles: %w", err)
-	}
-	defer rows.Close()
-
-	var items []model.AIProfileItem
-	for rows.Next() {
-		var item model.AIProfileItem
-		if err := rows.Scan(&item.ID, &item.UserID, &item.FieldName, &item.Value, &item.Confidence, &item.Source, &item.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("扫描 ai_user_profile: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("遍历 ai_user_profiles: %w", err)
-	}
-	return items, nil
 }
 
 // ── 用户设置（在任务 17 中完善） ──

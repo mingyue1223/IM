@@ -1,6 +1,6 @@
 basePath: /api/v1
 definitions:
-  internal_api.ApiResponse:
+  api.ApiResponse:
     properties:
       code:
         type: integer
@@ -8,90 +8,47 @@ definitions:
       message:
         type: string
     type: object
-  internal_api.acceptFriendRequestReq:
+  api.acceptFriendRequestReq:
     properties:
       request_id:
         type: integer
     required:
     - request_id
     type: object
-  internal_api.acceptFriendRequestResp:
+  api.acceptFriendRequestResp:
     properties:
       friend_id:
         type: integer
       user_id:
         type: integer
     type: object
-  internal_api.addMemberRequest:
+  api.addMemberRequest:
     properties:
       member_id:
         type: integer
     required:
     - member_id
     type: object
-  internal_api.aiChatRequest:
-    properties:
-      content:
-        type: string
-    required:
-    - content
-    type: object
-  internal_api.aiChatResponse:
-    properties:
-      response:
-        type: string
-    type: object
-  internal_api.aiProfileItemDTO:
-    properties:
-      confidence:
-        type: number
-      field_name:
-        type: string
-      source:
-        type: string
-      value:
-        type: string
-    type: object
-  internal_api.aiProfileResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/internal_api.aiProfileItemDTO'
-        type: array
-    type: object
-  internal_api.aiSummaryResponse:
-    properties:
-      conclusion:
-        type: string
-      key_points:
-        type: string
-      message_range:
-        type: string
-      topic:
-        type: string
-      user_intent:
-        type: string
-    type: object
-  internal_api.blockUserReq:
+  api.blockUserReq:
     properties:
       blocked_id:
         type: integer
     required:
     - blocked_id
     type: object
-  internal_api.commentMomentRequest:
+  api.commentMomentRequest:
     properties:
       content:
         type: string
     required:
     - content
     type: object
-  internal_api.commentMomentResponse:
+  api.commentMomentResponse:
     properties:
       comment_id:
         type: integer
     type: object
-  internal_api.createGroupRequest:
+  api.createGroupRequest:
     properties:
       name:
         type: string
@@ -100,17 +57,17 @@ definitions:
     required:
     - name
     type: object
-  internal_api.createGroupResponse:
+  api.createGroupResponse:
     properties:
       group_id:
         type: integer
     type: object
-  internal_api.deleteCommentResponse:
+  api.deleteCommentResponse:
     properties:
       ok:
         type: boolean
     type: object
-  internal_api.getMomentResponse:
+  api.getMomentResponse:
     properties:
       author_id:
         type: integer
@@ -132,7 +89,7 @@ definitions:
       visibility:
         type: integer
     type: object
-  internal_api.likeMomentResponse:
+  api.likeMomentResponse:
     properties:
       count:
         description: 最新点赞数
@@ -143,7 +100,7 @@ definitions:
       ok:
         type: boolean
     type: object
-  internal_api.loginRequest:
+  api.loginRequest:
     properties:
       password:
         type: string
@@ -153,7 +110,7 @@ definitions:
     - password
     - username
     type: object
-  internal_api.loginResponse:
+  api.loginResponse:
     properties:
       access_token:
         type: string
@@ -162,24 +119,24 @@ definitions:
       refresh_token:
         type: string
     type: object
-  internal_api.momentFeedResponse:
+  api.momentFeedResponse:
     properties:
       moments:
         items:
-          $ref: '#/definitions/internal_api.getMomentResponse'
+          $ref: '#/definitions/api.getMomentResponse'
         type: array
       next_cursor:
         description: 空串表示无更多
         type: string
     type: object
-  internal_api.muteConvReq:
+  api.muteConvReq:
     properties:
       convId:
         type: string
     required:
     - convId
     type: object
-  internal_api.publishMomentRequest:
+  api.publishMomentRequest:
     properties:
       content:
         type: string
@@ -192,26 +149,26 @@ definitions:
     required:
     - content
     type: object
-  internal_api.publishMomentResponse:
+  api.publishMomentResponse:
     properties:
       moment_id:
         type: integer
     type: object
-  internal_api.refreshRequest:
+  api.refreshRequest:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
     type: object
-  internal_api.refreshResponse:
+  api.refreshResponse:
     properties:
       access_token:
         type: string
       expires_in:
         type: integer
     type: object
-  internal_api.registerRequest:
+  api.registerRequest:
     properties:
       password:
         type: string
@@ -221,21 +178,21 @@ definitions:
     - password
     - username
     type: object
-  internal_api.registerResponse:
+  api.registerResponse:
     properties:
       user_id:
         type: integer
       username:
         type: string
     type: object
-  internal_api.rejectFriendRequestReq:
+  api.rejectFriendRequestReq:
     properties:
       request_id:
         type: integer
     required:
     - request_id
     type: object
-  internal_api.revokeMsgReq:
+  api.revokeMsgReq:
     properties:
       convId:
         type: string
@@ -245,7 +202,7 @@ definitions:
     - convId
     - msgId
     type: object
-  internal_api.sendFriendRequestReq:
+  api.sendFriendRequestReq:
     properties:
       message:
         type: string
@@ -254,7 +211,7 @@ definitions:
     required:
     - to_user_id
     type: object
-  internal_api.sendFriendRequestResp:
+  api.sendFriendRequestResp:
     properties:
       from_user_id:
         type: integer
@@ -265,14 +222,14 @@ definitions:
       to_user_id:
         type: integer
     type: object
-  internal_api.unblockUserReq:
+  api.unblockUserReq:
     properties:
       blocked_id:
         type: integer
     required:
     - blocked_id
     type: object
-  internal_api.unlikeMomentResponse:
+  api.unlikeMomentResponse:
     properties:
       count:
         type: integer
@@ -281,7 +238,7 @@ definitions:
       ok:
         type: boolean
     type: object
-  internal_api.updateGroupRequest:
+  api.updateGroupRequest:
     properties:
       name:
         type: string
@@ -290,14 +247,14 @@ definitions:
     required:
     - name
     type: object
-  internal_api.updateMemberRoleRequest:
+  api.updateMemberRoleRequest:
     properties:
       role:
         type: integer
     required:
     - role
     type: object
-  internal_api.updateSettingsReq:
+  api.updateSettingsReq:
     properties:
       msg_preview_enabled:
         type: boolean
@@ -306,7 +263,7 @@ definitions:
       notification_enabled:
         type: boolean
     type: object
-  internal_api.uploadAvatarResponse:
+  api.uploadAvatarResponse:
     properties:
       file_path:
         type: string
@@ -318,137 +275,10 @@ definitions:
 host: localhost:8080
 info:
   contact: {}
-  description: GoIM 即时通讯系统 API — 支持私聊、群聊、朋友圈动态、AI 助手。
+  description: GoIM 即时通讯系统 API — 支持私聊、群聊、朋友圈动态。
   title: GoIM API
   version: "1.0"
 paths:
-  /ai/chat:
-    post:
-      consumes:
-      - application/json
-      description: 向AI发送消息并获取非流式回复
-      parameters:
-      - description: 聊天消息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/internal_api.aiChatRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 对话成功
-          schema:
-            allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/internal_api.aiChatResponse'
-              type: object
-        "400":
-          description: 参数错误
-          schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
-        "401":
-          description: 未授权
-          schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
-      security:
-      - BearerAuth: []
-      summary: AI对话
-      tags:
-      - AI
-  /ai/chat/stream:
-    post:
-      consumes:
-      - application/json
-      description: 以SSE流式方式与AI助手对话，实时返回生成内容
-      parameters:
-      - description: 聊天消息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/internal_api.aiChatRequest'
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: SSE事件流
-          schema:
-            type: string
-        "400":
-          description: 参数错误
-          schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
-        "401":
-          description: 未授权
-          schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
-      security:
-      - BearerAuth: []
-      summary: AI流式聊天
-      tags:
-      - AI
-  /ai/profile:
-    get:
-      description: 获取当前用户的AI画像条目（第二层记忆）
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 获取成功
-          schema:
-            allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/internal_api.aiProfileResponse'
-              type: object
-        "401":
-          description: 未授权
-          schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
-      security:
-      - BearerAuth: []
-      summary: 获取AI画像
-      tags:
-      - AI
-  /ai/summary/{convID}:
-    post:
-      description: 为指定会话生成AI摘要
-      parameters:
-      - description: 会话ID
-        in: path
-        name: convID
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 生成成功
-          schema:
-            allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/internal_api.aiSummaryResponse'
-              type: object
-        "400":
-          description: 参数错误
-          schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
-        "401":
-          description: 未授权
-          schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
-      security:
-      - BearerAuth: []
-      summary: 生成会话摘要
-      tags:
-      - AI
   /auth/login:
     post:
       consumes:
@@ -460,7 +290,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.loginRequest'
+          $ref: '#/definitions/api.loginRequest'
       produces:
       - application/json
       responses:
@@ -468,19 +298,19 @@ paths:
           description: 登录成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.loginResponse'
+                  $ref: '#/definitions/api.loginResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "401":
           description: 用户名或密码错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       summary: 用户登录
       tags:
       - 认证
@@ -495,7 +325,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.refreshRequest'
+          $ref: '#/definitions/api.refreshRequest'
       produces:
       - application/json
       responses:
@@ -503,19 +333,19 @@ paths:
           description: 刷新成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.refreshResponse'
+                  $ref: '#/definitions/api.refreshResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "401":
           description: 令牌无效或已过期
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       summary: 刷新令牌
       tags:
       - 认证
@@ -530,7 +360,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.registerRequest'
+          $ref: '#/definitions/api.registerRequest'
       produces:
       - application/json
       responses:
@@ -538,19 +368,19 @@ paths:
           description: 注册成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.registerResponse'
+                  $ref: '#/definitions/api.registerResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "409":
           description: 用户名已存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       summary: 用户注册
       tags:
       - 认证
@@ -596,15 +426,15 @@ paths:
         "200":
           description: 删除成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "500":
           description: 服务器内部错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 删除好友
@@ -621,7 +451,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.acceptFriendRequestReq'
+          $ref: '#/definitions/api.acceptFriendRequestReq'
       produces:
       - application/json
       responses:
@@ -629,23 +459,23 @@ paths:
           description: 接受成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.acceptFriendRequestResp'
+                  $ref: '#/definitions/api.acceptFriendRequestResp'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 无权操作
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 申请不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 接受好友申请
@@ -662,22 +492,22 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.blockUserReq'
+          $ref: '#/definitions/api.blockUserReq'
       produces:
       - application/json
       responses:
         "200":
           description: 拉黑成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "409":
           description: 已拉黑
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 拉黑用户
@@ -695,7 +525,7 @@ paths:
           description: 获取成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
                   type: object
@@ -703,7 +533,7 @@ paths:
         "500":
           description: 服务器内部错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 获取好友列表
@@ -720,26 +550,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.rejectFriendRequestReq'
+          $ref: '#/definitions/api.rejectFriendRequestReq'
       produces:
       - application/json
       responses:
         "200":
           description: 拒绝成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 无权操作
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 申请不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 拒绝好友申请
@@ -756,7 +586,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.sendFriendRequestReq'
+          $ref: '#/definitions/api.sendFriendRequestReq'
       produces:
       - application/json
       responses:
@@ -764,19 +594,19 @@ paths:
           description: 申请发送成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.sendFriendRequestResp'
+                  $ref: '#/definitions/api.sendFriendRequestResp'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "409":
           description: 已是好友或重复申请
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 发送好友申请
@@ -794,7 +624,7 @@ paths:
           description: 获取成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
                   type: object
@@ -802,7 +632,7 @@ paths:
         "500":
           description: 服务器内部错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 获取好友申请列表
@@ -819,18 +649,18 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.unblockUserReq'
+          $ref: '#/definitions/api.unblockUserReq'
       produces:
       - application/json
       responses:
         "200":
           description: 取消拉黑成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 取消拉黑
@@ -847,7 +677,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.createGroupRequest'
+          $ref: '#/definitions/api.createGroupRequest'
       produces:
       - application/json
       responses:
@@ -855,19 +685,19 @@ paths:
           description: 创建成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.createGroupResponse'
+                  $ref: '#/definitions/api.createGroupResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "401":
           description: 未授权
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 创建群组
@@ -892,7 +722,7 @@ paths:
           description: 查询成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
                   type: object
@@ -900,11 +730,11 @@ paths:
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 群组不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 获取群组信息
@@ -926,26 +756,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.updateGroupRequest'
+          $ref: '#/definitions/api.updateGroupRequest'
       produces:
       - application/json
       responses:
         "200":
           description: 更新成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 无权限
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 群组不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 更新群组信息
@@ -969,19 +799,19 @@ paths:
         "200":
           description: 退出成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 群主不能退群
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 群组不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 退出群组
@@ -1004,30 +834,30 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.addMemberRequest'
+          $ref: '#/definitions/api.addMemberRequest'
       produces:
       - application/json
       responses:
         "200":
           description: 添加成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 无权限
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 群组不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "409":
           description: 已是成员或群组已满
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 添加群成员
@@ -1057,19 +887,19 @@ paths:
         "200":
           description: 移除成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 无权限
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 群组不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 移除群成员
@@ -1098,26 +928,26 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.updateMemberRoleRequest'
+          $ref: '#/definitions/api.updateMemberRoleRequest'
       produces:
       - application/json
       responses:
         "200":
           description: 更新成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 无权限
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 群组不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 更新成员角色
@@ -1142,7 +972,7 @@ paths:
           description: 查询成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
                   type: object
@@ -1150,7 +980,7 @@ paths:
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 获取群成员列表
@@ -1167,7 +997,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.publishMomentRequest'
+          $ref: '#/definitions/api.publishMomentRequest'
       produces:
       - application/json
       responses:
@@ -1175,15 +1005,15 @@ paths:
           description: 发布成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.publishMomentResponse'
+                  $ref: '#/definitions/api.publishMomentResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 发布动态
@@ -1208,19 +1038,19 @@ paths:
           description: 查询成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.getMomentResponse'
+                  $ref: '#/definitions/api.getMomentResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 动态不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 获取动态详情
@@ -1243,7 +1073,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.commentMomentRequest'
+          $ref: '#/definitions/api.commentMomentRequest'
       produces:
       - application/json
       responses:
@@ -1251,19 +1081,19 @@ paths:
           description: 评论成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.commentMomentResponse'
+                  $ref: '#/definitions/api.commentMomentResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 动态不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 评论动态
@@ -1288,15 +1118,15 @@ paths:
           description: 取消点赞成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.unlikeMomentResponse'
+                  $ref: '#/definitions/api.unlikeMomentResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 取消点赞
@@ -1320,19 +1150,19 @@ paths:
           description: 点赞成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.likeMomentResponse'
+                  $ref: '#/definitions/api.likeMomentResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 动态不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 点赞动态
@@ -1357,23 +1187,23 @@ paths:
           description: 删除成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.deleteCommentResponse'
+                  $ref: '#/definitions/api.deleteCommentResponse'
               type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 不是自己的评论
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 评论不存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 删除评论
@@ -1400,10 +1230,10 @@ paths:
           description: 查询成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.momentFeedResponse'
+                  $ref: '#/definitions/api.momentFeedResponse'
               type: object
       security:
       - BearerAuth: []
@@ -1437,7 +1267,7 @@ paths:
           description: 查询成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
                   type: object
@@ -1445,7 +1275,7 @@ paths:
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 获取用户动态列表
@@ -1471,11 +1301,11 @@ paths:
         "200":
           description: 删除成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 删除消息
@@ -1492,22 +1322,22 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.revokeMsgReq'
+          $ref: '#/definitions/api.revokeMsgReq'
       produces:
       - application/json
       responses:
         "200":
           description: 撤回成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 消息不可撤回
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "403":
           description: 非发送者
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 撤回消息
@@ -1536,7 +1366,7 @@ paths:
         "200":
           description: 搜索结果
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 搜索消息
@@ -1552,7 +1382,7 @@ paths:
           description: 获取成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
                   type: object
@@ -1572,18 +1402,18 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.updateSettingsReq'
+          $ref: '#/definitions/api.updateSettingsReq'
       produces:
       - application/json
       responses:
         "200":
           description: 更新成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 更新用户设置
@@ -1600,22 +1430,22 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_api.muteConvReq'
+          $ref: '#/definitions/api.muteConvReq'
       produces:
       - application/json
       responses:
         "200":
           description: 添加成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "409":
           description: 会话已存在
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 添加免打扰会话
@@ -1636,15 +1466,15 @@ paths:
         "200":
           description: 移除成功
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
         "404":
           description: 会话未找到
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 移除免打扰会话
@@ -1668,15 +1498,15 @@ paths:
           description: 上传成功
           schema:
             allOf:
-            - $ref: '#/definitions/internal_api.ApiResponse'
+            - $ref: '#/definitions/api.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_api.uploadAvatarResponse'
+                  $ref: '#/definitions/api.uploadAvatarResponse'
               type: object
         "400":
           description: 文件格式不支持或文件过大
           schema:
-            $ref: '#/definitions/internal_api.ApiResponse'
+            $ref: '#/definitions/api.ApiResponse'
       security:
       - BearerAuth: []
       summary: 上传头像

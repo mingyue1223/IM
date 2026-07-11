@@ -9,16 +9,14 @@ import (
 type MessageDispatcher struct {
 	MsgSvc    *service.MsgService
 	FriendSvc *service.FriendService
-	AiSvc     *service.AIService
 }
 
 // NewMessageDispatcher 创建一个调度器，持有所有服务处理器的引用。
 // 尚未实现的服务可以为 nil —— 调度器将跳过这些消息类型。
-func NewMessageDispatcher(msgSvc *service.MsgService, friendSvc *service.FriendService, aiSvc *service.AIService) *MessageDispatcher {
+func NewMessageDispatcher(msgSvc *service.MsgService, friendSvc *service.FriendService) *MessageDispatcher {
 	return &MessageDispatcher{
 		MsgSvc:    msgSvc,
 		FriendSvc: friendSvc,
-		AiSvc:     aiSvc,
 	}
 }
 
@@ -55,10 +53,6 @@ func (d *MessageDispatcher) HandleMessage(c *conn.ClientConnection, rawMsg []byt
 	case TypeFriendApply:
 		if d.FriendSvc != nil {
 			d.FriendSvc.HandleFriendApply(c.UserID, msg.Data)
-		}
-	case TypeAiStream:
-		if d.AiSvc != nil {
-			d.AiSvc.HandleAiStream(c.UserID, msg.Data)
 		}
 	case TypePing:
 		// Ping 由 ReadPump 中的 PingHandler 处理；此处跳过

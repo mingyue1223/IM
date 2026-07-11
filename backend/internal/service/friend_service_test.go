@@ -267,11 +267,6 @@ func (m *mockFriendRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.
 	return nil, nil
 }
 
-func (m *mockFriendRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error        { return nil }
-func (m *mockFriendRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error { return nil }
-func (m *mockFriendRepo) GetAIProfileByUser(_ context.Context, _ int64) ([]model.AIProfileItem, error) {
-	return nil, nil
-}
 func (m *mockFriendRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
@@ -345,9 +340,6 @@ func (m *mockFriendRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int6
 func (m *mockFriendRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
-func (m *mockFriendRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
-func (m *mockFriendRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
-func (m *mockFriendRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
 func (m *mockFriendRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
 
 // ──────────────────────────────────────────────────────

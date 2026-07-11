@@ -20,7 +20,6 @@ const (
 	TypeRevokeMsg      = protocol.TypeRevokeMsg
 	TypeMsgRevoked     = protocol.TypeMsgRevoked
 	TypeKick           = protocol.TypeKick
-	TypeAiStream       = protocol.TypeAiStream
 	TypeFriendApply    = protocol.TypeFriendApply
 	TypeFriendAccepted = protocol.TypeFriendAccepted
 	TypePresence       = protocol.TypePresence

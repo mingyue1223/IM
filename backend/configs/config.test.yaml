@@ -23,12 +23,6 @@ jwt:
   access_exp_hours: 1
   refresh_exp_days: 1
 
-llm:
-  provider: "openai"
-  api_key: "test-key"
-  base_url: "https://api.openai.com/v1"
-  model: "gpt-4o-mini"
-
 file:
   max_size_mb: 10
   allowed_exts: ["jpg", "png"]

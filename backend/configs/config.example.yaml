@@ -27,13 +27,6 @@ jwt:
   access_exp_hours: 2     # 访问令牌有效期（小时）
   refresh_exp_days: 7     # 刷新令牌有效期（天）
 
-llm:
-  provider: "openai"               # LLM 提供商："openai" 或 "deepseek"
-  api_key: "YOUR_API_KEY_HERE"     # API 密钥（生产环境请使用环境变量或密钥管理器）
-  base_url: "https://api.openai.com/v1"  # API 基础地址（DeepSeek 或其他提供商需修改）
-  model: "gpt-4o-mini"             # 模型名称（例如 DeepSeek 使用 "deepseek-v4-pro"）
-  max_tokens: 2048                  # 最大响应 token 数
-
 file:
   max_size_mb: 50                   # 最大上传文件大小（MB）
   allowed_exts: ["jpg", "png", "gif", "mp4"]  # 允许的文件扩展名

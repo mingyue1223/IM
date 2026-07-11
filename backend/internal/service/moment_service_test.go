@@ -111,6 +111,10 @@ func (m *mockMySQLRepo) CreateMomentComment(ctx context.Context, comment *model.
 	if m.commentErr != nil {
 		return m.commentErr
 	}
+	if comment.ID == 0 {
+		comment.ID = m.nextID
+		m.nextID++
+	}
 	m.comments[comment.ID] = comment
 	return nil
 }
@@ -210,15 +214,6 @@ func (m *mockMySQLRepo) GetGroupMembers(_ context.Context, _ int64) ([]model.Gro
 func (m *mockMySQLRepo) UpdateGroupMemberRole(_ context.Context, _ int, _ int, _ int) error {
 	panic("未实现")
 }
-func (m *mockMySQLRepo) CreateAISummary(_ context.Context, _ *model.AISummary) error {
-	panic("未实现")
-}
-func (m *mockMySQLRepo) CreateAIProfileItem(_ context.Context, _ *model.AIProfileItem) error {
-	panic("未实现")
-}
-func (m *mockMySQLRepo) GetAIProfileByUser(_ context.Context, _ int64) ([]model.AIProfileItem, error) {
-	panic("未实现")
-}
 func (m *mockMySQLRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) {
 	panic("未实现")
 }
@@ -235,9 +230,9 @@ type momentMockRedisRepo struct {
 	timelines  map[int64][]model.FeedEntry // userID -> 收件箱条目
 	outboxes   map[int64][]model.FeedEntry // userID -> 寄件箱条目
 	bigUsers   map[int64]bool
-	likeLoaded map[int64]bool              // momentID -> 是否已预热
-	likeSets   map[int64]map[int64]bool    // momentID -> set of userIDs
-	likeCounts map[int64]int64             // momentID -> count
+	likeLoaded map[int64]bool           // momentID -> 是否已预热
+	likeSets   map[int64]map[int64]bool // momentID -> set of userIDs
+	likeCounts map[int64]int64          // momentID -> count
 }
 
 func newMomentMockRedisRepo() *momentMockRedisRepo {
@@ -462,12 +457,13 @@ func (m *momentMockRedisRepo) ExecInboxMarkRead(_ context.Context, _ int64, _ st
 func (m *momentMockRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string, _ int64, _ string, _ int64) (bool, error) {
 	panic("未实现")
 }
-func (m *momentMockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
-func (m *momentMockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
-func (m *momentMockRedisRepo) SetWorkingMemory(_ context.Context, _ int64, _ string, _ string, _ int64) error { return nil }
-func (m *momentMockRedisRepo) GetWorkingMemory(_ context.Context, _ int64, _ string) (string, error)            { return "", nil }
-func (m *momentMockRedisRepo) GetAllWorkingMemory(_ context.Context, _ int64) (map[string]string, error)        { return nil, nil }
-func (m *momentMockRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
+func (m *momentMockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (m *momentMockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (m *momentMockRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error { return nil }
 
 // momentMockMQRepo 为动态测试实现 repository.MQRepo。
 type momentMockMQRepo struct {
@@ -886,9 +882,9 @@ func TestGetFeed_Hybrid(t *testing.T) {
 	mysqlRepo.friends[200] = []int64{101, 300}
 	redisRepo.bigUsers[300] = true
 
-	redisRepo.AddToOutbox(context.Background(), 200, 1, base+1, 0)  // 自己寄件箱
+	redisRepo.AddToOutbox(context.Background(), 200, 1, base+1, 0)    // 自己寄件箱
 	redisRepo.PublishMomentFeed(context.Background(), 200, 2, base+2) // 普通好友推入收件箱
-	redisRepo.AddToOutbox(context.Background(), 300, 3, base+3, 0)  // 大V好友寄件箱（拉取）
+	redisRepo.AddToOutbox(context.Background(), 300, 3, base+3, 0)    // 大V好友寄件箱（拉取）
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
 

@@ -4,7 +4,7 @@
 //
 // @title                       GoIM API
 // @version                     1.0
-// @description                 GoIM 即时通讯系统 API — 支持私聊、群聊、朋友圈动态、AI 助手。
+// @description                 GoIM 即时通讯系统 API — 支持私聊、群聊、朋友圈动态。
 // @host                        localhost:8080
 // @BasePath                    /api/v1
 //
@@ -40,10 +40,9 @@ import (
 	"github.com/goim/goim/internal/conn"
 	"github.com/goim/goim/internal/consumer"
 	"github.com/goim/goim/internal/infra"
-	"github.com/goim/goim/internal/llm"
 	"github.com/goim/goim/internal/middleware"
-	"github.com/goim/goim/internal/repository"
 	goredis "github.com/goim/goim/internal/redis"
+	"github.com/goim/goim/internal/repository"
 	"github.com/goim/goim/internal/service"
 	"github.com/goim/goim/internal/ws"
 )
@@ -109,28 +108,23 @@ func main() {
 	// ── 初始化连接管理器 ──
 	cm := conn.NewConnectionManager()
 
-	// ── 初始化 LLM 客户端 ──
-	llmClient := llm.NewLLMClient(cfg.LLM)
-
 	// ── 初始化服务层 ──
 	msgSvc := service.NewMsgService(redisRepo, mqRepo, cm, logger)
 	authSvc := service.NewAuthService(mysqlRepo, cfg.JWT.Secret, cfg.JWT.AccessExpHours, cfg.JWT.RefreshExpDays)
 	friendSvc := service.NewFriendService(mysqlRepo, redisRepo, logger)
 	groupSvc := service.NewGroupService(mysqlRepo, redisRepo, logger)
 	momentSvc := service.NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Duration(cfg.Moment.LikeCacheTTLHours)*time.Hour)
-	aiSvc := service.NewAIService(mysqlRepo, redisRepo, llmClient, logger)
 	msgOpSvc := service.NewMsgOpService(mysqlRepo, redisRepo, logger)
 	settingsSvc := service.NewSettingsService(mysqlRepo, logger)
 
 	// ── 初始化 WebSocket 分发器 ──
-	dispatcher := ws.NewMessageDispatcher(msgSvc, friendSvc, aiSvc)
+	dispatcher := ws.NewMessageDispatcher(msgSvc, friendSvc)
 
 	// ── 初始化 HTTP 处理器 ──
 	authHandler := api.NewAuthHandler(authSvc)
 	friendHandler := api.NewFriendHandler(friendSvc)
 	groupHandler := api.NewGroupHandler(groupSvc)
 	momentHandler := api.NewMomentHandler(momentSvc)
-	aiHandler := api.NewAIHandler(aiSvc)
 	msgOpHandler := api.NewMsgOpHandler(msgOpSvc)
 	settingsHandler := api.NewSettingsHandler(settingsSvc)
 	uploadHandler := api.NewUploadHandler(cfg.Server.UploadDir, cfg.File.MaxSizeMB, cfg.File.AllowedExts)
@@ -141,7 +135,7 @@ func main() {
 		cfg, mysqlRepo, redisRepo, rdb, mqCh, cm,
 		dispatcher, logger,
 		authHandler, friendHandler, groupHandler,
-		momentHandler, aiHandler, msgOpHandler, settingsHandler,
+		momentHandler, msgOpHandler, settingsHandler,
 		uploadHandler, avatarHandler,
 	)
 
@@ -169,12 +163,15 @@ func main() {
 	infra.StartCleanupTask(rdb, logger, 1*time.Hour)
 
 	// ── 启动 pprof 调试端口 ──
-	go func() {
-		logger.Info("pprof 已启动", zap.String("addr", ":6060"))
-		if err := http.ListenAndServe(":6060", nil); err != nil {
-			logger.Warn("pprof 服务器错误", zap.Error(err))
-		}
-	}()
+	if cfg.Server.PprofPort > 0 {
+		go func() {
+			pprofAddr := fmt.Sprintf(":%d", cfg.Server.PprofPort)
+			logger.Info("pprof 已启动", zap.String("addr", pprofAddr))
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				logger.Warn("pprof 服务器错误", zap.Error(err))
+			}
+		}()
+	}
 
 	// ── 启动 HTTP 服务器 ──
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
@@ -221,7 +218,6 @@ func setupRouter(
 	friendHandler *api.FriendHandler,
 	groupHandler *api.GroupHandler,
 	momentHandler *api.MomentHandler,
-	aiHandler *api.AIHandler,
 	msgOpHandler *api.MsgOpHandler,
 	settingsHandler *api.SettingsHandler,
 	uploadHandler *api.UploadHandler,
@@ -253,7 +249,6 @@ func setupRouter(
 	friendHandler.RegisterRoutes(protected)
 	groupHandler.RegisterRoutes(protected)
 	momentHandler.RegisterRoutes(protected)
-	aiHandler.RegisterRoutes(protected)
 	msgOpHandler.RegisterRoutes(protected)
 	settingsHandler.RegisterRoutes(protected)
 	uploadHandler.RegisterRoutes(protected)

@@ -3,22 +3,24 @@ package model
 import "time"
 
 type PrivateMessage struct {
-	ID        int64     `json:"msgId"`
-	SenderID  int64     `json:"fromId"`
-	ReceiverID int64    `json:"toId"`
-	Content   string    `json:"content"`
-	MsgType   int       `json:"msgType"`
-	CreatedAt time.Time `json:"timestamp"`
+	ID          int64     `json:"msgId"`
+	ClientMsgID string    `json:"clientMsgId,omitempty"`
+	SenderID    int64     `json:"fromId"`
+	ReceiverID  int64     `json:"toId"`
+	Content     string    `json:"content"`
+	MsgType     int       `json:"msgType"`
+	CreatedAt   time.Time `json:"timestamp"`
 }
 
 type GroupMessage struct {
-	ID        int64     `json:"msgId"`
-	GroupID   int64     `json:"groupId"`
-	SenderID  int64     `json:"fromId"`
-	Content   string    `json:"content"`
-	MsgType   int       `json:"msgType"`
-	GroupSeq  int64     `json:"groupSeq"`
-	CreatedAt time.Time `json:"timestamp"`
+	ID          int64     `json:"msgId"`
+	ClientMsgID string    `json:"clientMsgId,omitempty"`
+	GroupID     int64     `json:"groupId"`
+	SenderID    int64     `json:"fromId"`
+	Content     string    `json:"content"`
+	MsgType     int       `json:"msgType"`
+	GroupSeq    int64     `json:"groupSeq"`
+	CreatedAt   time.Time `json:"timestamp"`
 }
 
 type MsgRevoked struct {
@@ -38,7 +40,7 @@ type InboxMessage struct {
 	ToID       int64  `json:"toId"`
 	MsgType    int    `json:"msgType"`
 	Content    string `json:"content"`
-	ReadStatus int    `json:"readStatus"` // 0=未读, 1=已读 (仅私聊)
+	ReadStatus int    `json:"readStatus"`         // 0=未读, 1=已读 (仅私聊)
 	GroupSeq   int64  `json:"groupSeq,omitempty"` // 群消息序号 (仅群聊)
 	Timestamp  int64  `json:"timestamp"`
 }
@@ -63,20 +65,22 @@ type ReadAck struct {
 
 // SyncReq — 客户端请求离线消息同步
 type SyncReq struct {
-	LastSyncTime int64 `json:"lastSyncTime"`
-	BatchSize    int   `json:"batchSize"`
+	LastSyncTime  int64 `json:"lastSyncTime"`
+	LastSyncMsgID int64 `json:"lastSyncMsgId,omitempty"`
+	BatchSize     int   `json:"batchSize"`
 }
 
 // SyncBatch — 服务端分批返回离线消息
 type SyncBatch struct {
-	Messages []InboxMessage `json:"msgs"`
-	HasMore  bool           `json:"hasMore"`
-	SyncTime int64          `json:"syncTime,omitempty"`
+	Messages  []InboxMessage `json:"msgs"`
+	HasMore   bool           `json:"hasMore"`
+	SyncTime  int64          `json:"syncTime,omitempty"`
+	SyncMsgID int64          `json:"syncMsgId,omitempty"`
 }
 
 // ConvSync — 同步时推送的会话列表及未读数
 type ConvSync struct {
-	Conversations []ConvSummary   `json:"conversations"`
+	Conversations []ConvSummary    `json:"conversations"`
 	UnreadMap     map[string]int64 `json:"unreadMap"`
 }
 

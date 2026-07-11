@@ -86,15 +86,15 @@ func TestCleanupExpiredData_RemovesOldInboxEntries(t *testing.T) {
 
 	userID := int64(90001)
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	// 种子数据：10 条旧记录（5 天前）+ 10 条新记录
 	for i := 0; i < 10; i++ {
-		oldTS := now - int64(5*24*3600) + int64(i*3600)
+		oldTS := now - int64(5*24*3600*1000) + int64(i*3600*1000)
 		rdb.ZAdd(ctx, inboxKey, redis.Z{Score: float64(oldTS), Member: fmt.Sprintf("old_msg_%d", i)})
 	}
 	for i := 0; i < 10; i++ {
-		newTS := now - int64(i*60)
+		newTS := now - int64(i*60*1000)
 		rdb.ZAdd(ctx, inboxKey, redis.Z{Score: float64(newTS), Member: fmt.Sprintf("new_msg_%d", i)})
 	}
 
@@ -120,7 +120,7 @@ func TestCleanupExpiredData_TrimsInboxByMaxCount(t *testing.T) {
 
 	userID := int64(90002)
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	// 种子数据：1200 条近期记录 — 时间裁剪不会移除它们
 	for i := 0; i < 1200; i++ {
@@ -150,14 +150,14 @@ func TestCleanupExpiredData_RemovesOldOutboxEntries(t *testing.T) {
 
 	groupID := int64(90003)
 	outboxKey := fmt.Sprintf("outbox:%d", groupID)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	for i := 0; i < 5; i++ {
-		oldTS := now - int64(5*24*3600) + int64(i*3600)
+		oldTS := now - int64(5*24*3600*1000) + int64(i*3600*1000)
 		rdb.ZAdd(ctx, outboxKey, redis.Z{Score: float64(oldTS), Member: fmt.Sprintf("old_%d", i)})
 	}
 	for i := 0; i < 5; i++ {
-		newTS := now - int64(i*60)
+		newTS := now - int64(i*60*1000)
 		rdb.ZAdd(ctx, outboxKey, redis.Z{Score: float64(newTS), Member: fmt.Sprintf("new_%d", i)})
 	}
 
@@ -183,7 +183,7 @@ func TestCleanupExpiredData_TrimsOutboxByMaxCount(t *testing.T) {
 
 	groupID := int64(90004)
 	outboxKey := fmt.Sprintf("outbox:%d", groupID)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	for i := 0; i < 600; i++ {
 		ts := now - int64(i)
@@ -212,14 +212,14 @@ func TestCleanupExpiredData_RemovesOldTimelineEntries(t *testing.T) {
 
 	userID := int64(90005)
 	timelineKey := fmt.Sprintf("timeline:%d", userID)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	for i := 0; i < 5; i++ {
-		oldTS := now - int64(5*24*3600) + int64(i*3600)
+		oldTS := now - int64(5*24*3600*1000) + int64(i*3600*1000)
 		rdb.ZAdd(ctx, timelineKey, redis.Z{Score: float64(oldTS), Member: fmt.Sprintf("old_%d", i)})
 	}
 	for i := 0; i < 5; i++ {
-		newTS := now - int64(i*60)
+		newTS := now - int64(i*60*1000)
 		rdb.ZAdd(ctx, timelineKey, redis.Z{Score: float64(newTS), Member: fmt.Sprintf("new_%d", i)})
 	}
 
@@ -245,7 +245,7 @@ func TestCleanupExpiredData_TrimsTimelineByMaxCount(t *testing.T) {
 
 	userID := int64(90006)
 	timelineKey := fmt.Sprintf("timeline:%d", userID)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	for i := 0; i < 150; i++ {
 		ts := now - int64(i)
@@ -274,14 +274,14 @@ func TestCleanupExpiredData_RemovesOldConvListEntries(t *testing.T) {
 
 	userID := int64(90007)
 	convKey := fmt.Sprintf("conv_list:%d", userID)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	for i := 0; i < 5; i++ {
-		oldTS := now - int64(5*24*3600) + int64(i*3600)
+		oldTS := now - int64(5*24*3600*1000) + int64(i*3600*1000)
 		rdb.ZAdd(ctx, convKey, redis.Z{Score: float64(oldTS), Member: fmt.Sprintf("conv_old_%d", i)})
 	}
 	for i := 0; i < 5; i++ {
-		newTS := now - int64(i*60)
+		newTS := now - int64(i*60*1000)
 		rdb.ZAdd(ctx, convKey, redis.Z{Score: float64(newTS), Member: fmt.Sprintf("conv_new_%d", i)})
 	}
 
@@ -304,13 +304,13 @@ func TestCleanupExpiredData_ScanFindsMultipleKeys(t *testing.T) {
 
 	logger := zaptest.NewLogger(t)
 	ctx := context.Background()
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	// 为多个用户创建收件箱键
 	for _, uid := range []int64{90010, 90011, 90012} {
 		key := fmt.Sprintf("inbox:%d", uid)
 		for i := 0; i < 5; i++ {
-			oldTS := now - int64(5*24*3600)
+			oldTS := now - int64(5*24*3600*1000)
 			rdb.ZAdd(ctx, key, redis.Z{Score: float64(oldTS), Member: fmt.Sprintf("old_%d_%d", uid, i)})
 		}
 		rdb.ZAdd(ctx, key, redis.Z{Score: float64(now), Member: fmt.Sprintf("new_%d", uid)})
@@ -336,11 +336,11 @@ func TestCleanupExpiredData_ConvListNoRankTrim(t *testing.T) {
 
 	userID := int64(90008)
 	convKey := fmt.Sprintf("conv_list:%d", userID)
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	// 添加 50 条近期 conv_list 记录 — conv_list 无排名上限，因此全部保留
 	for i := 0; i < 50; i++ {
-		ts := now - int64(i*60) // 全部为近期
+		ts := now - int64(i*60*1000) // 全部为近期
 		rdb.ZAdd(ctx, convKey, redis.Z{Score: float64(ts), Member: fmt.Sprintf("conv_%d", i)})
 	}
 

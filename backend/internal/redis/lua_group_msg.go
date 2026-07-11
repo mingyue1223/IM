@@ -17,9 +17,9 @@ const (
 
 // 从群聊 Lua 错误码映射的客户端错误码。
 const (
-	CodeGMNotMember  = 5001
-	CodeGMMuted      = 5002
-	CodeGMDuplicate  = 5003
+	CodeGMNotMember = 5001
+	CodeGMMuted     = 5002
+	CodeGMDuplicate = 5003
 )
 
 // MapGroupLuaErrToClientCode 将群聊消息 Lua 错误码转换为客户端错误码。
@@ -73,8 +73,19 @@ if dedup == false then
     return {3, 0, 0, 0, 0}
 end
 
--- 4. Allocate global message ID
-local msgID = redis.call('INCR', 'msg_id_global')
+-- 4. Allocate a global message ID from Redis server time.
+-- Format: Unix milliseconds * 1000 + per-millisecond sequence (1..999).
+local redisTime = redis.call('TIME')
+local milliseconds = redisTime[1] * 1000 + math.floor(redisTime[2] / 1000)
+local sequenceKey = 'msg_id_seq:' .. milliseconds
+local sequence = redis.call('INCR', sequenceKey)
+if sequence == 1 then
+    redis.call('EXPIRE', sequenceKey, 2)
+end
+if sequence > 999 then
+    return redis.error_reply('message ID sequence overflow')
+end
+local msgID = milliseconds * 1000 + sequence
 
 -- 5. Allocate group sequence number
 local groupSeq = redis.call('INCR', 'group_seq:' .. groupID)

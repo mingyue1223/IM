@@ -22,9 +22,9 @@ func NewMomentHandler(momentSvc *service.MomentService) *MomentHandler {
 // ── 请求/响应 DTO ──
 
 type publishMomentRequest struct {
-	Content    string  `json:"content" binding:"required"`
+	Content    string  `json:"content"`
 	MediaUrls  *string `json:"media_urls,omitempty"` // 可空的 JSON 字符串
-	Visibility int     `json:"visibility"`            // 1=全部, 2=好友, 3=私密
+	Visibility *int    `json:"visibility,omitempty"`  // nil=默认全部, 1=全部, 2=好友, 3=私密
 }
 
 type publishMomentResponse struct {
@@ -55,7 +55,7 @@ type unlikeMomentResponse struct {
 }
 
 type commentMomentRequest struct {
-	Content string `json:"content" binding:"required"`
+	Content string `json:"content"`
 }
 
 type commentMomentResponse struct {
@@ -99,9 +99,9 @@ func (h *MomentHandler) PublishMoment(c *gin.Context) {
 	}
 
 	// 如果未指定，默认可见性为 1（全部可见）
-	visibility := req.Visibility
-	if visibility == 0 {
-		visibility = 1
+	visibility := 1
+	if req.Visibility != nil {
+		visibility = *req.Visibility
 	}
 
 	momentID, err := h.momentSvc.PublishMoment(c.Request.Context(), userID.(int64), req.Content, req.MediaUrls, visibility)

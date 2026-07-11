@@ -36,8 +36,18 @@ if dedup == false then
     return {3, 0, 0, 0, 0}
 end
 
--- 4. 分配全局消息ID
-local msgID = redis.call('INCR', 'msg_id_global')
+-- 4. 基于 Redis 服务器时间分配全局消息ID
+local redisTime = redis.call('TIME')
+local milliseconds = redisTime[1] * 1000 + math.floor(redisTime[2] / 1000)
+local sequenceKey = 'msg_id_seq:' .. milliseconds
+local sequence = redis.call('INCR', sequenceKey)
+if sequence == 1 then
+    redis.call('EXPIRE', sequenceKey, 2)
+end
+if sequence > 999 then
+    return redis.error_reply('message ID sequence overflow')
+end
+local msgID = milliseconds * 1000 + sequence
 
 -- 5. 分配群序列号
 local groupSeq = redis.call('INCR', 'group_seq:' .. groupID)

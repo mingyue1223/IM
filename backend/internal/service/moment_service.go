@@ -94,6 +94,14 @@ func (s *MomentService) GetMoment(ctx context.Context, viewerID int64, momentID 
 	if moment == nil {
 		return nil, fmt.Errorf(ErrMomentNotFound)
 	}
+	visible, err := s.canViewMoment(ctx, viewerID, moment)
+	if err != nil {
+		return nil, fmt.Errorf("检查动态可见性: %w", err)
+	}
+	if !visible {
+		// 对无权查看者返回“未找到”，避免泄露动态是否存在。
+		return nil, fmt.Errorf(ErrMomentNotFound)
+	}
 	batch := []model.Moment{*moment}
 	s.enrichLikes(ctx, viewerID, batch)
 	return &batch[0], nil
@@ -107,12 +115,66 @@ func (s *MomentService) GetUserMoments(ctx context.Context, viewerID int64, user
 	if limit > 100 {
 		limit = 100
 	}
-	moments, err := s.mysqlRepo.GetMomentsByUser(ctx, userID, limit, offset)
-	if err != nil {
-		return nil, fmt.Errorf("按用户获取动态: %w", err)
+	if offset < 0 {
+		offset = 0
 	}
-	s.enrichLikes(ctx, viewerID, moments)
-	return moments, nil
+
+	// offset/limit 作用于“当前查看者可见的动态”，隐藏动态不能占用分页名额。
+	const scanBatchSize = 100
+	visibleMoments := make([]model.Moment, 0, limit)
+	visibleSkipped := 0
+	rawOffset := 0
+	for len(visibleMoments) < limit {
+		batch, err := s.mysqlRepo.GetMomentsByUser(ctx, userID, scanBatchSize, rawOffset)
+		if err != nil {
+			return nil, fmt.Errorf("按用户获取动态: %w", err)
+		}
+		if len(batch) == 0 {
+			break
+		}
+		rawOffset += len(batch)
+
+		for i := range batch {
+			visible, err := s.canViewMoment(ctx, viewerID, &batch[i])
+			if err != nil {
+				return nil, fmt.Errorf("检查动态可见性: %w", err)
+			}
+			if !visible {
+				continue
+			}
+			if visibleSkipped < offset {
+				visibleSkipped++
+				continue
+			}
+			visibleMoments = append(visibleMoments, batch[i])
+			if len(visibleMoments) == limit {
+				break
+			}
+		}
+		if len(batch) < scanBatchSize {
+			break
+		}
+	}
+
+	s.enrichLikes(ctx, viewerID, visibleMoments)
+	return visibleMoments, nil
+}
+
+// canViewMoment 是详情、用户动态列表和 Feed 共用的可见性规则。
+func (s *MomentService) canViewMoment(ctx context.Context, viewerID int64, moment *model.Moment) (bool, error) {
+	if moment.AuthorID == viewerID {
+		return true, nil
+	}
+	switch moment.Visibility {
+	case 1:
+		return true, nil
+	case 2:
+		return s.mysqlRepo.IsFriend(ctx, viewerID, moment.AuthorID)
+	case 3:
+		return false, nil
+	default:
+		return false, nil
+	}
 }
 
 // LikeMoment 为动态点赞。写路径走 Redis（SADD 判重 + INCR 计数，Lua 原子），
@@ -367,14 +429,18 @@ func (s *MomentService) GetFeed(ctx context.Context, userID int64, cursor string
 		byID[m.ID] = m
 	}
 
-	// 按归并顺序重排，并做读时可见性过滤（私密动态仅作者本人可见）。
+	// 按归并顺序重排，并使用与详情、用户动态列表相同的可见性规则。
 	moments := make([]model.Moment, 0, len(merged))
 	for _, e := range merged {
 		m, ok := byID[e.MomentID]
 		if !ok {
 			continue // 动态已删除，读时容错跳过
 		}
-		if m.Visibility == 3 && m.AuthorID != userID {
+		visible, err := s.canViewMoment(ctx, userID, &m)
+		if err != nil {
+			return nil, "", fmt.Errorf("检查动态可见性: %w", err)
+		}
+		if !visible {
 			continue
 		}
 		moments = append(moments, m)

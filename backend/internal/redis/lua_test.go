@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -14,9 +15,13 @@ import (
 )
 
 // setupTestRedis 连接到本地 Redis 实例用于集成测试。
-// 需要 Redis 服务器运行在 localhost:6379 (例如通过 docker-compose)。
+// 默认使用 docker-compose 暴露的 16379，可通过 GOIM_TEST_REDIS_ADDR 覆盖。
 func setupTestRedis(t *testing.T) *goredis.Client {
-	rdb := goredis.NewClient(&goredis.Options{Addr: "localhost:6379"})
+	addr := os.Getenv("GOIM_TEST_REDIS_ADDR")
+	if addr == "" {
+		addr = "localhost:16379"
+	}
+	rdb := goredis.NewClient(&goredis.Options{Addr: addr, DB: 1})
 	err := rdb.Ping(context.Background()).Err()
 	if err != nil {
 		t.Skipf("Redis 在 localhost:6379 不可用: %v", err)
@@ -41,6 +46,8 @@ func TestPrivateMsgCheck(t *testing.T) {
 	rdb.Set(ctx, "friend:1:2", "1", 0)
 	rdb.Set(ctx, "friend:2:1", "1", 0)
 	rdb.Set(ctx, "online:2", "1", 0)
+	// 模拟旧全局计数器被重置；新 ID 生成不应依赖它。
+	rdb.Set(ctx, "msg_id_global", "1", 0)
 
 	defer cleanupKeys(t, rdb, ctx, "friend:1:2", "friend:2:1", "online:2", "msg_id_global")
 
@@ -49,12 +56,19 @@ func TestPrivateMsgCheck(t *testing.T) {
 
 	assert.Equal(t, PMErrOK, result.ErrCode, "有效好友关系应成功")
 	assert.Greater(t, result.MsgID, int64(0), "msgID 应被分配")
+	assert.Greater(t, result.MsgID, int64(1_000_000_000_000), "msgID 应包含毫秒时间前缀")
+	assert.Less(t, result.MsgID, int64(9_007_199_254_740_991), "msgID 必须保持 JavaScript 安全整数")
 	assert.True(t, result.IsOnline, "接收者应在线")
 	assert.True(t, result.IsFriend, "应为好友")
 	assert.False(t, result.IsBlocked, "不应被拉黑")
 
+	second, err := ExecPrivateMsgCheck(rdb, ctx, 1, 2, "client-msg-002-unique")
+	require.NoError(t, err)
+	assert.NotEqual(t, result.MsgID, second.MsgID, "连续分配的消息 ID 必须唯一")
+
 	// 清理去重键
 	rdb.Del(ctx, "msg_dedup:1:client-msg-001")
+	rdb.Del(ctx, "msg_dedup:1:client-msg-002-unique")
 }
 
 func TestPrivateMsgCheckNotFriend(t *testing.T) {
@@ -148,6 +162,8 @@ func TestGroupMsgCheck(t *testing.T) {
 
 	assert.Equal(t, GMErrOK, result.ErrCode, "应成功")
 	assert.Greater(t, result.MsgID, int64(0), "msgID 应被分配")
+	assert.Greater(t, result.MsgID, int64(1_000_000_000_000), "msgID 应包含毫秒时间前缀")
+	assert.Less(t, result.MsgID, int64(9_007_199_254_740_991), "msgID 必须保持 JavaScript 安全整数")
 	assert.Greater(t, result.GroupSeq, int64(0), "groupSeq 应被分配")
 	assert.True(t, result.IsMember, "应为群成员")
 	assert.False(t, result.IsMuted, "不应被禁言")
@@ -330,10 +346,11 @@ func TestRevokeMsgPrivate(t *testing.T) {
 	rdb := setupTestRedis(t)
 	ctx := context.Background()
 
-	userID := int64(200) // 接收者
+	userID := int64(100) // 原消息发送者
 	convID := "p_100_200"
 	msgID := int64(12345)
 	inboxKey := fmt.Sprintf("inbox:%d", userID)
+	rdb.Del(ctx, inboxKey)
 
 	// 准备：向收件箱添加一条最近发送的消息
 	ts := time.Now().UnixMilli() - 30000 // 30 秒前（在 2 分钟窗口内）
@@ -441,40 +458,41 @@ func TestRevokeMsgGroup(t *testing.T) {
 	groupID := "5"
 	msgID := int64(12347)
 	outboxKey := fmt.Sprintf("outbox:%s", groupID)
+	rdb.Del(ctx, outboxKey)
 
 	// 对于群聊撤回，userID 仅作为参数，但 ZSet 键为 outbox:{groupID}
 	ts := time.Now().UnixMilli() - 10000 // 10 秒前
 	msg := map[string]interface{}{
-		"msgId":      msgID,
-		"groupId":    5,
-		"convId":     convID,
-		"convType":   2,
-		"fromId":     100,
-		"msgType":    1,
-		"content":    "hello group",
-		"timestamp":  ts,
-		"groupSeq":   42,
+		"msgId":     msgID,
+		"groupId":   5,
+		"convId":    convID,
+		"convType":  2,
+		"fromId":    100,
+		"msgType":   1,
+		"content":   "hello group",
+		"timestamp": ts,
+		"groupSeq":  42,
 	}
 	msgJSON, _ := json.Marshal(msg)
 	rdb.ZAdd(ctx, outboxKey, goredis.Z{Score: float64(ts), Member: string(msgJSON)})
 
 	revokeMsg := map[string]interface{}{
-		"msgId":      msgID,
-		"groupId":    5,
-		"convId":     convID,
-		"convType":   2,
-		"fromId":     100,
-		"msgType":    6,
-		"content":    "消息已撤回",
-		"timestamp":  ts,
-		"groupSeq":   42,
+		"msgId":     msgID,
+		"groupId":   5,
+		"convId":    convID,
+		"convType":  2,
+		"fromId":    100,
+		"msgType":   6,
+		"content":   "消息已撤回",
+		"timestamp": ts,
+		"groupSeq":  42,
 	}
 	revokeJSON, _ := json.Marshal(revokeMsg)
 
 	defer cleanupKeys(t, rdb, ctx, outboxKey)
 
-	// userID=0 用于群聊撤回（不影响键解析，convID 决定 ZSet）
-	ok, err := ExecRevokeMsg(rdb, ctx, 0, convID, msgID, string(revokeJSON), time.Now().UnixMilli())
+	// 仅原消息发送者可以撤回群消息。
+	ok, err := ExecRevokeMsg(rdb, ctx, 100, convID, msgID, string(revokeJSON), time.Now().UnixMilli())
 	require.NoError(t, err)
 
 	assert.True(t, ok, "群聊消息在 2 分钟内撤回应成功")

@@ -12,8 +12,8 @@ import (
 
 	"github.com/goim/goim/internal/conn"
 	"github.com/goim/goim/internal/model"
-	redislua "github.com/goim/goim/internal/redis"
 	"github.com/goim/goim/internal/protocol"
+	redislua "github.com/goim/goim/internal/redis"
 	"github.com/goim/goim/internal/repository"
 )
 
@@ -75,7 +75,8 @@ func (s *MsgService) HandleSendMessage(userID int64, data []byte) {
 }
 
 // handlePrivateMsg 处理私聊（一对一）消息。
-// 流程：Lua 检查 → 构建 InboxMessage → 发布到 MQ → 发送 serverAck
+// 流程：Lua 检查 → 发布到 MQ。
+// serverAck 与接收方推送统一由 MQ 消费者在消息可操作后发送。
 func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *model.SendMessage) {
 	checkResult, err := s.redisRepo.ExecPrivateMsgCheck(ctx, senderID, req.ToID, req.ClientMsgID)
 	if err != nil {
@@ -101,30 +102,15 @@ func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *
 		return
 	}
 
-	// 构建会话 ID
-	convID := model.BuildConvID(model.ConvTypePrivate, senderID, req.ToID)
-
-	// 构建 InboxMessage（将由 MQ 消费者持久化到收件箱）
-	inboxMsg := model.InboxMessage{
-		MsgID:      checkResult.MsgID,
-		ConvID:     convID,
-		ConvType:   model.ConvTypePrivate,
-		FromID:     senderID,
-		ToID:       req.ToID,
-		MsgType:    req.MsgType,
-		Content:    req.Content,
-		ReadStatus: 0,
-		Timestamp:  req.Timestamp,
-	}
-
 	// 构建 PrivateMessage 用于 MQ 发布
 	pm := &model.PrivateMessage{
-		ID:         checkResult.MsgID,
-		SenderID:   senderID,
-		ReceiverID: req.ToID,
-		Content:    req.Content,
-		MsgType:    req.MsgType,
-		CreatedAt:  time.UnixMilli(req.Timestamp),
+		ID:          checkResult.MsgID,
+		ClientMsgID: req.ClientMsgID,
+		SenderID:    senderID,
+		ReceiverID:  req.ToID,
+		Content:     req.Content,
+		MsgType:     req.MsgType,
+		CreatedAt:   time.UnixMilli(req.Timestamp),
 	}
 
 	// 发布到 MQ
@@ -140,22 +126,11 @@ func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *
 		zap.Int64("receiverID", req.ToID),
 	)
 
-	// 向发送方发送 serverAck
-	ack := &model.ServerAck{
-		ClientMsgID: req.ClientMsgID,
-		ServerMsgID: checkResult.MsgID,
-		Timestamp:   time.Now().UnixMilli(),
-	}
-	s.pushToUser(senderID, protocol.TypeServerAck, ack)
-
-	// 如果接收方在线，直接推送 InboxMessage 实现实时送达
-	if checkResult.IsOnline {
-		s.pushToUser(req.ToID, protocol.TypeMsg, inboxMsg)
-	}
 }
 
 // handleGroupMsg 处理群聊消息。
-// 流程：Lua 检查 → 构建 InboxMessage → 发布到 MQ → 发送带有 groupSeq 的 serverAck
+// 流程：Lua 检查 → 构建 GroupMessage → 发布到 MQ。
+// 带 groupSeq 的 serverAck 由 MQ 消费者在消息可操作后发送。
 func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *model.SendMessage) {
 	checkResult, err := s.redisRepo.ExecGroupMsgCheck(ctx, req.ToID, senderID, req.ClientMsgID)
 	if err != nil {
@@ -183,13 +158,14 @@ func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *mo
 
 	// 构建 GroupMessage 用于 MQ 发布
 	gm := &model.GroupMessage{
-		ID:        checkResult.MsgID,
-		GroupID:   req.ToID,
-		SenderID:  senderID,
-		Content:   req.Content,
-		MsgType:   req.MsgType,
-		GroupSeq:  checkResult.GroupSeq,
-		CreatedAt: time.UnixMilli(req.Timestamp),
+		ID:          checkResult.MsgID,
+		ClientMsgID: req.ClientMsgID,
+		GroupID:     req.ToID,
+		SenderID:    senderID,
+		Content:     req.Content,
+		MsgType:     req.MsgType,
+		GroupSeq:    checkResult.GroupSeq,
+		CreatedAt:   time.UnixMilli(req.Timestamp),
 	}
 
 	// 发布到 MQ
@@ -205,14 +181,6 @@ func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *mo
 		zap.Int64("groupSeq", checkResult.GroupSeq),
 	)
 
-	// 向发送方发送 serverAck（包含 groupSeq）
-	ack := &model.ServerAck{
-		ClientMsgID: req.ClientMsgID,
-		ServerMsgID: checkResult.MsgID,
-		GroupSeq:    checkResult.GroupSeq,
-		Timestamp:   time.Now().UnixMilli(),
-	}
-	s.pushToUser(senderID, protocol.TypeServerAck, ack)
 }
 
 // ──────────────────────────────────────────────────────
@@ -291,7 +259,7 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 	ctx := context.Background()
 
 	// ── 1. 从收件箱拉取私聊消息 ──
-	privateMsgs, err := s.redisRepo.ReadInbox(ctx, userID, req.LastSyncTime, req.BatchSize+1)
+	privateMsgs, err := s.redisRepo.ReadInbox(ctx, userID, req.LastSyncTime, req.LastSyncMsgID, req.BatchSize+1)
 	if err != nil {
 		s.logger.Error("ReadInbox 读取失败", zap.Error(err))
 		s.sendError(userID, 500, "同步失败")
@@ -313,7 +281,7 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 		// 多拉取 3 倍 batchSize 以弥补 groupSeq 过滤带来的损耗。
 		// 许多发件箱条目可能因低于 lastReadSeq 而被丢弃，
 		// 因此仅请求 batchSize+1 条不足以可靠地检测 hasMore。
-		outboxMsgs, err := s.redisRepo.ReadOutbox(ctx, gid, req.LastSyncTime, req.BatchSize*3)
+		outboxMsgs, err := s.redisRepo.ReadOutbox(ctx, gid, req.LastSyncTime, req.LastSyncMsgID, req.BatchSize*3)
 		if err != nil {
 			s.logger.Warn("ReadOutbox 读取失败", zap.Int64("groupID", gid), zap.Error(err))
 			continue
@@ -329,31 +297,37 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 	// ── 3. 合并并排序所有消息 ──
 	allMsgs := append(privateMsgs, groupMsgs...)
 	sort.Slice(allMsgs, func(i, j int) bool {
-		return allMsgs[i].Timestamp < allMsgs[j].Timestamp
+		if allMsgs[i].Timestamp != allMsgs[j].Timestamp {
+			return allMsgs[i].Timestamp < allMsgs[j].Timestamp
+		}
+		return allMsgs[i].MsgID < allMsgs[j].MsgID
 	})
 
 	// ── 4. 判断 hasMore ──
 	// 如果符合条件的消息数量 >= batchSize，则后续可能还有更多消息。
 	// 这处理了群聊过滤导致数量低于 batchSize 的情况，
 	// 即使实际上还有更多符合条件的条目存在。
-	hasMore := len(allMsgs) >= req.BatchSize
+	hasMore := len(allMsgs) > req.BatchSize
 	if hasMore {
 		allMsgs = allMsgs[:req.BatchSize]
 	}
 
 	// ── 5. 确定 syncTime ──
 	var syncTime int64
+	var syncMsgID int64
 	if len(allMsgs) > 0 {
 		syncTime = allMsgs[len(allMsgs)-1].Timestamp
+		syncMsgID = allMsgs[len(allMsgs)-1].MsgID
 	} else {
 		syncTime = time.Now().UnixMilli()
 	}
 
 	// ── 6. 推送 SyncBatch ──
 	batch := &model.SyncBatch{
-		Messages: allMsgs,
-		HasMore:  hasMore,
-		SyncTime: syncTime,
+		Messages:  allMsgs,
+		HasMore:   hasMore,
+		SyncTime:  syncTime,
+		SyncMsgID: syncMsgID,
 	}
 	s.pushToUser(userID, protocol.TypeSyncBatch, batch)
 
@@ -361,7 +335,7 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 	for _, gid := range groupIDs {
 		convID := model.BuildConvID(model.ConvTypeGroup, gid, 0)
 		maxSeq := int64(0)
-		for _, m := range groupMsgs {
+		for _, m := range allMsgs {
 			if m.ConvID == convID && m.GroupSeq > maxSeq {
 				maxSeq = m.GroupSeq
 			}
@@ -403,7 +377,7 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 
 // HandleRevokeMsg 处理来自客户端的消息撤回请求。
 // 它通过 Lua 脚本原子性地将收件箱/发件箱 ZSet 中的原始消息替换为"已撤回"版本
-//（msgType=6），然后向对方推送 msgRevoked 通知。
+// （msgType=6），然后向对方推送 msgRevoked 通知。
 func (s *MsgService) HandleRevokeMsg(userID int64, data []byte) {
 	var req model.RevokeMsgReq
 	if err := json.Unmarshal(data, &req); err != nil {

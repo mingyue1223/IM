@@ -12,8 +12,8 @@ import (
 
 	"github.com/goim/goim/internal/conn"
 	"github.com/goim/goim/internal/model"
-	redislua "github.com/goim/goim/internal/redis"
 	"github.com/goim/goim/internal/protocol"
+	redislua "github.com/goim/goim/internal/redis"
 )
 
 // ──────────────────────────────────────────────────────
@@ -75,13 +75,14 @@ func (m *mockRedisRepo) WriteOutbox(_ context.Context, groupID int64, msg *model
 	return nil
 }
 
-func (m *mockRedisRepo) ReadInbox(_ context.Context, userID int64, lastSyncTime int64, batchSize int) ([]model.InboxMessage, error) {
+func (m *mockRedisRepo) ReadInbox(_ context.Context, userID int64, lastSyncTime, lastSyncMsgID int64, batchSize int) ([]model.InboxMessage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	msgs := m.inboxMessages[userID]
 	var result []model.InboxMessage
 	for _, msg := range msgs {
-		if msg.Timestamp >= lastSyncTime {
+		if msg.Timestamp > lastSyncTime ||
+			(msg.Timestamp == lastSyncTime && (lastSyncMsgID == 0 || msg.MsgID > lastSyncMsgID)) {
 			result = append(result, msg)
 			if len(result) >= batchSize {
 				break
@@ -91,13 +92,14 @@ func (m *mockRedisRepo) ReadInbox(_ context.Context, userID int64, lastSyncTime 
 	return result, nil
 }
 
-func (m *mockRedisRepo) ReadOutbox(_ context.Context, groupID int64, lastSyncTime int64, limit int) ([]model.InboxMessage, error) {
+func (m *mockRedisRepo) ReadOutbox(_ context.Context, groupID int64, lastSyncTime, lastSyncMsgID int64, limit int) ([]model.InboxMessage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	msgs := m.outboxMessages[groupID]
 	var result []model.InboxMessage
 	for _, msg := range msgs {
-		if msg.Timestamp >= lastSyncTime {
+		if msg.Timestamp > lastSyncTime ||
+			(msg.Timestamp == lastSyncTime && (lastSyncMsgID == 0 || msg.MsgID > lastSyncMsgID)) {
 			result = append(result, msg)
 			if len(result) >= limit {
 				break
@@ -166,7 +168,7 @@ func (m *mockRedisRepo) GetGroupMemberships(_ context.Context, userID int64) ([]
 func (m *mockRedisRepo) GetGroupMembers(_ context.Context, groupID int64) ([]int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-		// 返回空列表 — 群成员推送由 MQ 消费者处理，而非 MsgService
+	// 返回空列表 — 群成员推送由 MQ 消费者处理，而非 MsgService
 	return []int64{}, nil
 }
 
@@ -177,12 +179,20 @@ func (m *mockRedisRepo) CheckDuplicate(_ context.Context, userID int64, clientMs
 	return false, nil
 }
 
-func (m *mockRedisRepo) TrimInbox(_ context.Context, userID int64, maxCount int) error { return nil }
+func (m *mockRedisRepo) TrimInbox(_ context.Context, userID int64, maxCount int) error   { return nil }
 func (m *mockRedisRepo) TrimOutbox(_ context.Context, groupID int64, maxCount int) error { return nil }
-func (m *mockRedisRepo) TrimInboxByTime(_ context.Context, userID int64, beforeTimestamp int64) error { return nil }
-func (m *mockRedisRepo) TrimOutboxByTime(_ context.Context, groupID int64, beforeTimestamp int64) error { return nil }
-func (m *mockRedisRepo) TrimConvListByTime(_ context.Context, userID int64, beforeTimestamp int64) error { return nil }
-func (m *mockRedisRepo) TrimTimelineByTime(_ context.Context, userID int64, beforeTimestamp int64) error { return nil }
+func (m *mockRedisRepo) TrimInboxByTime(_ context.Context, userID int64, beforeTimestamp int64) error {
+	return nil
+}
+func (m *mockRedisRepo) TrimOutboxByTime(_ context.Context, groupID int64, beforeTimestamp int64) error {
+	return nil
+}
+func (m *mockRedisRepo) TrimConvListByTime(_ context.Context, userID int64, beforeTimestamp int64) error {
+	return nil
+}
+func (m *mockRedisRepo) TrimTimelineByTime(_ context.Context, userID int64, beforeTimestamp int64) error {
+	return nil
+}
 
 func (m *mockRedisRepo) ExecPrivateMsgCheck(_ context.Context, senderID, receiverID int64, clientMsgID string) (*redislua.PrivateMsgCheckResult, error) {
 	m.mu.Lock()
@@ -219,17 +229,23 @@ func (m *mockRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _
 func (m *mockRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
-func (m *mockRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error { return nil }
-func (m *mockRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error        { return nil }
-func (m *mockRedisRepo) MarkBigUser(_ context.Context, _ int64) error                                 { return nil }
-func (m *mockRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error)                 { return nil, nil }
+func (m *mockRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error {
+	return nil
+}
+func (m *mockRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error {
+	return nil
+}
+func (m *mockRedisRepo) MarkBigUser(_ context.Context, _ int64) error { return nil }
+func (m *mockRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error) {
+	return nil, nil
+}
 func (m *mockRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
 func (m *mockRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
-func (m *mockRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
+func (m *mockRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error { return nil }
 
 // mockMQRepo 实现 repository.MQRepo 接口，用于测试。
 type mockMQRepo struct {
@@ -237,8 +253,8 @@ type mockMQRepo struct {
 	privateMsgs    []*model.PrivateMessage
 	groupMsgs      []*model.GroupMessage
 	publishErr     error
-	publishPrivate  bool
-	publishGroup    bool
+	publishPrivate bool
+	publishGroup   bool
 }
 
 func newMockMQRepo() *mockMQRepo {
@@ -266,7 +282,7 @@ func (m *mockMQRepo) PublishMomentPush(_ context.Context, _ *model.Moment) error
 }
 
 // ──────────────────────────────────────────────────────
-	// 辅助函数
+// 辅助函数
 // ──────────────────────────────────────────────────────
 
 func testLogger() *zap.Logger {
@@ -337,34 +353,21 @@ func TestPrivateMsgSend_Success(t *testing.T) {
 	assert.Equal(t, int64(1), mqMock.privateMsgs[0].SenderID)
 	assert.Equal(t, int64(2), mqMock.privateMsgs[0].ReceiverID)
 	assert.Equal(t, "hello", mqMock.privateMsgs[0].Content)
+	assert.Equal(t, "client-msg-1", mqMock.privateMsgs[0].ClientMsgID)
 
-	// 验证：serverAck 已发送给发送方
-	msg, ok := drainSendCh(sender)
-	assert.True(t, ok, "期望在发送方 SendCh 上收到 serverAck")
-	wsMsg, err := decodeWsMessage(msg)
-	assert.NoError(t, err)
-	assert.Equal(t, protocol.TypeServerAck, wsMsg.Type)
+	// serverAck 由 MQ 消费者在消息写入 Redis 后发送，服务层不能提前确认。
+	select {
+	case pushed := <-sender.SendCh:
+		t.Fatalf("服务层不应提前向发送方发送 serverAck: %s", pushed)
+	default:
+	}
 
-	var ack model.ServerAck
-	assert.NoError(t, json.Unmarshal(wsMsg.Data, &ack))
-	assert.Equal(t, "client-msg-1", ack.ClientMsgID)
-	assert.Equal(t, int64(1001), ack.ServerMsgID)
-
-	// 验证：消息已推送给接收方（isOnline=true）
-	msg, ok = drainSendCh(receiver)
-	assert.True(t, ok, "期望在接收方 SendCh 上收到消息推送")
-	wsMsg, err = decodeWsMessage(msg)
-	assert.NoError(t, err)
-	assert.Equal(t, protocol.TypeMsg, wsMsg.Type)
-
-	var inboxMsg model.InboxMessage
-	assert.NoError(t, json.Unmarshal(wsMsg.Data, &inboxMsg))
-	assert.Equal(t, int64(1001), inboxMsg.MsgID)
-	assert.Equal(t, "p_1_2", inboxMsg.ConvID)
-	assert.Equal(t, model.ConvTypePrivate, inboxMsg.ConvType)
-	assert.Equal(t, int64(1), inboxMsg.FromID)
-	assert.Equal(t, int64(2), inboxMsg.ToID)
-	assert.Equal(t, "hello", inboxMsg.Content)
+	// 接收方推送由 MQ 消费者在 Redis 写入成功后统一完成。
+	select {
+	case pushed := <-receiver.SendCh:
+		t.Fatalf("服务层不应直接向接收方推送消息: %s", pushed)
+	default:
+	}
 }
 
 func TestPrivateMsgSend_NotFriend(t *testing.T) {
@@ -521,14 +524,14 @@ func TestPrivateMsgSend_ReceiverOffline(t *testing.T) {
 
 	svc.HandleSendMessage(1, data)
 
-	// 验证：serverAck 已发送给发送方
-	msg, ok := drainSendCh(sender)
-	assert.True(t, ok)
-	wsMsg, _ := decodeWsMessage(msg)
-	assert.Equal(t, protocol.TypeServerAck, wsMsg.Type)
-
 	// 验证：MQ 仍然发布（当接收方上线时通过同步投递）
 	assert.True(t, mqMock.publishPrivate)
+	assert.Equal(t, "client-msg-offline", mqMock.privateMsgs[0].ClientMsgID)
+	select {
+	case pushed := <-sender.SendCh:
+		t.Fatalf("服务层不应提前向发送方发送 serverAck: %s", pushed)
+	default:
+	}
 }
 
 func TestPrivateMsgSend_LuaError(t *testing.T) {
@@ -606,19 +609,14 @@ func TestGroupMsgSend_Success(t *testing.T) {
 	assert.Equal(t, int64(3001), mqMock.groupMsgs[0].ID)
 	assert.Equal(t, int64(100), mqMock.groupMsgs[0].GroupID)
 	assert.Equal(t, int64(10), mqMock.groupMsgs[0].GroupSeq)
+	assert.Equal(t, "client-msg-group-1", mqMock.groupMsgs[0].ClientMsgID)
 
-	// 验证：serverAck 携带 groupSeq 发送给发送方
-	msg, ok := drainSendCh(sender)
-	assert.True(t, ok)
-	wsMsg, err := decodeWsMessage(msg)
-	assert.NoError(t, err)
-	assert.Equal(t, protocol.TypeServerAck, wsMsg.Type)
-
-	var ack model.ServerAck
-	assert.NoError(t, json.Unmarshal(wsMsg.Data, &ack))
-	assert.Equal(t, "client-msg-group-1", ack.ClientMsgID)
-	assert.Equal(t, int64(3001), ack.ServerMsgID)
-	assert.Equal(t, int64(10), ack.GroupSeq)
+	// serverAck 由 MQ 消费者在消息写入 Redis 后发送，服务层不能提前确认。
+	select {
+	case pushed := <-sender.SendCh:
+		t.Fatalf("服务层不应提前向发送方发送 serverAck: %s", pushed)
+	default:
+	}
 }
 
 func TestGroupMsgSend_NotMember(t *testing.T) {
@@ -847,6 +845,52 @@ func TestSyncReq_DefaultBatchSize(t *testing.T) {
 	// 当没有消息时，syncTime 设置为当前服务器时间（非零）
 	assert.True(t, batch.SyncTime > 0, "即使没有消息，syncTime 也应为非零值")
 	assert.False(t, batch.HasMore)
+}
+
+func TestSyncReq_CompositeCursorSameTimestamp(t *testing.T) {
+	redisMock := newMockRedisRepo()
+	const timestamp = int64(1700000000000)
+	redisMock.inboxMessages[1] = []model.InboxMessage{
+		{MsgID: 101, ConvID: "p_1_2", ConvType: 1, FromID: 2, ToID: 1, Timestamp: timestamp},
+		{MsgID: 102, ConvID: "p_1_2", ConvType: 1, FromID: 2, ToID: 1, Timestamp: timestamp},
+		{MsgID: 103, ConvID: "p_1_2", ConvType: 1, FromID: 2, ToID: 1, Timestamp: timestamp},
+	}
+
+	cm := conn.NewConnectionManager()
+	client := conn.NewClientConnection(1, nil)
+	cm.Register(1, client)
+	svc := NewMsgService(redisMock, newMockMQRepo(), cm, testLogger())
+
+	readBatch := func(req model.SyncReq) model.SyncBatch {
+		data, _ := json.Marshal(req)
+		svc.HandleSyncReq(1, data)
+		raw, ok := drainSendCh(client)
+		assert.True(t, ok)
+		wsMsg, err := decodeWsMessage(raw)
+		assert.NoError(t, err)
+		assert.Equal(t, protocol.TypeSyncBatch, wsMsg.Type)
+		var batch model.SyncBatch
+		assert.NoError(t, json.Unmarshal(wsMsg.Data, &batch))
+		_, ok = drainSendCh(client) // ConvSync
+		assert.True(t, ok)
+		return batch
+	}
+
+	first := readBatch(model.SyncReq{LastSyncTime: 0, BatchSize: 2})
+	assert.True(t, first.HasMore)
+	assert.Equal(t, []int64{101, 102}, []int64{first.Messages[0].MsgID, first.Messages[1].MsgID})
+	assert.Equal(t, timestamp, first.SyncTime)
+	assert.Equal(t, int64(102), first.SyncMsgID)
+
+	second := readBatch(model.SyncReq{
+		LastSyncTime:  first.SyncTime,
+		LastSyncMsgID: first.SyncMsgID,
+		BatchSize:     2,
+	})
+	assert.False(t, second.HasMore)
+	if assert.Len(t, second.Messages, 1) {
+		assert.Equal(t, int64(103), second.Messages[0].MsgID)
+	}
 }
 
 func TestRevokeMsg_Success_Private(t *testing.T) {
@@ -1079,9 +1123,9 @@ func TestPrivateMsgSend_MQPublishFail(t *testing.T) {
 func TestGetOtherPartyID(t *testing.T) {
 	assert.Equal(t, int64(2), getOtherPartyID("p_1_2", 1))
 	assert.Equal(t, int64(1), getOtherPartyID("p_1_2", 2))
-	assert.Equal(t, int64(0), getOtherPartyID("g_100", 1))     // 群组 convID 返回 0
-	assert.Equal(t, int64(0), getOtherPartyID("invalid", 1))    // 无效格式
-	assert.Equal(t, int64(0), getOtherPartyID("p_1", 1))        // 缺少第二个 ID
+	assert.Equal(t, int64(0), getOtherPartyID("g_100", 1))   // 群组 convID 返回 0
+	assert.Equal(t, int64(0), getOtherPartyID("invalid", 1)) // 无效格式
+	assert.Equal(t, int64(0), getOtherPartyID("p_1", 1))     // 缺少第二个 ID
 }
 
 func TestReadAck_LuaError(t *testing.T) {
@@ -1114,9 +1158,17 @@ func TestReadAck_LuaError(t *testing.T) {
 
 // ── 高并发点赞新增接口的 mock 桩 ──
 
-func (m *mockRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)      { return false, 0, nil }
-func (m *mockRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)    { return false, 0, nil }
-func (m *mockRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
-func (m *mockRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }
+func (m *mockRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) {
+	return false, 0, nil
+}
+func (m *mockRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) {
+	return false, 0, nil
+}
+func (m *mockRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error {
+	return nil
+}
+func (m *mockRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) {
+	return nil, nil, nil
+}
 
 func (m *mockMQRepo) PublishLikeEvent(_ context.Context, _ *model.LikeEvent) error { return nil }

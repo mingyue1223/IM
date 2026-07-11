@@ -18,9 +18,9 @@ const (
 // 从 Lua 错误码映射的面向客户端的错误码。
 // 避免将原始 Lua 整数值（1,2,3）与 HTTP 风格的状态码（400,500,403）混用。
 const (
-	CodePMNotFriend  = 4001
-	CodePMBlocked    = 4002
-	CodePMDuplicate  = 4003
+	CodePMNotFriend = 4001
+	CodePMBlocked   = 4002
+	CodePMDuplicate = 4003
 )
 
 // MapLuaErrToClientCode 将私信 Lua 错误码转换为面向客户端的错误码。
@@ -75,8 +75,19 @@ end
 -- 4. 在线状态检查
 local isOnline = redis.call('EXISTS', 'online:' .. receiverID)
 
--- 5. 分配全局消息 ID（原子 INCR）
-local msgID = redis.call('INCR', 'msg_id_global')
+-- 5. 基于 Redis 服务器时间分配全局消息 ID。
+-- 格式：Unix毫秒 * 1000 + 同毫秒序号（1..999），无需持久化全局计数器。
+local redisTime = redis.call('TIME')
+local milliseconds = redisTime[1] * 1000 + math.floor(redisTime[2] / 1000)
+local sequenceKey = 'msg_id_seq:' .. milliseconds
+local sequence = redis.call('INCR', sequenceKey)
+if sequence == 1 then
+    redis.call('EXPIRE', sequenceKey, 2)
+end
+if sequence > 999 then
+    return redis.error_reply('message ID sequence overflow')
+end
+local msgID = milliseconds * 1000 + sequence
 
 return {0, msgID, isOnline, 1, 0}
 `

@@ -88,11 +88,11 @@ func (m *MockRedisRepo) WriteOutbox(ctx context.Context, groupID int64, msg *mod
 	return nil
 }
 
-func (m *MockRedisRepo) ReadInbox(ctx context.Context, userID int64, lastSyncTime int64, batchSize int) ([]model.InboxMessage, error) {
+func (m *MockRedisRepo) ReadInbox(ctx context.Context, userID int64, lastSyncTime, lastSyncMsgID int64, batchSize int) ([]model.InboxMessage, error) {
 	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
-func (m *MockRedisRepo) ReadOutbox(ctx context.Context, groupID int64, lastSyncTime int64, limit int) ([]model.InboxMessage, error) {
+func (m *MockRedisRepo) ReadOutbox(ctx context.Context, groupID int64, lastSyncTime, lastSyncMsgID int64, limit int) ([]model.InboxMessage, error) {
 	return nil, fmt.Errorf("存根：消费者未使用")
 }
 
@@ -282,7 +282,9 @@ func TestPrivateMsgConsumer_Process(t *testing.T) {
 	redisRepo := newMockRedisRepo()
 	realCM := conn.NewConnectionManager()
 
-	// 注册接收者为在线状态（发送者 100 不需要对消费者在线）
+	// 注册发送者和接收者；消费者完成处理后向发送者返回 serverAck。
+	senderClient := makeTestClientConnection(100)
+	realCM.Register(100, senderClient)
 	receiverClient := makeTestClientConnection(200)
 	realCM.Register(200, receiverClient)
 
@@ -302,12 +304,13 @@ func TestPrivateMsgConsumer_Process(t *testing.T) {
 	}
 
 	msg := &model.PrivateMessage{
-		ID:         1001,
-		SenderID:   100,
-		ReceiverID: 200,
-		Content:    "hello",
-		MsgType:    model.MsgTypeText,
-		CreatedAt:  time.UnixMilli(1700000000000),
+		ID:          1001,
+		ClientMsgID: "private-client-1001",
+		SenderID:    100,
+		ReceiverID:  200,
+		Content:     "hello",
+		MsgType:     model.MsgTypeText,
+		CreatedAt:   time.UnixMilli(1700000000000),
 	}
 
 	ctx := context.Background()
@@ -351,7 +354,21 @@ func TestPrivateMsgConsumer_Process(t *testing.T) {
 
 	redisRepo.mu.Unlock()
 
-	// 6. 验证 WebSocket 推送给接收者
+	// 6. Redis 与持久化处理完成后，发送者才收到 serverAck。
+	select {
+	case raw := <-senderClient.SendCh:
+		var wsMsg model.WsMessage
+		require.NoError(t, json.Unmarshal(raw, &wsMsg))
+		assert.Equal(t, protocol.TypeServerAck, wsMsg.Type)
+		var ack model.ServerAck
+		require.NoError(t, json.Unmarshal(wsMsg.Data, &ack))
+		assert.Equal(t, "private-client-1001", ack.ClientMsgID)
+		assert.Equal(t, int64(1001), ack.ServerMsgID)
+	default:
+		t.Fatal("发送者应在消息处理成功后收到 serverAck")
+	}
+
+	// 7. 验证 WebSocket 推送给接收者
 	time.Sleep(50 * time.Millisecond)
 	assert.Len(t, pushedMsgs, 1, "接收者应收到 1 条 WS 推送")
 	if len(pushedMsgs) > 0 {
@@ -370,12 +387,13 @@ func TestPrivateMsgConsumer_Process(t *testing.T) {
 
 func TestPrivateMsgConsumer_Deserialize(t *testing.T) {
 	msg := &model.PrivateMessage{
-		ID:         42,
-		SenderID:   1,
-		ReceiverID: 2,
-		Content:    "test",
-		MsgType:    model.MsgTypeText,
-		CreatedAt:  time.Now(),
+		ID:          42,
+		ClientMsgID: "private-deserialize-42",
+		SenderID:    1,
+		ReceiverID:  2,
+		Content:     "test",
+		MsgType:     model.MsgTypeText,
+		CreatedAt:   time.Now(),
 	}
 
 	body, err := json.Marshal(msg)
@@ -384,6 +402,7 @@ func TestPrivateMsgConsumer_Deserialize(t *testing.T) {
 	parsed, err := deserializePrivateMsg(body)
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), parsed.ID)
+	assert.Equal(t, "private-deserialize-42", parsed.ClientMsgID)
 	assert.Equal(t, int64(1), parsed.SenderID)
 	assert.Equal(t, int64(2), parsed.ReceiverID)
 
@@ -404,6 +423,8 @@ func TestPrivateMsgConsumer_WriteInboxFailure(t *testing.T) {
 	redisRepo := newMockRedisRepo()
 	redisRepo.writeInboxErr = fmt.Errorf("Redis 连接错误")
 	realCM := conn.NewConnectionManager()
+	senderClient := makeTestClientConnection(1)
+	realCM.Register(1, senderClient)
 
 	consumer := &PrivateMsgConsumer{
 		ch:        nil,
@@ -414,18 +435,24 @@ func TestPrivateMsgConsumer_WriteInboxFailure(t *testing.T) {
 	}
 
 	msg := &model.PrivateMessage{
-		ID:         100,
-		SenderID:   1,
-		ReceiverID: 2,
-		Content:    "test",
-		MsgType:    model.MsgTypeText,
-		CreatedAt:  time.Now(),
+		ID:          100,
+		ClientMsgID: "private-failed-100",
+		SenderID:    1,
+		ReceiverID:  2,
+		Content:     "test",
+		MsgType:     model.MsgTypeText,
+		CreatedAt:   time.Now(),
 	}
 
 	ctx := context.Background()
 	err := consumer.process(ctx, msg)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "写入接收者收件箱失败")
+	select {
+	case pushed := <-senderClient.SendCh:
+		t.Fatalf("消息处理失败时不应发送 serverAck: %s", pushed)
+	default:
+	}
 }
 
 func TestPrivateMsgConsumer_HandleDelivery_Malformed(t *testing.T) {
@@ -445,8 +472,10 @@ func TestGroupMsgConsumer_Process(t *testing.T) {
 	redisRepo.groupMembers[5] = []int64{1, 2, 3}
 
 	realCM := conn.NewConnectionManager()
+	senderClient := makeTestClientConnection(1)
+	realCM.Register(1, senderClient)
 
-	// 让成员 2 和 3 在线（发送者 1 不接收推送）
+	// 让成员 2 和 3 在线接收消息，发送者 1 在线接收 serverAck。
 	client2 := makeTestClientConnection(2)
 	realCM.Register(2, client2)
 
@@ -475,13 +504,14 @@ func TestGroupMsgConsumer_Process(t *testing.T) {
 	}
 
 	msg := &model.GroupMessage{
-		ID:        2001,
-		GroupID:   5,
-		SenderID:  1,
-		Content:   "group hello",
-		MsgType:   model.MsgTypeText,
-		GroupSeq:  10,
-		CreatedAt: time.UnixMilli(1700000000000),
+		ID:          2001,
+		ClientMsgID: "group-client-2001",
+		GroupID:     5,
+		SenderID:    1,
+		Content:     "group hello",
+		MsgType:     model.MsgTypeText,
+		GroupSeq:    10,
+		CreatedAt:   time.UnixMilli(1700000000000),
 	}
 
 	ctx := context.Background()
@@ -516,7 +546,22 @@ func TestGroupMsgConsumer_Process(t *testing.T) {
 
 	redisRepo.mu.Unlock()
 
-	// 5. 验证 WebSocket 推送 — 仅成员 2 和 3，不含发送者 1
+	// 5. Redis 与持久化处理完成后，发送者收到携带 groupSeq 的 serverAck。
+	select {
+	case raw := <-senderClient.SendCh:
+		var wsMsg model.WsMessage
+		require.NoError(t, json.Unmarshal(raw, &wsMsg))
+		assert.Equal(t, protocol.TypeServerAck, wsMsg.Type)
+		var ack model.ServerAck
+		require.NoError(t, json.Unmarshal(wsMsg.Data, &ack))
+		assert.Equal(t, "group-client-2001", ack.ClientMsgID)
+		assert.Equal(t, int64(2001), ack.ServerMsgID)
+		assert.Equal(t, int64(10), ack.GroupSeq)
+	default:
+		t.Fatal("发送者应在群消息处理成功后收到 serverAck")
+	}
+
+	// 6. 验证 WebSocket 推送 — 仅成员 2 和 3，不含发送者 1
 	time.Sleep(50 * time.Millisecond)
 	assert.Len(t, pushed2, 1, "成员 2 应收到 1 条 WS 推送")
 	assert.Len(t, pushed3, 1, "成员 3 应收到 1 条 WS 推送")
@@ -578,6 +623,8 @@ func TestGroupMsgConsumer_GetMembersFailure(t *testing.T) {
 	redisRepo.getGroupMembersErr = fmt.Errorf("Redis 不可用")
 
 	realCM := conn.NewConnectionManager()
+	senderClient := makeTestClientConnection(1)
+	realCM.Register(1, senderClient)
 
 	consumer := &GroupMsgConsumer{
 		ch:        nil,
@@ -588,30 +635,37 @@ func TestGroupMsgConsumer_GetMembersFailure(t *testing.T) {
 	}
 
 	msg := &model.GroupMessage{
-		ID:        4001,
-		GroupID:   5,
-		SenderID:  1,
-		Content:   "test",
-		MsgType:   model.MsgTypeText,
-		GroupSeq:  1,
-		CreatedAt: time.Now(),
+		ID:          4001,
+		ClientMsgID: "group-failed-4001",
+		GroupID:     5,
+		SenderID:    1,
+		Content:     "test",
+		MsgType:     model.MsgTypeText,
+		GroupSeq:    1,
+		CreatedAt:   time.Now(),
 	}
 
 	ctx := context.Background()
 	err := consumer.process(ctx, msg)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "获取群组成员失败")
+	select {
+	case pushed := <-senderClient.SendCh:
+		t.Fatalf("消息处理失败时不应发送 serverAck: %s", pushed)
+	default:
+	}
 }
 
 func TestGroupMsgConsumer_Deserialize(t *testing.T) {
 	msg := &model.GroupMessage{
-		ID:        42,
-		GroupID:   5,
-		SenderID:  1,
-		Content:   "test",
-		MsgType:   model.MsgTypeText,
-		GroupSeq:  10,
-		CreatedAt: time.Now(),
+		ID:          42,
+		ClientMsgID: "group-deserialize-42",
+		GroupID:     5,
+		SenderID:    1,
+		Content:     "test",
+		MsgType:     model.MsgTypeText,
+		GroupSeq:    10,
+		CreatedAt:   time.Now(),
 	}
 
 	body, err := json.Marshal(msg)
@@ -620,6 +674,7 @@ func TestGroupMsgConsumer_Deserialize(t *testing.T) {
 	parsed, err := deserializeGroupMsg(body)
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), parsed.ID)
+	assert.Equal(t, "group-deserialize-42", parsed.ClientMsgID)
 	assert.Equal(t, int64(5), parsed.GroupID)
 	assert.Equal(t, int64(10), parsed.GroupSeq)
 

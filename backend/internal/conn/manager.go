@@ -37,8 +37,8 @@ func (cm *ConnectionManager) Delete(userID int64) {
 }
 
 // KickOld 踢掉指定 userID 的现有连接并注册新连接。
-// 向旧连接的 SendCh 发送踢出 JSON 消息 {"type":"kick","reason":"new_login"}，
-// 关闭其 CloseCh，然后注册新客户端。
+// 向旧连接的 KickCh 发送踢出 JSON 消息 {"type":"kick","reason":"new_login"}。
+// WritePump 会保证先写出该消息、再关闭连接，随后注册新客户端。
 // 如果没有现有连接，则直接注册新连接。
 func (cm *ConnectionManager) KickOld(userID int64, newClient *ClientConnection) {
 	old, ok := cm.Get(userID)
@@ -46,10 +46,9 @@ func (cm *ConnectionManager) KickOld(userID int64, newClient *ClientConnection) 
 		// 向旧连接发送踢出消息
 		kickMsg, _ := json.Marshal(map[string]string{"type": "kick", "reason": "new_login"})
 		select {
-		case old.SendCh <- kickMsg:
-		default: // 缓冲区已满，丢弃消息——仍会关闭连接
+		case old.KickCh <- kickMsg:
+		default: // 已有踢出请求等待处理，无需重复发送
 		}
-		close(old.CloseCh)
 		cm.Delete(userID)
 	}
 	cm.Register(userID, newClient)

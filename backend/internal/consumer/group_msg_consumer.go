@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
@@ -31,6 +32,7 @@ const (
 //  4. 通过 WebSocket 将 InboxMessage 推送给在线成员（跳过发送者）
 //  5. 将 GroupMessage 插入 MySQL
 //  6. 裁剪发件箱 ZSet
+//  7. 向发送者发送 serverAck（此时消息已可撤回、可删除）
 type GroupMsgConsumer struct {
 	ch        *amqp.Channel
 	mysqlRepo repository.MySQLRepo
@@ -184,6 +186,18 @@ func (c *GroupMsgConsumer) process(ctx context.Context, msg *model.GroupMessage)
 	// ── 6. 裁剪发件箱 ZSet ──
 	if err := c.redisRepo.TrimOutbox(ctx, msg.GroupID, outboxMaxCount); err != nil {
 		c.logger.Warn("裁剪群组发件箱失败", zap.Error(err))
+	}
+
+	// ── 7. 消息处理成功后再向发送者确认 ──
+	// ACK 不能早于 Redis 发件箱写入，否则客户端收到 ACK 后立即撤回/删除会查不到消息。
+	if msg.ClientMsgID != "" {
+		ack := &model.ServerAck{
+			ClientMsgID: msg.ClientMsgID,
+			ServerMsgID: msg.ID,
+			GroupSeq:    msg.GroupSeq,
+			Timestamp:   time.Now().UnixMilli(),
+		}
+		pushToConnection(c.cm, c.logger, msg.SenderID, protocol.TypeServerAck, ack)
 	}
 
 	c.logger.Debug("群消息处理完成",

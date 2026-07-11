@@ -27,27 +27,19 @@ func TestConnectionManager_RegisterGetDelete(t *testing.T) {
 func TestConnectionManager_KickOld(t *testing.T) {
 	cm := NewConnectionManager()
 
-	oldClient := &ClientConnection{UserID: 1, SendCh: make(chan []byte, 256), CloseCh: make(chan struct{})}
+	oldClient := &ClientConnection{UserID: 1, SendCh: make(chan []byte, 256), KickCh: make(chan []byte, 1), CloseCh: make(chan struct{})}
 	cm.Register(1, oldClient)
 
-	newClient := &ClientConnection{UserID: 1, SendCh: make(chan []byte, 256), CloseCh: make(chan struct{})}
+	newClient := &ClientConnection{UserID: 1, SendCh: make(chan []byte, 256), KickCh: make(chan []byte, 1), CloseCh: make(chan struct{})}
 	cm.KickOld(1, newClient)
 
 	// 旧连接应该收到踢出消息
 	select {
-	case msg := <-oldClient.SendCh:
+	case msg := <-oldClient.KickCh:
 		assert.Contains(t, string(msg), "kick")
 		assert.Contains(t, string(msg), "new_login")
 	default:
 		t.Fatal("旧客户端应收到踢出消息")
-	}
-
-	// 旧连接的 CloseCh 应该被关闭
-	select {
-	case <-oldClient.CloseCh:
-		// 符合预期：CloseCh 已关闭
-	default:
-		t.Fatal("旧客户端的 CloseCh 应该被关闭")
 	}
 
 	// 新连接应该已被注册
@@ -60,7 +52,7 @@ func TestConnectionManager_KickOld_NoExisting(t *testing.T) {
 	cm := NewConnectionManager()
 
 	// 没有已存在的连接 — KickOld 应直接注册新连接
-	newClient := &ClientConnection{UserID: 1, SendCh: make(chan []byte, 256), CloseCh: make(chan struct{})}
+	newClient := &ClientConnection{UserID: 1, SendCh: make(chan []byte, 256), KickCh: make(chan []byte, 1), CloseCh: make(chan struct{})}
 	cm.KickOld(1, newClient)
 
 	got, ok := cm.Get(1)

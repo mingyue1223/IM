@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -19,8 +20,8 @@ type RedisRepo interface {
 	// ── 收件箱 / 发件箱 ──
 	WriteInbox(ctx context.Context, userID int64, msg *model.InboxMessage) error
 	WriteOutbox(ctx context.Context, groupID int64, msg *model.InboxMessage) error
-	ReadInbox(ctx context.Context, userID int64, lastSyncTime int64, batchSize int) ([]model.InboxMessage, error)
-	ReadOutbox(ctx context.Context, groupID int64, lastSyncTime int64, limit int) ([]model.InboxMessage, error)
+	ReadInbox(ctx context.Context, userID int64, lastSyncTime, lastSyncMsgID int64, batchSize int) ([]model.InboxMessage, error)
+	ReadOutbox(ctx context.Context, groupID int64, lastSyncTime, lastSyncMsgID int64, limit int) ([]model.InboxMessage, error)
 
 	// ── 会话列表 ──
 	UpdateConvList(ctx context.Context, userID int64, convID string, summary string, timestamp int64) error
@@ -127,47 +128,26 @@ func (r *RedisRepoImpl) WriteOutbox(ctx context.Context, groupID int64, msg *mod
 	}).Err()
 }
 
-func (r *RedisRepoImpl) ReadInbox(ctx context.Context, userID int64, lastSyncTime int64, batchSize int) ([]model.InboxMessage, error) {
+func (r *RedisRepoImpl) ReadInbox(ctx context.Context, userID int64, lastSyncTime, lastSyncMsgID int64, batchSize int) ([]model.InboxMessage, error) {
 	key := fmt.Sprintf("inbox:%d", userID)
-	// ZRANGEBYSCORE: 获取时间戳 >= lastSyncTime 的消息（包含边界值）。
-	// 包含下边界可防止多条消息共享相同时间戳边界值时丢失消息。
-	// 客户端通过MsgID进行去重。
-	min := fmt.Sprintf("%d", lastSyncTime)
-	results, err := r.rdb.ZRangeByScore(ctx, key, &goredis.ZRangeBy{
-		Min:    min,
-		Max:    "+inf",
-		Offset: 0,
-		Count:  int64(batchSize),
-	}).Result()
-	if err != nil {
-		return nil, fmt.Errorf("ZRangeByScore收件箱: %w", err)
-	}
-
-	msgs := make([]model.InboxMessage, 0, len(results))
-	for _, raw := range results {
-		var m model.InboxMessage
-		if err := json.Unmarshal([]byte(raw), &m); err != nil {
-			// 记录日志但不跳过 — 损坏的条目表明存在数据完整性问题
-			// 运维人员应进行调查。我们跳过该条目以避免崩溃。
-			continue
-		}
-		msgs = append(msgs, m)
-	}
-	return msgs, nil
+	return r.readMessagesAfter(ctx, key, lastSyncTime, lastSyncMsgID, batchSize)
 }
 
-func (r *RedisRepoImpl) ReadOutbox(ctx context.Context, groupID int64, lastSyncTime int64, limit int) ([]model.InboxMessage, error) {
+func (r *RedisRepoImpl) ReadOutbox(ctx context.Context, groupID int64, lastSyncTime, lastSyncMsgID int64, limit int) ([]model.InboxMessage, error) {
 	key := fmt.Sprintf("outbox:%d", groupID)
-	// 包含下边界（与ReadInbox相同的原因 — 防止边界丢失）
-	min := fmt.Sprintf("%d", lastSyncTime)
+	return r.readMessagesAfter(ctx, key, lastSyncTime, lastSyncMsgID, limit)
+}
+
+// readMessagesAfter 按复合游标 (timestamp, msgId) 严格向后读取消息。
+// ZSet score 只有 timestamp，因此先读取边界及之后的有限集合（每个箱最多保留 2000 条），
+// 再按 (timestamp ASC, msgId ASC) 排序和过滤，避免同毫秒消息跨页重复或遗漏。
+func (r *RedisRepoImpl) readMessagesAfter(ctx context.Context, key string, lastSyncTime, lastSyncMsgID int64, limit int) ([]model.InboxMessage, error) {
 	results, err := r.rdb.ZRangeByScore(ctx, key, &goredis.ZRangeBy{
-		Min:    min,
-		Max:    "+inf",
-		Offset: 0,
-		Count:  int64(limit),
+		Min: fmt.Sprintf("%d", lastSyncTime),
+		Max: "+inf",
 	}).Result()
 	if err != nil {
-		return nil, fmt.Errorf("ZRangeByScore发件箱: %w", err)
+		return nil, fmt.Errorf("ZRangeByScore消息箱: %w", err)
 	}
 
 	msgs := make([]model.InboxMessage, 0, len(results))
@@ -176,7 +156,20 @@ func (r *RedisRepoImpl) ReadOutbox(ctx context.Context, groupID int64, lastSyncT
 		if err := json.Unmarshal([]byte(raw), &m); err != nil {
 			continue
 		}
+		if m.Timestamp < lastSyncTime ||
+			(m.Timestamp == lastSyncTime && lastSyncMsgID > 0 && m.MsgID <= lastSyncMsgID) {
+			continue
+		}
 		msgs = append(msgs, m)
+	}
+	sort.Slice(msgs, func(i, j int) bool {
+		if msgs[i].Timestamp != msgs[j].Timestamp {
+			return msgs[i].Timestamp < msgs[j].Timestamp
+		}
+		return msgs[i].MsgID < msgs[j].MsgID
+	})
+	if limit > 0 && len(msgs) > limit {
+		msgs = msgs[:limit]
 	}
 	return msgs, nil
 }

@@ -203,7 +203,13 @@ func (m *MySQLRepoImpl) UpdateUser(ctx context.Context, user *model.User) error 
 
 func (m *MySQLRepoImpl) CreateFriendRequest(ctx context.Context, req *model.FriendRequest) error {
 	query := `INSERT INTO friend_requests (from_user_id, to_user_id, message, status)
-	          VALUES (?, ?, ?, ?)`
+	          VALUES (?, ?, ?, ?)
+	          ON DUPLICATE KEY UPDATE
+	              id = LAST_INSERT_ID(id),
+	              message = IF(status = 0, message, VALUES(message)),
+	              created_at = IF(status = 0, created_at, NOW()),
+	              updated_at = IF(status = 0, updated_at, NOW()),
+	              status = IF(status = 0, status, VALUES(status))`
 	result, err := m.db.ExecContext(ctx, query,
 		req.FromUserID,
 		req.ToUserID,
@@ -247,7 +253,8 @@ func (m *MySQLRepoImpl) GetFriendRequestByID(ctx context.Context, id int64) (*mo
 
 func (m *MySQLRepoImpl) GetFriendRequestsByUser(ctx context.Context, userID int64) ([]model.FriendRequest, error) {
 	query := `SELECT id, from_user_id, to_user_id, message, status, created_at, updated_at
-	          FROM friend_requests WHERE from_user_id = ? OR to_user_id = ?
+	          FROM friend_requests
+	          WHERE (from_user_id = ? OR to_user_id = ?) AND status = 0
 	          ORDER BY created_at DESC`
 	rows, err := m.db.QueryContext(ctx, query, userID, userID)
 	if err != nil {

@@ -19,6 +19,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -774,6 +776,25 @@ func TestE2E_FriendRequestManagement(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("reject request: status=%d body=%s", status, body)
 	}
+
+	// 被拒绝后允许同方向再次申请，并复用原记录重置为待处理。
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
+		map[string]interface{}{"to_user_id": bID, "message": "try again"}, aToken)
+	if status != http.StatusCreated {
+		t.Fatalf("reapply after rejection: status=%d body=%s", status, body)
+	}
+	var reopened friendRequestResp
+	decodeSuccessResponse(t, body, &reopened)
+	if reopened.RequestID != request.RequestID || reopened.Status != 0 {
+		t.Fatalf("reopened request mismatch: old=%d reopened=%+v", request.RequestID, reopened)
+	}
+
+	// 重置为待处理后再次重复申请，仍应返回冲突而不是成功或 500。
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
+		map[string]interface{}{"to_user_id": bID}, aToken)
+	if status != http.StatusConflict {
+		t.Fatalf("duplicate pending request: status=%d body=%s", status, body)
+	}
 }
 
 func TestE2E_GroupManagement(t *testing.T) {
@@ -812,6 +833,14 @@ func TestE2E_GroupManagement(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("promote member: status=%d body=%s", status, body)
 	}
+	status, body = doAuthedRequest(t, http.MethodPut, env.baseURL, fmt.Sprintf("%s/member/%d/role", groupPath, memberID), map[string]int{"role": 0}, ownerToken)
+	if status != http.StatusOK {
+		t.Fatalf("demote member to role 0: status=%d body=%s", status, body)
+	}
+	status, body = doAuthedRequest(t, http.MethodPut, env.baseURL, fmt.Sprintf("%s/member/%d/role", groupPath, memberID), map[string]interface{}{}, ownerToken)
+	if status != http.StatusBadRequest {
+		t.Fatalf("missing role should be rejected: status=%d body=%s", status, body)
+	}
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, groupPath+"/leave", nil, memberToken)
 	if status != http.StatusOK {
 		t.Fatalf("leave group: status=%d body=%s", status, body)
@@ -837,6 +866,197 @@ func TestE2E_UserMoments(t *testing.T) {
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, fmt.Sprintf("/api/v1/moment/user/%d?limit=1", userID), nil, token)
 	if status != http.StatusOK {
 		t.Fatalf("get user moments: status=%d body=%s", status, body)
+	}
+}
+
+func TestE2E_MomentVisibilityValidation(t *testing.T) {
+	username := fmt.Sprintf("e2e_moment_visibility_%d", time.Now().UnixNano())
+	registerUser(t, env.baseURL, username, "pass1234")
+	token := loginUser(t, env.baseURL, username, "pass1234")
+
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment",
+		map[string]interface{}{"content": "default visibility"}, token)
+	if status != http.StatusCreated {
+		t.Fatalf("missing visibility should use default: status=%d body=%s", status, body)
+	}
+	var created publishMomentResp
+	decodeSuccessResponse(t, body, &created)
+	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL,
+		fmt.Sprintf("/api/v1/moment/%d", created.MomentID), nil, token)
+	if status != http.StatusOK {
+		t.Fatalf("get default visibility moment: status=%d body=%s", status, body)
+	}
+	var envelope apiResponse
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("parse default visibility response: %v", err)
+	}
+	var moment struct {
+		Visibility int `json:"visibility"`
+	}
+	if err := json.Unmarshal(envelope.Data, &moment); err != nil || moment.Visibility != 1 {
+		t.Fatalf("missing visibility should persist as 1: visibility=%d err=%v", moment.Visibility, err)
+	}
+
+	for _, visibility := range []int{0, 4} {
+		status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment",
+			map[string]interface{}{"content": "invalid visibility", "visibility": visibility}, token)
+		if status != http.StatusBadRequest {
+			t.Fatalf("visibility=%d should be rejected: status=%d body=%s", visibility, status, body)
+		}
+		var resp apiResponse
+		if err := json.Unmarshal(body, &resp); err != nil || resp.Code != api.CodeInvalidVisibility {
+			t.Fatalf("visibility=%d wrong response: code=%d err=%v body=%s", visibility, resp.Code, err, body)
+		}
+	}
+}
+
+func TestE2E_MomentEmptyContentCodes(t *testing.T) {
+	username := fmt.Sprintf("e2e_moment_empty_%d", time.Now().UnixNano())
+	registerUser(t, env.baseURL, username, "pass1234")
+	token := loginUser(t, env.baseURL, username, "pass1234")
+
+	assertEmptyContent := func(path string, body map[string]interface{}) {
+		status, responseBody := doAuthedRequest(t, http.MethodPost, env.baseURL, path, body, token)
+		if status != http.StatusBadRequest {
+			t.Fatalf("empty content path=%s: status=%d body=%s", path, status, responseBody)
+		}
+		var response apiResponse
+		if err := json.Unmarshal(responseBody, &response); err != nil || response.Code != api.CodeMomentContentEmpty {
+			t.Fatalf("empty content path=%s: code=%d err=%v body=%s", path, response.Code, err, responseBody)
+		}
+	}
+
+	assertEmptyContent("/api/v1/moment", map[string]interface{}{"content": "", "visibility": 1})
+	assertEmptyContent("/api/v1/moment", map[string]interface{}{"visibility": 1})
+
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment",
+		map[string]interface{}{"content": "comment target", "visibility": 1}, token)
+	if status != http.StatusCreated {
+		t.Fatalf("create comment target: status=%d body=%s", status, body)
+	}
+	var created publishMomentResp
+	decodeSuccessResponse(t, body, &created)
+	commentPath := fmt.Sprintf("/api/v1/moment/%d/comment", created.MomentID)
+	assertEmptyContent(commentPath, map[string]interface{}{"content": ""})
+	assertEmptyContent(commentPath, map[string]interface{}{})
+}
+
+func TestE2E_MomentPrivacyAcrossReadEndpoints(t *testing.T) {
+	stamp := time.Now().UnixNano()
+	authorName := fmt.Sprintf("e2e_privacy_author_%d", stamp)
+	friendName := fmt.Sprintf("e2e_privacy_friend_%d", stamp)
+	strangerName := fmt.Sprintf("e2e_privacy_stranger_%d", stamp)
+	authorID := registerUser(t, env.baseURL, authorName, "pass1234")
+	friendID := registerUser(t, env.baseURL, friendName, "pass1234")
+	registerUser(t, env.baseURL, strangerName, "pass1234")
+	authorToken := loginUser(t, env.baseURL, authorName, "pass1234")
+	friendToken := loginUser(t, env.baseURL, friendName, "pass1234")
+	strangerToken := loginUser(t, env.baseURL, strangerName, "pass1234")
+
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
+		map[string]interface{}{"to_user_id": friendID}, authorToken)
+	if status != http.StatusCreated {
+		t.Fatalf("create privacy friendship request: status=%d body=%s", status, body)
+	}
+	var request friendRequestResp
+	decodeSuccessResponse(t, body, &request)
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
+		map[string]interface{}{"request_id": request.RequestID}, friendToken)
+	if status != http.StatusOK {
+		t.Fatalf("accept privacy friendship: status=%d body=%s", status, body)
+	}
+
+	publish := func(content string, visibility int) int64 {
+		status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment",
+			map[string]interface{}{"content": content, "visibility": visibility}, authorToken)
+		if status != http.StatusCreated {
+			t.Fatalf("publish visibility=%d: status=%d body=%s", visibility, status, body)
+		}
+		var response publishMomentResp
+		decodeSuccessResponse(t, body, &response)
+		return response.MomentID
+	}
+	publicID := publish("privacy public", 1)
+	friendsID := publish("privacy friends", 2)
+	privateID := publish("privacy private", 3)
+	time.Sleep(100 * time.Millisecond)
+
+	assertDetail := func(token string, momentID int64, wantStatus, wantCode int) {
+		status, body := doAuthedRequest(t, http.MethodGet, env.baseURL,
+			fmt.Sprintf("/api/v1/moment/%d", momentID), nil, token)
+		if status != wantStatus {
+			t.Fatalf("detail moment=%d: status=%d want=%d body=%s", momentID, status, wantStatus, body)
+		}
+		var response apiResponse
+		if err := json.Unmarshal(body, &response); err != nil || response.Code != wantCode {
+			t.Fatalf("detail moment=%d: code=%d want=%d err=%v body=%s", momentID, response.Code, wantCode, err, body)
+		}
+	}
+	for _, id := range []int64{publicID, friendsID, privateID} {
+		assertDetail(authorToken, id, http.StatusOK, 0)
+	}
+	assertDetail(friendToken, publicID, http.StatusOK, 0)
+	assertDetail(friendToken, friendsID, http.StatusOK, 0)
+	assertDetail(friendToken, privateID, http.StatusNotFound, api.CodeMomentNotFound)
+	assertDetail(strangerToken, publicID, http.StatusOK, 0)
+	assertDetail(strangerToken, friendsID, http.StatusNotFound, api.CodeMomentNotFound)
+	assertDetail(strangerToken, privateID, http.StatusNotFound, api.CodeMomentNotFound)
+
+	listIDs := func(token string) map[int64]bool {
+		status, body := doAuthedRequest(t, http.MethodGet, env.baseURL,
+			fmt.Sprintf("/api/v1/moment/user/%d?limit=20&offset=0", authorID), nil, token)
+		if status != http.StatusOK {
+			t.Fatalf("get user moments: status=%d body=%s", status, body)
+		}
+		var response struct {
+			Data struct {
+				Items []struct {
+					ID int64 `json:"id"`
+				} `json:"items"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &response); err != nil {
+			t.Fatalf("parse user moments: %v", err)
+		}
+		ids := make(map[int64]bool)
+		for _, item := range response.Data.Items {
+			ids[item.ID] = true
+		}
+		return ids
+	}
+	authorIDs := listIDs(authorToken)
+	friendIDs := listIDs(friendToken)
+	strangerIDs := listIDs(strangerToken)
+	if !authorIDs[publicID] || !authorIDs[friendsID] || !authorIDs[privateID] {
+		t.Fatalf("author list missing privacy moments: %+v", authorIDs)
+	}
+	if !friendIDs[publicID] || !friendIDs[friendsID] || friendIDs[privateID] {
+		t.Fatalf("friend list visibility mismatch: %+v", friendIDs)
+	}
+	if !strangerIDs[publicID] || strangerIDs[friendsID] || strangerIDs[privateID] {
+		t.Fatalf("stranger list visibility mismatch: %+v", strangerIDs)
+	}
+
+	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, "/api/v1/moment/feed?limit=20", nil, friendToken)
+	if status != http.StatusOK {
+		t.Fatalf("friend feed: status=%d body=%s", status, body)
+	}
+	var feed struct {
+		Data struct {
+			Moments []struct {
+				ID int64 `json:"id"`
+			} `json:"moments"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &feed); err != nil {
+		t.Fatalf("parse friend feed: %v", err)
+	}
+	feedIDs := make(map[int64]bool)
+	for _, item := range feed.Data.Moments {
+		feedIDs[item.ID] = true
+	}
+	if !feedIDs[publicID] || !feedIDs[friendsID] || feedIDs[privateID] {
+		t.Fatalf("friend feed visibility mismatch: %+v", feedIDs)
 	}
 }
 
@@ -880,7 +1100,7 @@ func TestE2E_MessageOperations(t *testing.T) {
 	}
 
 	firstID := send(fmt.Sprintf("e2e_msgop_search_%d", time.Now().UnixNano()), "searchable integration message")
-	time.Sleep(200 * time.Millisecond)
+	// serverAck 只在消费者完成 Redis/MySQL 写入后发送，因此这里无需等待即可查询和撤回。
 	status, body = doAuthedRequest(t, http.MethodGet, env.baseURL, "/api/v1/msg/search?q=searchable&limit=10", nil, senderToken)
 	if status != http.StatusOK {
 		t.Fatalf("search messages: status=%d body=%s", status, body)
@@ -891,10 +1111,99 @@ func TestE2E_MessageOperations(t *testing.T) {
 	}
 
 	secondID := send(fmt.Sprintf("e2e_msgop_delete_%d", time.Now().UnixNano()), "deletable integration message")
-	time.Sleep(200 * time.Millisecond)
+	// 收到 serverAck 后立即删除，验证不存在 MQ 消费时序窗口。
 	status, body = doAuthedRequest(t, http.MethodDelete, env.baseURL, fmt.Sprintf("/api/v1/msg/%d?convId=%s", secondID, convID), nil, senderToken)
 	if status != http.StatusOK {
 		t.Fatalf("delete message: status=%d body=%s", status, body)
+	}
+}
+
+func TestE2E_SyncCompositeCursorSameTimestamp(t *testing.T) {
+	stamp := time.Now().UnixNano()
+	senderName := fmt.Sprintf("e2e_sync_sender_%d", stamp)
+	receiverName := fmt.Sprintf("e2e_sync_receiver_%d", stamp)
+	registerUser(t, env.baseURL, senderName, "pass1234")
+	receiverID := registerUser(t, env.baseURL, receiverName, "pass1234")
+	senderToken := loginUser(t, env.baseURL, senderName, "pass1234")
+	receiverToken := loginUser(t, env.baseURL, receiverName, "pass1234")
+
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
+		map[string]interface{}{"to_user_id": receiverID}, senderToken)
+	if status != http.StatusCreated {
+		t.Fatalf("create sync friendship request: status=%d body=%s", status, body)
+	}
+	var request friendRequestResp
+	decodeSuccessResponse(t, body, &request)
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
+		map[string]interface{}{"request_id": request.RequestID}, receiverToken)
+	if status != http.StatusOK {
+		t.Fatalf("accept sync friendship: status=%d body=%s", status, body)
+	}
+
+	senderWS := connectWS(t, env.baseURL, senderToken)
+	defer closeWS(t, senderWS)
+	receiverWS := connectWS(t, env.baseURL, receiverToken)
+	defer closeWS(t, receiverWS)
+	sharedTimestamp := time.Now().UnixMilli()
+	sentIDs := make([]int64, 0, 3)
+	for i := 0; i < 3; i++ {
+		sendWSMessage(t, senderWS, "msg", sendMsgData{
+			ClientMsgID: fmt.Sprintf("e2e-sync-%d-%d", stamp, i),
+			ConvType:    1,
+			ToID:        receiverID,
+			MsgType:     1,
+			Content:     fmt.Sprintf("same timestamp %d", i),
+			Timestamp:   sharedTimestamp,
+		})
+		ack := readWSMessageType(t, senderWS, "serverAck", 10*time.Second)
+		var ackData serverAckData
+		if err := json.Unmarshal(ack.Data, &ackData); err != nil {
+			t.Fatalf("parse sync message ack: %v", err)
+		}
+		sentIDs = append(sentIDs, ackData.ServerMsgID)
+		readWSMessageType(t, receiverWS, "msg", 10*time.Second)
+	}
+
+	type syncBatchData struct {
+		Messages []struct {
+			MsgID int64 `json:"msgId"`
+		} `json:"msgs"`
+		HasMore  bool  `json:"hasMore"`
+		SyncTime int64 `json:"syncTime"`
+		SyncMsgID int64 `json:"syncMsgId"`
+	}
+	sendWSMessage(t, receiverWS, "syncReq", map[string]interface{}{
+		"lastSyncTime": sharedTimestamp,
+		"batchSize":    2,
+	})
+	firstRaw := readWSMessageType(t, receiverWS, "syncBatch", 10*time.Second)
+	var first syncBatchData
+	if err := json.Unmarshal(firstRaw.Data, &first); err != nil {
+		t.Fatalf("parse first sync page: %v", err)
+	}
+	readWSMessageType(t, receiverWS, "convSync", 10*time.Second)
+	if len(first.Messages) != 2 || !first.HasMore || first.SyncTime != sharedTimestamp || first.SyncMsgID == 0 {
+		t.Fatalf("first sync page mismatch: %+v", first)
+	}
+
+	sendWSMessage(t, receiverWS, "syncReq", map[string]interface{}{
+		"lastSyncTime":  first.SyncTime,
+		"lastSyncMsgId": first.SyncMsgID,
+		"batchSize":     2,
+	})
+	secondRaw := readWSMessageType(t, receiverWS, "syncBatch", 10*time.Second)
+	var second syncBatchData
+	if err := json.Unmarshal(secondRaw.Data, &second); err != nil {
+		t.Fatalf("parse second sync page: %v", err)
+	}
+	if len(second.Messages) != 1 || second.HasMore {
+		t.Fatalf("second sync page mismatch: %+v", second)
+	}
+
+	got := []int64{first.Messages[0].MsgID, first.Messages[1].MsgID, second.Messages[0].MsgID}
+	sort.Slice(sentIDs, func(i, j int) bool { return sentIDs[i] < sentIDs[j] })
+	if !reflect.DeepEqual(got, sentIDs) {
+		t.Fatalf("sync pages duplicated or omitted messages: got=%v want=%v", got, sentIDs)
 	}
 }
 

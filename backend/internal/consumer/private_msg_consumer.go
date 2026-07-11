@@ -32,6 +32,7 @@ const (
 //  5. 通过 WebSocket 将 InboxMessage 推送给在线的接收者
 //  6. 将 PrivateMessage 插入 MySQL
 //  7. 裁剪双方的收件箱 ZSet
+//  8. 向发送者发送 serverAck（此时消息已可撤回、可删除）
 type PrivateMsgConsumer struct {
 	ch        *amqp.Channel
 	mysqlRepo repository.MySQLRepo
@@ -183,6 +184,17 @@ func (c *PrivateMsgConsumer) process(ctx context.Context, msg *model.PrivateMess
 	}
 	if err := c.redisRepo.TrimInbox(ctx, msg.SenderID, inboxMaxCount); err != nil {
 		c.logger.Warn("裁剪发送者收件箱失败", zap.Error(err))
+	}
+
+	// ── 8. 消息处理成功后再向发送者确认 ──
+	// ACK 不能早于 Redis 收件箱写入，否则客户端收到 ACK 后立即撤回/删除会查不到消息。
+	if msg.ClientMsgID != "" {
+		ack := &model.ServerAck{
+			ClientMsgID: msg.ClientMsgID,
+			ServerMsgID: msg.ID,
+			Timestamp:   time.Now().UnixMilli(),
+		}
+		pushToConnection(c.cm, c.logger, msg.SenderID, protocol.TypeServerAck, ack)
 	}
 
 	c.logger.Debug("私聊消息处理完成",

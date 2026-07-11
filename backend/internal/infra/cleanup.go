@@ -20,8 +20,8 @@ const (
 	cleanupAgeDays = 3
 
 	// 每种键类型保留的最大条目数。
-	maxInboxEntries   = 1000
-	maxOutboxEntries  = 500
+	maxInboxEntries    = 1000
+	maxOutboxEntries   = 500
 	maxTimelineEntries = 100
 
 	// SCAN 批次大小。
@@ -68,7 +68,8 @@ func StartCleanupTask(rdb *redis.Client, logger *zap.Logger, interval time.Durat
 //      conv_list 键仅按时间修剪（不限数量上限）。
 func CleanupExpiredData(rdb *redis.Client, logger *zap.Logger) {
 	ctx := context.Background()
-	threshold := time.Now().Add(-cleanupAgeDays * 24 * time.Hour).Unix()
+	// inbox/outbox/timeline/conv_list 的 ZSet score 统一使用 Unix 毫秒时间戳。
+	threshold := time.Now().Add(-cleanupAgeDays * 24 * time.Hour).UnixMilli()
 
 	for _, pattern := range cleanupPatterns {
 		prefix := strings.SplitN(pattern, ":*", 2)[0] // "inbox"、"outbox"等

@@ -77,6 +77,19 @@ func (m *mockFriendRepo) CreateFriendRequest(_ context.Context, req *model.Frien
 	if m.createReqErr != nil {
 		return m.createReqErr
 	}
+	for _, stored := range m.friendRequests {
+		if stored.FromUserID == req.FromUserID && stored.ToUserID == req.ToUserID {
+			now := time.Now()
+			stored.Message = req.Message
+			stored.Status = req.Status
+			stored.CreatedAt = now
+			stored.UpdatedAt = now
+			req.ID = stored.ID
+			req.CreatedAt = now
+			req.UpdatedAt = now
+			return nil
+		}
+	}
 	req.ID = m.nextRequestID
 	m.nextRequestID++
 	req.CreatedAt = time.Now()
@@ -119,7 +132,7 @@ func (m *mockFriendRepo) GetFriendRequestsByUser(_ context.Context, userID int64
 	}
 	var results []model.FriendRequest
 	for _, r := range m.friendRequests {
-		if r.FromUserID == userID || r.ToUserID == userID {
+		if (r.FromUserID == userID || r.ToUserID == userID) && r.Status == 0 {
 			results = append(results, *r)
 		}
 	}
@@ -285,10 +298,10 @@ type mockFriendRedisRepo struct{}
 
 func (m *mockFriendRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
 func (m *mockFriendRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
-func (m *mockFriendRedisRepo) ReadInbox(_ context.Context, _ int64, _ int64, _ int) ([]model.InboxMessage, error) {
+func (m *mockFriendRedisRepo) ReadInbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
-func (m *mockFriendRedisRepo) ReadOutbox(_ context.Context, _ int64, _ int64, _ int) ([]model.InboxMessage, error) {
+func (m *mockFriendRedisRepo) ReadOutbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
 func (m *mockFriendRedisRepo) UpdateConvList(_ context.Context, _ int64, _ string, _ string, _ int64) error {
@@ -455,6 +468,32 @@ func TestFriend_SendFriendRequest_DuplicatePendingReverse(t *testing.T) {
 	assert.Equal(t, ErrDuplicateRequest, err.Error())
 }
 
+func TestFriend_SendFriendRequest_ReopenRejected(t *testing.T) {
+	repo := newMockFriendRepo()
+	svc := newTestFriendService(repo)
+
+	first, err := svc.SendFriendRequest(context.Background(), 1, 2, "first request")
+	assert.NoError(t, err)
+	assert.NoError(t, svc.RejectFriendRequest(context.Background(), 2, first.ID))
+
+	reopened, err := svc.SendFriendRequest(context.Background(), 1, 2, "try again")
+	assert.NoError(t, err)
+	assert.Equal(t, first.ID, reopened.ID, "应复用同方向的历史申请记录")
+	assert.Equal(t, 0, reopened.Status)
+	assert.Equal(t, "try again", reopened.Message)
+
+	pending, err := svc.GetFriendRequests(context.Background(), 2)
+	assert.NoError(t, err)
+	if assert.Len(t, pending, 1) {
+		assert.Equal(t, first.ID, pending[0].ID)
+		assert.Equal(t, 0, pending[0].Status)
+		assert.Equal(t, "try again", pending[0].Message)
+	}
+
+	_, err = svc.SendFriendRequest(context.Background(), 1, 2, "duplicate pending")
+	assert.EqualError(t, err, ErrDuplicateRequest)
+}
+
 // ──────────────────────────────────────────────────────
 // AcceptFriendRequest 测试
 // ──────────────────────────────────────────────────────
@@ -575,6 +614,23 @@ func TestFriend_GetFriendRequests(t *testing.T) {
 	requests, err := svc.GetFriendRequests(context.Background(), 1)
 	assert.NoError(t, err)
 	assert.Len(t, requests, 2)
+}
+
+func TestFriend_GetFriendRequests_OnlyPending(t *testing.T) {
+	repo := newMockFriendRepo()
+	svc := newTestFriendService(repo)
+
+	repo.friendRequests[1] = &model.FriendRequest{ID: 1, FromUserID: 1, ToUserID: 2, Status: 0}
+	repo.friendRequests[2] = &model.FriendRequest{ID: 2, FromUserID: 3, ToUserID: 1, Status: 1}
+	repo.friendRequests[3] = &model.FriendRequest{ID: 3, FromUserID: 1, ToUserID: 4, Status: 2}
+	repo.friendRequests[4] = &model.FriendRequest{ID: 4, FromUserID: 5, ToUserID: 6, Status: 0}
+
+	requests, err := svc.GetFriendRequests(context.Background(), 1)
+	assert.NoError(t, err)
+	if assert.Len(t, requests, 1) {
+		assert.Equal(t, int64(1), requests[0].ID)
+		assert.Equal(t, 0, requests[0].Status)
+	}
 }
 
 // ──────────────────────────────────────────────────────

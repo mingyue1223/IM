@@ -61,7 +61,20 @@ func (m *mockMySQLRepo) GetMomentsByUser(ctx context.Context, userID int64, limi
 			result = append(result, *moment)
 		}
 	}
-	return result, nil
+	sort.Slice(result, func(i, j int) bool {
+		if !result[i].CreatedAt.Equal(result[j].CreatedAt) {
+			return result[i].CreatedAt.After(result[j].CreatedAt)
+		}
+		return result[i].ID > result[j].ID
+	})
+	if offset >= len(result) {
+		return []model.Moment{}, nil
+	}
+	end := offset + limit
+	if end > len(result) {
+		end = len(result)
+	}
+	return result[offset:end], nil
 }
 
 func (m *mockMySQLRepo) GetMomentsByIDs(ctx context.Context, ids []int64) ([]model.Moment, error) {
@@ -181,8 +194,18 @@ func (m *mockMySQLRepo) GetFriendList(_ context.Context, userID int64) ([]model.
 	}
 	return out, nil
 }
-func (m *mockMySQLRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error) {
-	panic("未实现")
+func (m *mockMySQLRepo) IsFriend(_ context.Context, userID, friendID int64) (bool, error) {
+	for _, id := range m.friends[userID] {
+		if id == friendID {
+			return true, nil
+		}
+	}
+	for _, id := range m.friends[friendID] {
+		if id == userID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (m *mockMySQLRepo) CreateBlacklist(_ context.Context, _ *model.Blacklist) error {
 	panic("未实现")
@@ -391,10 +414,10 @@ func (m *momentMockRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.In
 func (m *momentMockRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error {
 	panic("未实现")
 }
-func (m *momentMockRedisRepo) ReadInbox(_ context.Context, _ int64, _ int64, _ int) ([]model.InboxMessage, error) {
+func (m *momentMockRedisRepo) ReadInbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	panic("未实现")
 }
-func (m *momentMockRedisRepo) ReadOutbox(_ context.Context, _ int64, _ int64, _ int) ([]model.InboxMessage, error) {
+func (m *momentMockRedisRepo) ReadOutbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	panic("未实现")
 }
 func (m *momentMockRedisRepo) UpdateConvList(_ context.Context, _ int64, _ string, _ string, _ int64) error {
@@ -584,6 +607,73 @@ func TestGetMoment_NotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, ErrMomentNotFound, err.Error())
 	assert.Nil(t, moment)
+}
+
+func TestGetMoment_Visibility(t *testing.T) {
+	mysqlRepo := newMockMySQLRepo()
+	redisRepo := newMomentMockRedisRepo()
+	mqRepo := newMomentMockMQRepo()
+	logger, _ := zap.NewDevelopment()
+	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
+
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "public", Visibility: 1, CreatedAt: time.Now()})
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "friends", Visibility: 2, CreatedAt: time.Now()})
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "private", Visibility: 3, CreatedAt: time.Now()})
+	mysqlRepo.friends[200] = []int64{100}
+
+	for _, id := range []int64{1, 2, 3} {
+		moment, err := svc.GetMoment(context.Background(), 100, id)
+		assert.NoError(t, err, "作者应能查看动态 %d", id)
+		assert.NotNil(t, moment)
+	}
+	for _, id := range []int64{1, 2} {
+		moment, err := svc.GetMoment(context.Background(), 200, id)
+		assert.NoError(t, err, "好友应能查看动态 %d", id)
+		assert.NotNil(t, moment)
+	}
+	_, err := svc.GetMoment(context.Background(), 200, 3)
+	assert.EqualError(t, err, ErrMomentNotFound)
+
+	moment, err := svc.GetMoment(context.Background(), 300, 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, moment)
+	for _, id := range []int64{2, 3} {
+		_, err = svc.GetMoment(context.Background(), 300, id)
+		assert.EqualError(t, err, ErrMomentNotFound)
+	}
+}
+
+func TestGetUserMoments_FiltersBeforePagination(t *testing.T) {
+	mysqlRepo := newMockMySQLRepo()
+	redisRepo := newMomentMockRedisRepo()
+	mqRepo := newMomentMockMQRepo()
+	logger, _ := zap.NewDevelopment()
+	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
+
+	// 非好友只能看公开动态；隐藏动态不能占用 offset/limit 名额。
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "public-1", Visibility: 1, CreatedAt: time.Now()})
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "friends", Visibility: 2, CreatedAt: time.Now()})
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "private", Visibility: 3, CreatedAt: time.Now()})
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "public-2", Visibility: 1, CreatedAt: time.Now()})
+	mysqlRepo.friends[200] = []int64{100}
+
+	page1, err := svc.GetUserMoments(context.Background(), 300, 100, 1, 0)
+	assert.NoError(t, err)
+	assert.Len(t, page1, 1)
+	assert.Equal(t, 1, page1[0].Visibility)
+
+	page2, err := svc.GetUserMoments(context.Background(), 300, 100, 1, 1)
+	assert.NoError(t, err)
+	assert.Len(t, page2, 1)
+	assert.Equal(t, 1, page2[0].Visibility)
+	assert.NotEqual(t, page1[0].ID, page2[0].ID)
+
+	friendPage, err := svc.GetUserMoments(context.Background(), 200, 100, 10, 0)
+	assert.NoError(t, err)
+	assert.Len(t, friendPage, 3)
+	for _, moment := range friendPage {
+		assert.NotEqual(t, 3, moment.Visibility)
+	}
 }
 
 func TestLikeMoment_Success(t *testing.T) {

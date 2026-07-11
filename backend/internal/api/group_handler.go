@@ -40,7 +40,7 @@ type addMemberRequest struct {
 }
 
 type updateMemberRoleRequest struct {
-	Role int64 `json:"role" binding:"required"`
+	Role *int64 `json:"role" binding:"required"`
 }
 
 // ── Handlers ──
@@ -363,7 +363,7 @@ func (h *GroupHandler) UpdateMemberRole(c *gin.Context) {
 		return
 	}
 
-	err = h.groupSvc.UpdateMemberRole(c.Request.Context(), groupID, userID, memberID, req.Role)
+	err = h.groupSvc.UpdateMemberRole(c.Request.Context(), groupID, userID, memberID, *req.Role)
 	if err != nil {
 		switch err.Error() {
 		case service.ErrNotOwnerOrAdmin:

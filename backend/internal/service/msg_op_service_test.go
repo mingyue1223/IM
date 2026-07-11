@@ -167,10 +167,10 @@ type mockMsgOpRedisRepo struct {
 
 func (m *mockMsgOpRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
 func (m *mockMsgOpRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
-func (m *mockMsgOpRedisRepo) ReadInbox(_ context.Context, _ int64, _ int64, _ int) ([]model.InboxMessage, error) {
+func (m *mockMsgOpRedisRepo) ReadInbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
-func (m *mockMsgOpRedisRepo) ReadOutbox(_ context.Context, _ int64, _ int64, _ int) ([]model.InboxMessage, error) {
+func (m *mockMsgOpRedisRepo) ReadOutbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
 func (m *mockMsgOpRedisRepo) UpdateConvList(_ context.Context, _ int64, _ string, _ string, _ int64) error {

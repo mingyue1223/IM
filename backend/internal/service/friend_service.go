@@ -87,7 +87,7 @@ func (s *FriendService) SendFriendRequest(ctx context.Context, fromUserID, toUse
 		}
 	}
 
-	// 5. 创建好友请求
+	// 5. 创建好友请求；同方向的历史已处理记录由仓储层原子重置为待处理。
 	req := &model.FriendRequest{
 		FromUserID: fromUserID,
 		ToUserID:   toUserID,
@@ -188,7 +188,7 @@ func (s *FriendService) RejectFriendRequest(ctx context.Context, userID, request
 	return nil
 }
 
-// GetFriendRequests 返回涉及指定用户的所有好友请求。
+// GetFriendRequests 返回涉及指定用户的待处理好友请求。
 func (s *FriendService) GetFriendRequests(ctx context.Context, userID int64) ([]model.FriendRequest, error) {
 	requests, err := s.mysqlRepo.GetFriendRequestsByUser(ctx, userID)
 	if err != nil {

@@ -300,10 +300,10 @@ func (r *mockGroupRedisRepo) RemoveGroupMemberRedis(_ context.Context, groupID, 
 
 func (r *mockGroupRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
 func (r *mockGroupRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
-func (r *mockGroupRedisRepo) ReadInbox(_ context.Context, _ int64, _ int64, _ int) ([]model.InboxMessage, error) {
+func (r *mockGroupRedisRepo) ReadInbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
-func (r *mockGroupRedisRepo) ReadOutbox(_ context.Context, _ int64, _ int64, _ int) ([]model.InboxMessage, error) {
+func (r *mockGroupRedisRepo) ReadOutbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
 func (r *mockGroupRedisRepo) UpdateConvList(_ context.Context, _ int64, _ string, _ string, _ int64) error {

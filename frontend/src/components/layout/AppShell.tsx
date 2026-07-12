@@ -7,8 +7,8 @@ import { RealtimeBootstrap } from "../realtime/RealtimeBootstrap";
 import { NetworkStatus } from "../system/NetworkStatus";
 
 const navItems = [
-  { to: "/app/chats/lin-cheng", label: "聊天", icon: MessageCircle, match: "/app/chats" },
-  { to: "/app/contacts/lin-cheng", label: "联系人", icon: Contact, match: "/app/contacts" },
+  { to: "/app/chats", label: "聊天", icon: MessageCircle, match: "/app/chats" },
+  { to: "/app/contacts", label: "联系人", icon: Contact, match: "/app/contacts" },
   { to: "/app/moments", label: "朋友圈", icon: UsersRound, match: "/app/moments" },
   { to: "/app/settings/profile", label: "设置", icon: Settings, match: "/app/settings" },
 ];
@@ -29,7 +29,7 @@ export function AppShell() {
       </div>
       <div className="app-window">
         <aside className="nav-rail">
-          <NavLink aria-label="GoIM 首页" className="nav-rail__brand" to="/app/chats/lin-cheng"><Sparkles size={20} /></NavLink>
+          <NavLink aria-label="GoIM 首页" className="nav-rail__brand" to="/app/chats"><Sparkles size={20} /></NavLink>
           <nav aria-label="主导航">
             {navItems.map((item) => {
               const Icon = item.icon;

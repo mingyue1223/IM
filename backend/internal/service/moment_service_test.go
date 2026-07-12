@@ -57,6 +57,21 @@ func (m *mockMySQLRepo) GetMomentByID(ctx context.Context, id int64) (*model.Mom
 	return moment, nil
 }
 
+func (m *mockMySQLRepo) DeleteMoment(_ context.Context, id int64) error {
+	delete(m.moments, id)
+	for commentID, comment := range m.comments {
+		if comment.MomentID == id {
+			delete(m.comments, commentID)
+		}
+	}
+	for key, like := range m.likes {
+		if like.MomentID == id {
+			delete(m.likes, key)
+		}
+	}
+	return nil
+}
+
 func (m *mockMySQLRepo) GetMomentsByUser(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error) {
 	var result []model.Moment
 	for _, moment := range m.moments {
@@ -405,6 +420,22 @@ func (m *momentMockRedisRepo) GetMomentLikeStats(_ context.Context, viewerID int
 		}
 	}
 	return counts, liked, nil
+}
+
+func (m *momentMockRedisRepo) GetMomentLikerIDs(_ context.Context, momentID int64) ([]int64, error) {
+	set := m.likeSets[momentID]
+	ids := make([]int64, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (m *momentMockRedisRepo) DeleteMomentLikes(_ context.Context, momentID int64) error {
+	delete(m.likeSets, momentID)
+	delete(m.likeCounts, momentID)
+	delete(m.likeLoaded, momentID)
+	return nil
 }
 
 // pageOf 模拟 getFeedPage 的契约：按 (ts,id) 降序，返回"严格早于游标 (maxTs,maxID)"的前 limit 条。
@@ -798,6 +829,37 @@ func TestUnlikeMoment_Success(t *testing.T) {
 	// 验证 MQ 事件已发布
 	assert.Len(t, mqRepo.likeEvents, 1)
 	assert.Equal(t, model.LikeActionUnlike, mqRepo.likeEvents[0].Action)
+}
+
+func TestGetMomentLikers_ReturnsCurrentRedisLikes(t *testing.T) {
+	mysqlRepo := newMockMySQLRepo()
+	redisRepo := newMomentMockRedisRepo()
+	svc := NewMomentService(mysqlRepo, redisRepo, newMomentMockMQRepo(), zap.NewNop(), time.Hour)
+	moment := &model.Moment{AuthorID: 100, Content: "hello", Visibility: 2, CreatedAt: time.Now()}
+	assert.NoError(t, mysqlRepo.CreateMoment(context.Background(), moment))
+	mysqlRepo.friends[100] = []int64{200}
+	mysqlRepo.users[200] = &model.User{ID: 200, Username: "liker", AvatarURL: "/uploads/liker.png"}
+	_, err := svc.LikeMoment(context.Background(), 200, moment.ID)
+	assert.NoError(t, err)
+
+	likers, err := svc.GetMomentLikers(context.Background(), 100, moment.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, []model.MomentLiker{{UserID: 200, Username: "liker", AvatarURL: "/uploads/liker.png"}}, likers)
+}
+
+func TestDeleteMoment_OnlyAllowsAuthor(t *testing.T) {
+	mysqlRepo := newMockMySQLRepo()
+	redisRepo := newMomentMockRedisRepo()
+	svc := NewMomentService(mysqlRepo, redisRepo, newMomentMockMQRepo(), zap.NewNop(), time.Hour)
+	moment := &model.Moment{AuthorID: 100, Content: "delete me", Visibility: 2, CreatedAt: time.Now()}
+	assert.NoError(t, mysqlRepo.CreateMoment(context.Background(), moment))
+
+	err := svc.DeleteMoment(context.Background(), 200, moment.ID)
+	assert.Equal(t, ErrNotMomentOwner, err.Error())
+	assert.NotNil(t, mysqlRepo.moments[moment.ID])
+	err = svc.DeleteMoment(context.Background(), 100, moment.ID)
+	assert.NoError(t, err)
+	assert.Nil(t, mysqlRepo.moments[moment.ID])
 }
 
 func TestCommentMoment_Success(t *testing.T) {

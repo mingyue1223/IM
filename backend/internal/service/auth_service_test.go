@@ -85,14 +85,32 @@ func (m *mockAuthRepo) CreateUser(_ context.Context, user *model.User) error {
 
 // 桩代码：实现其他所有 MySQLRepo 方法（认证测试中不使用）
 
-func (m *mockAuthRepo) UpdateUser(_ context.Context, _ *model.User) error { return nil }
+func (m *mockAuthRepo) UpdateUser(_ context.Context, user *model.User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for username, stored := range m.usersByUsername {
+		if stored.ID == user.ID && username != user.Username {
+			delete(m.usersByUsername, username)
+		}
+	}
+	m.usersByUsername[user.Username] = user
+	m.usersByID[user.ID] = user
+	return nil
+}
+func (m *mockAuthRepo) DeleteMoment(_ context.Context, _ int64) error { return nil }
 
-func (m *mockAuthRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error { return nil }
-func (m *mockAuthRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error       { return nil }
-func (m *mockAuthRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error           { return nil }
+func (m *mockAuthRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error {
+	return nil
+}
+func (m *mockAuthRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error { return nil }
+func (m *mockAuthRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error     { return nil }
 
-func (m *mockAuthRepo) CreateFriendRequest(_ context.Context, _ *model.FriendRequest) error { return nil }
-func (m *mockAuthRepo) UpdateFriendRequest(_ context.Context, _ *model.FriendRequest) error { return nil }
+func (m *mockAuthRepo) CreateFriendRequest(_ context.Context, _ *model.FriendRequest) error {
+	return nil
+}
+func (m *mockAuthRepo) UpdateFriendRequest(_ context.Context, _ *model.FriendRequest) error {
+	return nil
+}
 func (m *mockAuthRepo) GetFriendRequestByID(_ context.Context, _ int64) (*model.FriendRequest, error) {
 	return nil, nil
 }
@@ -104,16 +122,20 @@ func (m *mockAuthRepo) DeleteFriendship(_ context.Context, _ int64, _ int64) err
 func (m *mockAuthRepo) GetFriendList(_ context.Context, _ int64) ([]model.Friendship, error) {
 	return nil, nil
 }
-func (m *mockAuthRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error) { return false, nil }
+func (m *mockAuthRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error)  { return false, nil }
 func (m *mockAuthRepo) CreateBlacklist(_ context.Context, _ *model.Blacklist) error { return nil }
 func (m *mockAuthRepo) DeleteBlacklist(_ context.Context, _ int64, _ int64) error   { return nil }
-func (m *mockAuthRepo) IsBlocked(_ context.Context, _ int64, _ int64) (bool, error) { return false, nil }
+func (m *mockAuthRepo) IsBlocked(_ context.Context, _ int64, _ int64) (bool, error) {
+	return false, nil
+}
 
 func (m *mockAuthRepo) CreateGroup(_ context.Context, _ *model.Group) (int64, error) { return 0, nil }
-func (m *mockAuthRepo) UpdateGroup(_ context.Context, _ *model.Group) error           { return nil }
-func (m *mockAuthRepo) GetGroupByID(_ context.Context, _ int64) (*model.Group, error) { return nil, nil }
-func (m *mockAuthRepo) AddGroupMember(_ context.Context, _ *model.GroupMember) error  { return nil }
-func (m *mockAuthRepo) RemoveGroupMember(_ context.Context, _ int64, _ int64) error   { return nil }
+func (m *mockAuthRepo) UpdateGroup(_ context.Context, _ *model.Group) error          { return nil }
+func (m *mockAuthRepo) GetGroupByID(_ context.Context, _ int64) (*model.Group, error) {
+	return nil, nil
+}
+func (m *mockAuthRepo) AddGroupMember(_ context.Context, _ *model.GroupMember) error { return nil }
+func (m *mockAuthRepo) RemoveGroupMember(_ context.Context, _ int64, _ int64) error  { return nil }
 func (m *mockAuthRepo) GetGroupMembers(_ context.Context, _ int64) ([]model.GroupMember, error) {
 	return nil, nil
 }
@@ -121,27 +143,36 @@ func (m *mockAuthRepo) UpdateGroupMemberRole(_ context.Context, _ int, _ int, _ 
 	return nil
 }
 
-func (m *mockAuthRepo) CreateMoment(_ context.Context, _ *model.Moment) error          { return nil }
-func (m *mockAuthRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error) { return nil, nil }
+func (m *mockAuthRepo) CreateMoment(_ context.Context, _ *model.Moment) error { return nil }
+func (m *mockAuthRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error) {
+	return nil, nil
+}
 func (m *mockAuthRepo) GetMomentsByUser(_ context.Context, _ int64, _ int, _ int) ([]model.Moment, error) {
 	return nil, nil
 }
-func (m *mockAuthRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error    { return nil }
-func (m *mockAuthRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error       { return nil }
-func (m *mockAuthRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error { return nil }
+func (m *mockAuthRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error { return nil }
+func (m *mockAuthRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error    { return nil }
+func (m *mockAuthRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error {
+	return nil
+}
 func (m *mockAuthRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
-func (m *mockAuthRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) { return nil, nil }
-func (m *mockAuthRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
-func (m *mockAuthRepo) CountFriends(_ context.Context, _ int64) (int, error)              { return 0, nil }
+func (m *mockAuthRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) {
+	return nil, nil
+}
+func (m *mockAuthRepo) DeleteMomentComment(_ context.Context, _ int64) error { return nil }
+func (m *mockAuthRepo) CountFriends(_ context.Context, _ int64) (int, error) { return 0, nil }
 func (m *mockAuthRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
 	return nil, nil
 }
 
-
-func (m *mockAuthRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) { return nil, nil }
-func (m *mockAuthRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error { return nil }
+func (m *mockAuthRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) {
+	return nil, nil
+}
+func (m *mockAuthRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error {
+	return nil
+}
 func (m *mockAuthRepo) SearchPrivateMessages(_ context.Context, _ int64, _ string, _ int, _ int) ([]model.PrivateMessage, error) {
 	return nil, nil
 }
@@ -225,6 +256,59 @@ func TestAuth_Register_RepoCreateError(t *testing.T) {
 	assert.Error(t, err)
 	// 应包含底层错误信息
 	assert.Contains(t, err.Error(), "创建用户")
+}
+
+// ──────────────────────────────────────────────────────
+// 账户资料修改测试
+// ──────────────────────────────────────────────────────
+
+func TestAuth_UpdateUsername_Success(t *testing.T) {
+	repo := newMockAuthRepo()
+	svc := newTestAuthService(repo)
+	userID, _, err := svc.Register(context.Background(), "alice", "password123")
+	assert.NoError(t, err)
+
+	accessToken, refreshToken, expiresIn, err := svc.UpdateUsername(context.Background(), userID, "alice_new")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, refreshToken)
+	assert.Equal(t, int64(2*3600), expiresIn)
+	_, claims, err := middleware.ParseToken(accessToken, "test-secret-key")
+	assert.NoError(t, err)
+	assert.Equal(t, "alice_new", claims.Username)
+	assert.Nil(t, repo.usersByUsername["alice"])
+	assert.Equal(t, userID, repo.usersByUsername["alice_new"].ID)
+}
+
+func TestAuth_UpdateUsername_RejectsTakenOrInvalidName(t *testing.T) {
+	repo := newMockAuthRepo()
+	svc := newTestAuthService(repo)
+	aliceID, _, err := svc.Register(context.Background(), "alice", "password123")
+	assert.NoError(t, err)
+	_, _, err = svc.Register(context.Background(), "bob", "password123")
+	assert.NoError(t, err)
+
+	_, _, _, err = svc.UpdateUsername(context.Background(), aliceID, "bob")
+	assert.Equal(t, ErrUsernameTaken, err.Error())
+	_, _, _, err = svc.UpdateUsername(context.Background(), aliceID, "ab")
+	assert.Equal(t, ErrUsernameTooShort, err.Error())
+}
+
+func TestAuth_UpdatePassword_SuccessAndCurrentPasswordValidation(t *testing.T) {
+	repo := newMockAuthRepo()
+	svc := newTestAuthService(repo)
+	userID, _, err := svc.Register(context.Background(), "password_user", "oldpassword")
+	assert.NoError(t, err)
+
+	err = svc.UpdatePassword(context.Background(), userID, "wrong-password", "newpassword")
+	assert.Equal(t, ErrWrongPassword, err.Error())
+	err = svc.UpdatePassword(context.Background(), userID, "oldpassword", "short")
+	assert.Equal(t, ErrPasswordTooShort, err.Error())
+	err = svc.UpdatePassword(context.Background(), userID, "oldpassword", "newpassword")
+	assert.NoError(t, err)
+	_, _, _, err = svc.Login(context.Background(), "password_user", "oldpassword")
+	assert.Equal(t, ErrWrongPassword, err.Error())
+	_, _, _, err = svc.Login(context.Background(), "password_user", "newpassword")
+	assert.NoError(t, err)
 }
 
 // ──────────────────────────────────────────────────────
@@ -356,6 +440,10 @@ func TestAuth_Refresh_ExpiredRefreshToken(t *testing.T) {
 
 // ── 高并发点赞新增接口的 mock 桩 ──
 
-func (m *mockAuthRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
-func (m *mockAuthRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
-func (m *mockAuthRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }
+func (m *mockAuthRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error) { return nil, nil }
+func (m *mockAuthRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error {
+	return nil
+}
+func (m *mockAuthRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error {
+	return nil
+}

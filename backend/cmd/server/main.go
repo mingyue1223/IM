@@ -122,7 +122,7 @@ func main() {
 
 	// ── 初始化 HTTP 处理器 ──
 	authHandler := api.NewAuthHandler(authSvc)
-	friendHandler := api.NewFriendHandler(friendSvc)
+	friendHandler := api.NewFriendHandler(friendSvc, rdb)
 	groupHandler := api.NewGroupHandler(groupSvc, cm)
 	momentHandler := api.NewMomentHandler(momentSvc)
 	msgOpHandler := api.NewMsgOpHandler(msgOpSvc)
@@ -246,6 +246,7 @@ func setupRouter(
 	// ── 受保护路由（需要 JWT 认证）──
 	protected := r.Group("/api/v1")
 	protected.Use(middleware.JWTAuthMiddleware(cfg.JWT.Secret))
+	authHandler.RegisterAccountRoutes(protected)
 	friendHandler.RegisterRoutes(protected)
 	groupHandler.RegisterRoutes(protected)
 	momentHandler.RegisterRoutes(protected)

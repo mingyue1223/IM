@@ -1,14 +1,14 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUp, BellOff, CheckCheck, ChevronDown, CircleAlert, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RotateCcw, Search, Users, WifiOff } from "lucide-react";
+import { ArrowLeft, ArrowUp, BellOff, CheckCheck, CircleAlert, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RotateCcw, Search, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
-import { Avatar, Badge, Drawer, EmptyState, IconButton, TextField } from "../components/ui";
+import { Avatar, Badge, Drawer, EmptyState, IconButton, Switch, TextField } from "../components/ui";
 import { goimSocket } from "../realtime/socket";
 import { useAuthStore } from "../stores/authStore";
 import { useChatStore, type ChatMessage } from "../stores/chatStore";
 import { CreateGroupDrawer, GroupManagementDrawer } from "../features/groups/GroupManagement";
-import { groupsApi } from "../lib/api";
+import { groupsApi, settingsApi } from "../lib/api";
 
 const emptyMessages: ChatMessage[] = [];
 
@@ -31,6 +31,7 @@ export function ChatPage() {
   const sendText = useChatStore((state) => state.sendText);
   const retryMessage = useChatStore((state) => state.retryMessage);
   const markConversationRead = useChatStore((state) => state.markConversationRead);
+  const setConversationMuted = useChatStore((state) => state.setConversationMuted);
   const previewMode = useAuthStore((state) => state.previewMode);
   const selected = conversations.find((item) => item.id === conversationId);
   const selectedId = selected?.id;
@@ -43,12 +44,14 @@ export function ChatPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [muteSaving, setMuteSaving] = useState(false);
+  const [muteError, setMuteError] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (mode === "live" && conversations.length > 0 && !selected) navigate(`/app/chats/${conversations[0].id}`, { replace: true });
-  }, [conversations, mode, navigate, selected]);
+    if (conversationId && mode === "live" && conversations.length > 0 && !selected) navigate(`/app/chats/${conversations[0].id}`, { replace: true });
+  }, [conversationId, conversations, mode, navigate, selected]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -79,9 +82,26 @@ export function ChatPage() {
     goimSocket.send({ type: "revokeMsg", data: { convId: selected.id, serverMsgId: message.serverMsgId } });
   };
 
+  const toggleMute = async (muted: boolean) => {
+    if (!selected || muteSaving) return;
+    setMuteError(null);
+    setMuteSaving(true);
+    try {
+      if (!previewMode) {
+        if (muted) await settingsApi.mute({ convId: selected.id });
+        else await settingsApi.unmute(selected.id);
+      }
+      setConversationMuted(selected.id, muted);
+    } catch {
+      setMuteError("设置免打扰失败，请稍后重试。");
+    } finally {
+      setMuteSaving(false);
+    }
+  };
+
   return (
     <>
-      <aside className="module-sidebar conversation-sidebar">
+      <aside className={`module-sidebar conversation-sidebar ${conversationId ? "conversation-sidebar--mobile-hidden" : ""}`}>
         <header className="module-sidebar__header"><div><span className="eyebrow">Messages</span><h1>聊天</h1></div><IconButton label="创建群聊" onClick={() => setCreateGroupOpen(true)}><Plus size={18} /></IconButton></header>
         <div className={`connection-status connection-status--${connectionState}`}><span />{previewMode ? "预览连接" : connectionLabels[connectionState]}</div>
         <div className="module-sidebar__search"><TextField aria-label="搜索会话" leadingIcon={<Search size={16} />} placeholder="搜索会话" /></div>
@@ -97,12 +117,13 @@ export function ChatPage() {
         </nav>
       </aside>
 
-      <section className="module-main chat-main">
+      <section className={`module-main chat-main ${conversationId ? "" : "chat-main--mobile-hidden"}`}>
         {selected ? (
           <>
             <header className="chat-header">
-              <div className="chat-header__person"><Avatar name={selected.name} online={selected.online} src={selected.avatarUrl} /><div><h2>{selected.name}</h2><p>{selected.group ? "群聊" : selected.online ? "在线" : "好友"}</p></div></div>
-              <div className="chat-header__actions"><IconButton label="搜索聊天记录"><Search size={18} /></IconButton><IconButton label="查看聊天资料" onClick={() => setDrawerOpen(true)}><MoreHorizontal size={19} /></IconButton></div>
+              <IconButton label="返回会话列表" className="chat-header__back" onClick={() => navigate("/app/chats")}><ArrowLeft size={19} /></IconButton>
+              <div className="chat-header__person"><Avatar name={selected.name} online={selected.online} src={selected.avatarUrl} /><div><h2>{selected.name}</h2><p>{selected.group ? "群聊" : selected.online ? "在线" : "离线"}</p></div></div>
+              <div className="chat-header__actions"><IconButton label="查看聊天资料" onClick={() => setDrawerOpen(true)}><MoreHorizontal size={19} /></IconButton></div>
             </header>
             {connectionState !== "connected" && !previewMode && <div className="chat-connection-banner"><WifiOff size={14} /><span>{connectionLabels[connectionState]}，未确认的消息会保留并允许重试。</span></div>}
             <div className="message-scroll">
@@ -143,7 +164,7 @@ export function ChatPage() {
 
       {selected?.group ? <GroupManagementDrawer conversation={selected} onClose={() => setDrawerOpen(false)} open={drawerOpen} /> : <Drawer description="联系人资料与会话设置" onClose={() => setDrawerOpen(false)} open={drawerOpen} title={selected?.name ?? "聊天资料"}>
         <div className="profile-hero"><Avatar name={selected?.name ?? "?"} online={selected?.online} size="xl" src={selected?.avatarUrl} /><h3>{selected?.name}</h3><p>{selected?.group ? "群聊资料将在群组阶段接入" : "联系人基础资料"}</p>{selected?.group && <Badge>群聊</Badge>}</div>
-        <div className="detail-list"><button><span><BellOff size={17} />消息免打扰</span><ChevronDown size={16} /></button>{selected?.group && <button><span><Users size={17} />查看全部成员</span><span>—</span></button>}</div>
+        <div className="group-notification-setting"><Switch checked={Boolean(selected?.muted)} description="开启后，该会话不会触发声音与桌面通知。" disabled={muteSaving} label="消息免打扰" onCheckedChange={(checked) => void toggleMute(checked)} />{muteError && <p className="drawer-setting-error">{muteError}</p>}</div>
       </Drawer>}
       <CreateGroupDrawer onClose={() => setCreateGroupOpen(false)} onCreated={(id) => navigate(`/app/chats/${id}`)} open={createGroupOpen} />
     </>

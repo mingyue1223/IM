@@ -40,7 +40,14 @@ func NewClientConnection(userID int64, conn *websocket.Conn) *ClientConnection {
 // 它将每条消息转发给 msgHandler 回调，并处理 pong/超时。
 // 当连接关闭或发生读取错误时退出。
 func (c *ClientConnection) ReadPump(msgHandler func(*ClientConnection, []byte)) {
-	defer c.Conn.Close()
+	defer func() {
+		c.Conn.Close()
+		select {
+		case <-c.CloseCh:
+		default:
+			close(c.CloseCh)
+		}
+	}()
 
 	c.Conn.SetReadLimit(maxMessageSize)
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))

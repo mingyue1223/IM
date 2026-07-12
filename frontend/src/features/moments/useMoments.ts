@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import type { Moment } from "../../../goim-api-types";
+import type { Moment, MomentLiker } from "../../../goim-api-types";
 import { momentPosts } from "../../mocks/data";
 import { momentsApi } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
@@ -49,6 +49,7 @@ export function useMoments(mode: "friends" | "mine" = "friends") {
   const likeMutation = useMutation({ mutationFn: ({ id, liked }: { id: number; liked: boolean }) => liked ? momentsApi.unlike(id) : momentsApi.like(id), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["moments", "feed"] }) });
   const commentMutation = useMutation({ mutationFn: ({ id, content }: { id: number; content: string }) => momentsApi.comment(id, { content }) });
   const deleteCommentMutation = useMutation({ mutationFn: (commentId: number) => momentsApi.deleteComment(commentId) });
+  const deleteMomentMutation = useMutation({ mutationFn: (momentId: number) => momentsApi.delete(momentId), onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["moments", "feed"] }); void queryClient.invalidateQueries({ queryKey: ["moments", "mine"] }); } });
 
   const posts: MomentView[] = useMemo(() => {
     if (previewMode) return previewPosts;
@@ -78,6 +79,14 @@ export function useMoments(mode: "friends" | "mine" = "friends") {
     if (previewMode) setPreviewPosts((current) => current.map((post) => post.id === postId ? { ...post, comments: post.comments.filter((comment) => comment.id !== commentId) } : post));
     else { void queryClient.invalidateQueries({ queryKey: ["moments", "feed"] }); void queryClient.invalidateQueries({ queryKey: ["moments", "mine"] }); }
   };
+  const getLikers = async (post: MomentView): Promise<MomentLiker[]> => {
+    if (previewMode) return post.liked_by_me ? [{ user_id: currentUser?.id ?? 10086, username: currentUser?.username ?? "我", avatar_url: currentUser?.avatarUrl }] : [];
+    return (await momentsApi.likers(post.id)).items;
+  };
+  const deleteMoment = async (postId: number) => {
+    if (!previewMode) await deleteMomentMutation.mutateAsync(postId);
+    else setPreviewPosts((current) => current.filter((post) => post.id !== postId));
+  };
 
-  return { posts, publish, toggleLike, addComment, deleteComment, isLoading: !previewMode && (mode === "mine" ? mineQuery.isLoading : feedQuery.isLoading), isError: !previewMode && (mode === "mine" ? mineQuery.isError : feedQuery.isError), hasNextPage: mode === "friends" && feedQuery.hasNextPage, fetchNextPage: feedQuery.fetchNextPage, isFetchingNextPage: feedQuery.isFetchingNextPage, isMutating: publishMutation.isPending || likeMutation.isPending || commentMutation.isPending || deleteCommentMutation.isPending };
+  return { posts, publish, toggleLike, addComment, deleteComment, getLikers, deleteMoment, isLoading: !previewMode && (mode === "mine" ? mineQuery.isLoading : feedQuery.isLoading), isError: !previewMode && (mode === "mine" ? mineQuery.isError : feedQuery.isError), hasNextPage: mode === "friends" && feedQuery.hasNextPage, fetchNextPage: feedQuery.fetchNextPage, isFetchingNextPage: feedQuery.isFetchingNextPage, isMutating: publishMutation.isPending || likeMutation.isPending || commentMutation.isPending || deleteCommentMutation.isPending };
 }

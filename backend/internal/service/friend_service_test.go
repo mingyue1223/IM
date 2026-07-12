@@ -249,6 +249,7 @@ func (m *mockFriendRepo) GetUserByUsername(_ context.Context, _ string) (*model.
 }
 func (m *mockFriendRepo) CreateUser(_ context.Context, _ *model.User) error { return nil }
 func (m *mockFriendRepo) UpdateUser(_ context.Context, _ *model.User) error { return nil }
+func (m *mockFriendRepo) DeleteMoment(_ context.Context, _ int64) error     { return nil }
 
 // ── 桩实现：其他所有 MySQLRepo 方法 ──
 
@@ -295,7 +296,9 @@ func (m *mockFriendRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.
 func (m *mockFriendRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
-func (m *mockFriendRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) { return nil, nil }
+func (m *mockFriendRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) {
+	return nil, nil
+}
 
 func (m *mockFriendRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) {
 	return nil, nil
@@ -813,3 +816,7 @@ func (m *mockFriendRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64
 func (m *mockFriendRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) {
 	return nil, nil, nil
 }
+func (m *mockFriendRedisRepo) GetMomentLikerIDs(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockFriendRedisRepo) DeleteMomentLikes(_ context.Context, _ int64) error { return nil }

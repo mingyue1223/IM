@@ -85,6 +85,10 @@ type RedisRepo interface {
 	EnsureMomentLikesLoaded(ctx context.Context, momentID int64, loader func(context.Context) ([]int64, error), ttl time.Duration) error
 	// GetMomentLikeStats 批量读取多条动态的点赞数与"viewer 是否已赞"（单次 pipeline）。
 	GetMomentLikeStats(ctx context.Context, viewerID int64, momentIDs []int64) (counts map[int64]int64, liked map[int64]bool, err error)
+	// GetMomentLikerIDs 返回当前 Redis 点赞集合中的全部用户 ID；调用前需先预热。
+	GetMomentLikerIDs(ctx context.Context, momentID int64) ([]int64, error)
+	// DeleteMomentLikes 清理删除动态遗留的点赞缓存。
+	DeleteMomentLikes(ctx context.Context, momentID int64) error
 
 	// ── 好友缓存 ──
 	SetFriendCache(ctx context.Context, uidA, uidB int64) error
@@ -746,6 +750,29 @@ func (r *RedisRepoImpl) GetMomentLikeStats(ctx context.Context, viewerID int64, 
 		}
 	}
 	return counts, liked, nil
+}
+
+func (r *RedisRepoImpl) GetMomentLikerIDs(ctx context.Context, momentID int64) ([]int64, error) {
+	members, err := r.rdb.SMembers(ctx, momentLikesKey(momentID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("读取点赞用户集合: %w", err)
+	}
+	ids := make([]int64, 0, len(members))
+	for _, member := range members {
+		id, err := strconv.ParseInt(member, 10, 64)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (r *RedisRepoImpl) DeleteMomentLikes(ctx context.Context, momentID int64) error {
+	if err := r.rdb.Del(ctx, momentLikesKey(momentID), momentLikeCountKey(momentID), momentLikeLoadedKey(momentID), momentLikeLockKey(momentID)).Err(); err != nil {
+		return fmt.Errorf("清理动态点赞缓存: %w", err)
+	}
+	return nil
 }
 
 // ── 好友缓存 ──

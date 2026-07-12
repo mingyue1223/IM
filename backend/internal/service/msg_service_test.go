@@ -1183,5 +1183,9 @@ func (m *mockRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ fu
 func (m *mockRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) {
 	return nil, nil, nil
 }
+func (m *mockRedisRepo) GetMomentLikerIDs(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockRedisRepo) DeleteMomentLikes(_ context.Context, _ int64) error { return nil }
 
 func (m *mockMQRepo) PublishLikeEvent(_ context.Context, _ *model.LikeEvent) error { return nil }

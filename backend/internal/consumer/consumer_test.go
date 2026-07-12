@@ -14,8 +14,8 @@ import (
 
 	"github.com/goim/goim/internal/conn"
 	"github.com/goim/goim/internal/model"
-	redislua "github.com/goim/goim/internal/redis"
 	"github.com/goim/goim/internal/protocol"
+	redislua "github.com/goim/goim/internal/redis"
 )
 
 // ──────────────────────────────────────────────────────
@@ -28,25 +28,25 @@ type MockRedisRepo struct {
 	// 捕获的数据，用于验证
 	inboxWrites      map[int64][]*model.InboxMessage // userID -> 消息列表
 	outboxWrites     map[int64][]*model.InboxMessage // groupID -> 消息列表
-	convListUpdates  map[int64][]convListEntry        // userID -> 条目列表
-	unreadIncrements map[string]int                   // "userID:convID" -> 计数
-	groupMembers     map[int64][]int64                // groupID -> 成员ID列表
+	convListUpdates  map[int64][]convListEntry       // userID -> 条目列表
+	unreadIncrements map[string]int                  // "userID:convID" -> 计数
+	groupMembers     map[int64][]int64               // groupID -> 成员ID列表
 
 	// 记录哪些用户/群组被调用了裁剪
 	trimmedInboxUsers   []int64
 	trimmedOutboxGroups []int64
 
 	// 朋友圈推拉结合：捕获寄件箱写入、扇出目标、大V标记
-	momentOutbox  map[int64][]int64 // authorID -> momentID 列表
-	fanoutInbox   map[int64][]int64 // friendID -> momentID 列表（写扩散收件箱）
-	bigUsers      map[int64]bool    // 被标记为大V的用户
+	momentOutbox map[int64][]int64 // authorID -> momentID 列表
+	fanoutInbox  map[int64][]int64 // friendID -> momentID 列表（写扩散收件箱）
+	bigUsers     map[int64]bool    // 被标记为大V的用户
 
 	// 控制：注入错误
-	writeInboxErr       error
-	writeOutboxErr      error
-	getGroupMembersErr  error
-	addOutboxErr        error
-	countFriendsErr     error
+	writeInboxErr      error
+	writeOutboxErr     error
+	getGroupMembersErr error
+	addOutboxErr       error
+	countFriendsErr    error
 }
 
 type convListEntry struct {
@@ -197,9 +197,11 @@ func (m *MockRedisRepo) ExecInboxMarkRead(ctx context.Context, userID int64, con
 func (m *MockRedisRepo) ExecRevokeMsg(ctx context.Context, userID int64, convID string, msgID int64, revokeMsgJSON string, nowTimestamp int64) (bool, error) {
 	return false, fmt.Errorf("存根：消费者未使用")
 }
-func (m *MockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
+func (m *MockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error    { return nil }
 func (m *MockRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
-func (m *MockRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
+func (m *MockRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error {
+	return nil
+}
 func (m *MockRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
@@ -250,13 +252,25 @@ func (m *MockRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int
 	return nil, nil
 }
 
-func (m *MockRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
+func (m *MockRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error { return nil }
 
 // ── 高并发点赞新增接口 ──
-func (m *MockRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)      { return false, 0, nil }
-func (m *MockRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)    { return false, 0, nil }
-func (m *MockRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
-func (m *MockRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }
+func (m *MockRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) {
+	return false, 0, nil
+}
+func (m *MockRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) {
+	return false, 0, nil
+}
+func (m *MockRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error {
+	return nil
+}
+func (m *MockRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) {
+	return nil, nil, nil
+}
+func (m *MockRedisRepo) GetMomentLikerIDs(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (m *MockRedisRepo) DeleteMomentLikes(_ context.Context, _ int64) error { return nil }
 
 // ──────────────────────────────────────────────────────
 // 辅助函数：创建一个不带真实 websocket.Conn 的 ClientConnection

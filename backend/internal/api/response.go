@@ -73,6 +73,7 @@ const (
 	CodeNotCommentOwner    = 1503
 	CodeInvalidVisibility  = 1504
 	CodeCommentNotFound    = 1505
+	CodeNotMomentOwner     = 1506
 
 	// ── 设置 1700~1799 ──
 	CodeSettingsNotFound = 1701
@@ -128,6 +129,7 @@ var errorCodeMap = map[string]int{
 	"不是该评论的所有者":            CodeNotCommentOwner,
 	"可见性必须为 2（好友）或 3（仅自己）": CodeInvalidVisibility,
 	"评论未找到":                CodeCommentNotFound,
+	"不是该动态的作者":             CodeNotMomentOwner,
 
 	// 设置
 	"设置未找到":     CodeSettingsNotFound,

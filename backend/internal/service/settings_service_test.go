@@ -25,8 +25,8 @@ type mockSettingsRepo struct {
 	// 下一个自增 ID
 	nextID int64
 	// 错误覆盖
-	getSettingsErr       error
-	createOrUpdateErr    error
+	getSettingsErr    error
+	createOrUpdateErr error
 }
 
 func newMockSettingsRepo() *mockSettingsRepo {
@@ -76,16 +76,29 @@ func (m *mockSettingsRepo) CreateOrUpdateUserSettings(_ context.Context, setting
 
 // ── Stub out all other MySQLRepo methods ──
 
-func (m *mockSettingsRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error { return nil }
-func (m *mockSettingsRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error      { return nil }
-func (m *mockSettingsRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error          { return nil }
-func (m *mockSettingsRepo) GetUserByID(_ context.Context, _ int64) (*model.User, error)            { return nil, nil }
-func (m *mockSettingsRepo) GetUserByUsername(_ context.Context, _ string) (*model.User, error)     { return nil, nil }
-func (m *mockSettingsRepo) CreateUser(_ context.Context, _ *model.User) error                      { return nil }
-func (m *mockSettingsRepo) UpdateUser(_ context.Context, _ *model.User) error                      { return nil }
+func (m *mockSettingsRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error {
+	return nil
+}
+func (m *mockSettingsRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error {
+	return nil
+}
+func (m *mockSettingsRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error { return nil }
+func (m *mockSettingsRepo) GetUserByID(_ context.Context, _ int64) (*model.User, error) {
+	return nil, nil
+}
+func (m *mockSettingsRepo) GetUserByUsername(_ context.Context, _ string) (*model.User, error) {
+	return nil, nil
+}
+func (m *mockSettingsRepo) CreateUser(_ context.Context, _ *model.User) error { return nil }
+func (m *mockSettingsRepo) UpdateUser(_ context.Context, _ *model.User) error { return nil }
+func (m *mockSettingsRepo) DeleteMoment(_ context.Context, _ int64) error     { return nil }
 
-func (m *mockSettingsRepo) CreateFriendRequest(_ context.Context, _ *model.FriendRequest) error { return nil }
-func (m *mockSettingsRepo) UpdateFriendRequest(_ context.Context, _ *model.FriendRequest) error { return nil }
+func (m *mockSettingsRepo) CreateFriendRequest(_ context.Context, _ *model.FriendRequest) error {
+	return nil
+}
+func (m *mockSettingsRepo) UpdateFriendRequest(_ context.Context, _ *model.FriendRequest) error {
+	return nil
+}
 func (m *mockSettingsRepo) GetFriendRequestByID(_ context.Context, _ int64) (*model.FriendRequest, error) {
 	return nil, nil
 }
@@ -97,39 +110,54 @@ func (m *mockSettingsRepo) DeleteFriendship(_ context.Context, _ int64, _ int64)
 func (m *mockSettingsRepo) GetFriendList(_ context.Context, _ int64) ([]model.Friendship, error) {
 	return nil, nil
 }
-func (m *mockSettingsRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error)    { return false, nil }
-func (m *mockSettingsRepo) CreateBlacklist(_ context.Context, _ *model.Blacklist) error    { return nil }
-func (m *mockSettingsRepo) DeleteBlacklist(_ context.Context, _ int64, _ int64) error      { return nil }
-func (m *mockSettingsRepo) IsBlocked(_ context.Context, _ int64, _ int64) (bool, error)    { return false, nil }
+func (m *mockSettingsRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error) {
+	return false, nil
+}
+func (m *mockSettingsRepo) CreateBlacklist(_ context.Context, _ *model.Blacklist) error { return nil }
+func (m *mockSettingsRepo) DeleteBlacklist(_ context.Context, _ int64, _ int64) error   { return nil }
+func (m *mockSettingsRepo) IsBlocked(_ context.Context, _ int64, _ int64) (bool, error) {
+	return false, nil
+}
 
-func (m *mockSettingsRepo) CreateGroup(_ context.Context, _ *model.Group) (int64, error) { return 0, nil }
-func (m *mockSettingsRepo) UpdateGroup(_ context.Context, _ *model.Group) error           { return nil }
-func (m *mockSettingsRepo) GetGroupByID(_ context.Context, _ int64) (*model.Group, error) { return nil, nil }
-func (m *mockSettingsRepo) AddGroupMember(_ context.Context, _ *model.GroupMember) error  { return nil }
-func (m *mockSettingsRepo) RemoveGroupMember(_ context.Context, _ int64, _ int64) error   { return nil }
+func (m *mockSettingsRepo) CreateGroup(_ context.Context, _ *model.Group) (int64, error) {
+	return 0, nil
+}
+func (m *mockSettingsRepo) UpdateGroup(_ context.Context, _ *model.Group) error { return nil }
+func (m *mockSettingsRepo) GetGroupByID(_ context.Context, _ int64) (*model.Group, error) {
+	return nil, nil
+}
+func (m *mockSettingsRepo) AddGroupMember(_ context.Context, _ *model.GroupMember) error { return nil }
+func (m *mockSettingsRepo) RemoveGroupMember(_ context.Context, _ int64, _ int64) error  { return nil }
 func (m *mockSettingsRepo) GetGroupMembers(_ context.Context, _ int64) ([]model.GroupMember, error) {
 	return nil, nil
 }
-func (m *mockSettingsRepo) UpdateGroupMemberRole(_ context.Context, _ int, _ int, _ int) error { return nil }
+func (m *mockSettingsRepo) UpdateGroupMemberRole(_ context.Context, _ int, _ int, _ int) error {
+	return nil
+}
 
-func (m *mockSettingsRepo) CreateMoment(_ context.Context, _ *model.Moment) error                    { return nil }
-func (m *mockSettingsRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error)          { return nil, nil }
+func (m *mockSettingsRepo) CreateMoment(_ context.Context, _ *model.Moment) error { return nil }
+func (m *mockSettingsRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error) {
+	return nil, nil
+}
 func (m *mockSettingsRepo) GetMomentsByUser(_ context.Context, _ int64, _ int, _ int) ([]model.Moment, error) {
 	return nil, nil
 }
-func (m *mockSettingsRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error            { return nil }
-func (m *mockSettingsRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error               { return nil }
-func (m *mockSettingsRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error      { return nil }
+func (m *mockSettingsRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error { return nil }
+func (m *mockSettingsRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error    { return nil }
+func (m *mockSettingsRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error {
+	return nil
+}
 func (m *mockSettingsRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
-func (m *mockSettingsRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) { return nil, nil }
+func (m *mockSettingsRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) {
+	return nil, nil
+}
 func (m *mockSettingsRepo) DeleteMomentComment(_ context.Context, _ int64) error { return nil }
-func (m *mockSettingsRepo) CountFriends(_ context.Context, _ int64) (int, error)             { return 0, nil }
+func (m *mockSettingsRepo) CountFriends(_ context.Context, _ int64) (int, error) { return 0, nil }
 func (m *mockSettingsRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
 	return nil, nil
 }
-
 
 func (m *mockSettingsRepo) SearchPrivateMessages(_ context.Context, _ int64, _ string, _ int, _ int) ([]model.PrivateMessage, error) {
 	return nil, nil
@@ -165,13 +193,13 @@ func TestSettings_GetSettings_Existing(t *testing.T) {
 	repo := newMockSettingsRepo()
 	repo.mu.Lock()
 	repo.settings[1] = &model.UserSettings{
-		ID:                 1,
-		UserID:             1,
+		ID:                  1,
+		UserID:              1,
 		NotificationEnabled: false,
 		MsgPreviewEnabled:   true,
-		MuteList:           `["g_5","p_1_3"]`,
-		CreatedAt:          time.Now(),
-		UpdatedAt:          time.Now(),
+		MuteList:            `["g_5","p_1_3"]`,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 	repo.mu.Unlock()
 
@@ -211,7 +239,7 @@ func TestSettings_UpdateSettings_Create(t *testing.T) {
 
 	// Verify it was stored
 	repo.mu.Lock()
-stored := repo.settings[1]
+	stored := repo.settings[1]
 	repo.mu.Unlock()
 	assert.NotNil(t, stored)
 	assert.True(t, stored.NotificationEnabled)
@@ -365,6 +393,12 @@ func TestSettings_RemoveMuteConv_RemoveLast(t *testing.T) {
 
 // ── 高并发点赞新增接口的 mock 桩 ──
 
-func (m *mockSettingsRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
-func (m *mockSettingsRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
-func (m *mockSettingsRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }
+func (m *mockSettingsRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockSettingsRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error {
+	return nil
+}
+func (m *mockSettingsRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error {
+	return nil
+}

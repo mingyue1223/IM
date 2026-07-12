@@ -62,6 +62,7 @@ func (m *momentConsumerMySQLMock) GetUserByUsername(context.Context, string) (*m
 }
 func (m *momentConsumerMySQLMock) CreateUser(context.Context, *model.User) error { panic("未实现") }
 func (m *momentConsumerMySQLMock) UpdateUser(context.Context, *model.User) error { panic("未实现") }
+func (m *momentConsumerMySQLMock) DeleteMoment(context.Context, int64) error     { panic("未实现") }
 func (m *momentConsumerMySQLMock) CreateFriendRequest(context.Context, *model.FriendRequest) error {
 	panic("未实现")
 }

@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/goim/goim/internal/middleware"
@@ -99,24 +101,83 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 		return "", "", 0, fmt.Errorf(ErrWrongPassword)
 	}
 
-	// 生成访问令牌
-	accessToken, err := middleware.GenerateAccessToken(user.ID, user.Username, s.jwtSecret, s.accessExpHours)
-	if err != nil {
-		return "", "", 0, fmt.Errorf("生成访问令牌: %w", err)
-	}
-
-	// 生成刷新令牌
-	refreshToken, err := middleware.GenerateRefreshToken(user.ID, s.jwtSecret, s.refreshExpDays)
-	if err != nil {
-		return "", "", 0, fmt.Errorf("生成刷新令牌: %w", err)
-	}
-
-	expiresIn := int64(s.accessExpHours * 3600)
-	return accessToken, refreshToken, expiresIn, nil
+	return s.issueTokens(user)
 }
 
 func (s *AuthService) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
 	return s.repo.GetUserByUsername(ctx, username)
+}
+
+// GetUserByID 返回指定用户资料，供受保护的账户接口使用。
+func (s *AuthService) GetUserByID(ctx context.Context, userID int64) (*model.User, error) {
+	return s.repo.GetUserByID(ctx, userID)
+}
+
+// UpdateUsername 修改当前用户的用户名，并签发包含新用户名的令牌。
+// users.username 的唯一索引是并发修改时的最终保障。
+func (s *AuthService) UpdateUsername(ctx context.Context, userID int64, username string) (string, string, int64, error) {
+	if len(username) < 3 || len(username) > 50 {
+		return "", "", 0, fmt.Errorf(ErrUsernameTooShort)
+	}
+
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("查找用户: %w", err)
+	}
+	if user == nil {
+		return "", "", 0, fmt.Errorf(ErrUserNotFound)
+	}
+
+	existing, err := s.repo.GetUserByUsername(ctx, username)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("检查用户名: %w", err)
+	}
+	if existing != nil && existing.ID != userID {
+		return "", "", 0, fmt.Errorf(ErrUsernameTaken)
+	}
+
+	oldUsername := user.Username
+	user.Username = username
+	if user.Nickname == oldUsername {
+		user.Nickname = username
+	}
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			return "", "", 0, fmt.Errorf(ErrUsernameTaken)
+		}
+		return "", "", 0, fmt.Errorf("更新用户名: %w", err)
+	}
+
+	return s.issueTokens(user)
+}
+
+// UpdatePassword 校验当前密码后，以 bcrypt 哈希替换为新密码。
+func (s *AuthService) UpdatePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error {
+	if len(newPassword) < 6 {
+		return fmt.Errorf(ErrPasswordTooShort)
+	}
+
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("查找用户: %w", err)
+	}
+	if user == nil {
+		return fmt.Errorf(ErrUserNotFound)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+		return fmt.Errorf(ErrWrongPassword)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), s.bcryptCost)
+	if err != nil {
+		return fmt.Errorf("哈希密码: %w", err)
+	}
+	user.PasswordHash = string(hash)
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
+		return fmt.Errorf("更新密码: %w", err)
+	}
+	return nil
 }
 
 // Refresh 验证刷新令牌并颁发新的访问令牌。
@@ -136,14 +197,20 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string,
 		return "", 0, fmt.Errorf(ErrUserNotFound)
 	}
 
-	// 生成新的访问令牌
+	accessToken, _, expiresIn, err := s.issueTokens(user)
+	return accessToken, expiresIn, err
+}
+
+func (s *AuthService) issueTokens(user *model.User) (string, string, int64, error) {
 	accessToken, err := middleware.GenerateAccessToken(user.ID, user.Username, s.jwtSecret, s.accessExpHours)
 	if err != nil {
-		return "", 0, fmt.Errorf("生成访问令牌: %w", err)
+		return "", "", 0, fmt.Errorf("生成访问令牌: %w", err)
 	}
-
-	expiresIn := int64(s.accessExpHours * 3600)
-	return accessToken, expiresIn, nil
+	refreshToken, err := middleware.GenerateRefreshToken(user.ID, s.jwtSecret, s.refreshExpDays)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("生成刷新令牌: %w", err)
+	}
+	return accessToken, refreshToken, int64(s.accessExpHours * 3600), nil
 }
 
 // TokenExpiry 返回配置的访问令牌过期时长。

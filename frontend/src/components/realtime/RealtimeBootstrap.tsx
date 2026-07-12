@@ -19,6 +19,19 @@ function applyMutedConversations() {
   for (const conversation of chat.conversations) chat.setConversationMuted(conversation.id, mutedIds.has(conversation.id));
 }
 
+async function refreshPrivateConversationIdentities() {
+  try {
+    const page = await friendsApi.list(100, 0);
+    const chat = useChatStore.getState();
+    for (const friend of page.items) {
+      const conversation = chat.conversations.find((item) => !item.group && item.targetId === friend.friend_id);
+      if (conversation) chat.setConversationIdentity(conversation.id, friend.nickname || `用户 #${friend.friend_id}`, friend.avatar_url, friend.online);
+    }
+  } catch {
+    // 在线状态刷新失败不影响现有会话和消息收发。
+  }
+}
+
 function handleServerMessage(message: ServerWsMessage, currentUserId: number, clearSession: () => void) {
   const chat = useChatStore.getState();
   switch (message.type) {
@@ -36,7 +49,7 @@ function handleServerMessage(message: ServerWsMessage, currentUserId: number, cl
         const targetId = message.data.fromId === currentUserId ? message.data.toId : message.data.fromId;
         void friendsApi.list(100, 0).then((page) => {
           const friend = page.items.find((item) => item.friend_id === targetId);
-          if (friend) useChatStore.getState().setConversationIdentity(message.data.convId, friend.nickname || `用户 #${targetId}`, friend.avatar_url);
+          if (friend) useChatStore.getState().setConversationIdentity(message.data.convId, friend.nickname || `用户 #${targetId}`, friend.avatar_url, friend.online);
         }).catch(() => undefined);
       } else {
         void groupsApi.get(message.data.toId).then((group) => {
@@ -54,12 +67,7 @@ function handleServerMessage(message: ServerWsMessage, currentUserId: number, cl
     case "convSync":
       chat.applyConversationSync(message.data.conversations, message.data.unreadMap);
       applyMutedConversations();
-      void friendsApi.list(100, 0).then((page) => {
-        for (const friend of page.items) {
-          const conversation = useChatStore.getState().conversations.find((item) => !item.group && item.targetId === friend.friend_id);
-          if (conversation) useChatStore.getState().setConversationIdentity(conversation.id, friend.nickname || `用户 #${friend.friend_id}`, friend.avatar_url);
-        }
-      }).catch(() => undefined);
+      void refreshPrivateConversationIdentities();
       void groupsApi.list().then((groups) => {
         for (const group of groups) useChatStore.getState().addGroupConversation(group.id, group.name);
       }).catch(() => undefined);
@@ -118,8 +126,10 @@ export function RealtimeBootstrap() {
     // Deferring the real connection avoids opening and immediately closing a socket
     // before its handshake completes during that probe.
     const connectTimer = window.setTimeout(() => goimSocket.connect(accessToken), 0);
+    const onlineRefreshTimer = window.setInterval(() => void refreshPrivateConversationIdentities(), 15_000);
     return () => {
       window.clearTimeout(connectTimer);
+      window.clearInterval(onlineRefreshTimer);
       goimSocket.disconnect(false);
     };
   }, [accessToken, clearSession, previewMode, userId]);

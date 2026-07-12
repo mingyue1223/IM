@@ -51,6 +51,15 @@ type refreshResponse struct {
 	ExpiresIn   int64  `json:"expires_in"`
 }
 
+type updateUsernameRequest struct {
+	Username string `json:"username" binding:"required"`
+}
+
+type updatePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required"`
+}
+
 // ── Handlers ──
 
 // Register godoc
@@ -171,10 +180,96 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	})
 }
 
+// UpdateUsername godoc
+// @Summary      修改用户名
+// @Description  修改当前登录用户的用户名。用户名全局唯一，成功后返回包含新用户名的令牌。
+// @Tags         账户
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body  body  updateUsernameRequest  true  "新用户名"
+// @Success      200   {object}  ApiResponse{data=loginResponse}
+// @Failure      400   {object}  ApiResponse
+// @Failure      401   {object}  ApiResponse
+// @Failure      409   {object}  ApiResponse
+// @Router       /account/username [put]
+func (h *AuthHandler) UpdateUsername(c *gin.Context) {
+	var req updateUsernameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeMissingParam, "username is required")
+		return
+	}
+
+	accessToken, refreshToken, expiresIn, err := h.authSvc.UpdateUsername(c.Request.Context(), c.GetInt64("userID"), req.Username)
+	if err != nil {
+		switch err.Error() {
+		case service.ErrUsernameTooShort:
+			ServiceError(c, http.StatusBadRequest, err.Error())
+		case service.ErrUsernameTaken:
+			ServiceError(c, http.StatusConflict, err.Error())
+		case service.ErrUserNotFound:
+			ServiceError(c, http.StatusUnauthorized, err.Error())
+		default:
+			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		}
+		return
+	}
+
+	user, err := h.authSvc.GetUserByID(c.Request.Context(), c.GetInt64("userID"))
+	if err != nil || user == nil {
+		Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		return
+	}
+	Success(c, loginResponse{AccessToken: accessToken, RefreshToken: refreshToken, ExpiresIn: expiresIn, AvatarURL: user.AvatarURL})
+}
+
+// UpdatePassword godoc
+// @Summary      修改密码
+// @Description  校验当前密码后更新为新密码。
+// @Tags         账户
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body  body  updatePasswordRequest  true  "密码信息"
+// @Success      200   {object}  ApiResponse
+// @Failure      400   {object}  ApiResponse
+// @Failure      401   {object}  ApiResponse
+// @Router       /account/password [put]
+func (h *AuthHandler) UpdatePassword(c *gin.Context) {
+	var req updatePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeMissingParam, "current_password and new_password are required")
+		return
+	}
+
+	err := h.authSvc.UpdatePassword(c.Request.Context(), c.GetInt64("userID"), req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		switch err.Error() {
+		case service.ErrPasswordTooShort:
+			ServiceError(c, http.StatusBadRequest, err.Error())
+		case service.ErrWrongPassword:
+			ServiceError(c, http.StatusUnauthorized, err.Error())
+		case service.ErrUserNotFound:
+			ServiceError(c, http.StatusUnauthorized, err.Error())
+		default:
+			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		}
+		return
+	}
+	SuccessMessage(c, "密码修改成功")
+}
+
 // RegisterRoutes registers all auth HTTP routes on the given Gin engine.
 func (h *AuthHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	auth := rg.Group("/auth")
 	auth.POST("/register", h.Register)
 	auth.POST("/login", h.Login)
 	auth.POST("/refresh", h.Refresh)
+}
+
+// RegisterAccountRoutes 注册需要登录态的账户资料修改路由。
+func (h *AuthHandler) RegisterAccountRoutes(rg *gin.RouterGroup) {
+	account := rg.Group("/account")
+	account.PUT("/username", h.UpdateUsername)
+	account.PUT("/password", h.UpdatePassword)
 }

@@ -52,7 +52,7 @@ interface ChatState {
   acknowledge: (ack: ServerAck) => void;
   failLatestPending: (message: string) => void;
   receiveMessage: (message: InboxMessage, currentUserId: number) => void;
-  setConversationIdentity: (convId: string, name: string, avatarUrl?: string) => void;
+  setConversationIdentity: (convId: string, name: string, avatarUrl?: string, online?: boolean) => void;
   applySyncBatch: (batch: SyncBatch, currentUserId: number) => void;
   applyConversationSync: (summaries: ConvSummary[], unreadMap: Record<string, number>) => void;
   revokeMessage: (convId: string, serverMsgId: number) => void;
@@ -209,7 +209,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversations: [updatedConversation, ...state.conversations.filter((conversation) => conversation.id !== message.convId)],
     };
   }),
-  setConversationIdentity: (convId, name, avatarUrl) => set((state) => ({ conversations: state.conversations.map((conversation) => conversation.id === convId ? { ...conversation, name, avatarUrl } : conversation) })),
+  setConversationIdentity: (convId, name, avatarUrl, online) => set((state) => ({ conversations: state.conversations.map((conversation) => conversation.id === convId ? { ...conversation, name, avatarUrl, online: online ?? conversation.online } : conversation) })),
 
   applySyncBatch: (batch, currentUserId) => set((state) => {
     const next = { ...state.messagesByConversation };

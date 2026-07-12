@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/goim/goim/internal/service"
 )
@@ -12,11 +13,12 @@ import (
 // FriendHandler 提供好友相关端点的 Gin HTTP 处理器。
 type FriendHandler struct {
 	friendSvc *service.FriendService
+	rdb       *redis.Client
 }
 
 // NewFriendHandler 创建一个 FriendHandler，封装给定的 FriendService。
-func NewFriendHandler(friendSvc *service.FriendService) *FriendHandler {
-	return &FriendHandler{friendSvc: friendSvc}
+func NewFriendHandler(friendSvc *service.FriendService, rdb *redis.Client) *FriendHandler {
+	return &FriendHandler{friendSvc: friendSvc, rdb: rdb}
 }
 
 // ── 请求 / 响应 DTO ──
@@ -270,6 +272,19 @@ func (h *FriendHandler) GetFriendList(c *gin.Context) {
 		end = len(friends)
 	}
 	paged := friends[offset:end]
+	for index := range paged {
+		friend, err := h.friendSvc.GetUserByID(c.Request.Context(), paged[index].FriendID)
+		if err == nil && friend != nil {
+			paged[index].Nickname = friend.Username
+			paged[index].AvatarURL = friend.AvatarURL
+		}
+		if h.rdb != nil {
+			online, err := h.rdb.Exists(c.Request.Context(), "online:"+strconv.FormatInt(paged[index].FriendID, 10)).Result()
+			if err == nil {
+				paged[index].Online = online == 1
+			}
+		}
+	}
 
 	PaginatedSuccess(c, paged, total, offset, limit)
 }

@@ -28,6 +28,10 @@ type Friendship struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"user_id"`
 	FriendID  int64     `json:"friend_id"`
+	Nickname  string    `json:"nickname,omitempty"`
+	AvatarURL string    `json:"avatar_url,omitempty"`
+	Online    bool      `json:"online"`
+	IsBlocked bool      `json:"is_blocked"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

@@ -70,6 +70,14 @@ type deleteCommentResponse struct {
 	Ok bool `json:"ok"`
 }
 
+type momentLikersResponse struct {
+	Items []model.MomentLiker `json:"items"`
+}
+
+type deleteMomentResponse struct {
+	Ok bool `json:"ok"`
+}
+
 type momentFeedResponse struct {
 	Moments    []getMomentResponse `json:"moments"`
 	NextCursor string              `json:"next_cursor"` // 空串表示无更多
@@ -313,6 +321,65 @@ func (h *MomentHandler) UnlikeMoment(c *gin.Context) {
 	Success(c, unlikeMomentResponse{Ok: true, Liked: false, Count: count})
 }
 
+// GetMomentLikers godoc
+// @Summary      获取动态点赞用户
+// @Description  获取当前用户可见动态的点赞用户资料
+// @Tags         朋友圈
+// @Produce      json
+// @Security     BearerAuth
+// @Param        momentID  path  int64  true  "动态ID"
+// @Success      200  {object}  ApiResponse{data=momentLikersResponse}
+// @Failure      404  {object}  ApiResponse
+// @Router       /moment/{momentID}/likers [get]
+func (h *MomentHandler) GetMomentLikers(c *gin.Context) {
+	momentID, err := strconv.ParseInt(c.Param("momentID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "无效的动态ID")
+		return
+	}
+	likers, err := h.momentSvc.GetMomentLikers(c.Request.Context(), c.GetInt64("userID"), momentID)
+	if err != nil {
+		if err.Error() == service.ErrMomentNotFound {
+			ServiceError(c, http.StatusNotFound, err.Error())
+		} else {
+			Error(c, http.StatusInternalServerError, CodeInternalError, "内部错误")
+		}
+		return
+	}
+	Success(c, momentLikersResponse{Items: likers})
+}
+
+// DeleteMoment godoc
+// @Summary      删除自己的动态
+// @Description  仅动态作者可以删除动态及其关联互动
+// @Tags         朋友圈
+// @Produce      json
+// @Security     BearerAuth
+// @Param        momentID  path  int64  true  "动态ID"
+// @Success      200  {object}  ApiResponse{data=deleteMomentResponse}
+// @Failure      403  {object}  ApiResponse
+// @Failure      404  {object}  ApiResponse
+// @Router       /moment/{momentID} [delete]
+func (h *MomentHandler) DeleteMoment(c *gin.Context) {
+	momentID, err := strconv.ParseInt(c.Param("momentID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "无效的动态ID")
+		return
+	}
+	if err := h.momentSvc.DeleteMoment(c.Request.Context(), c.GetInt64("userID"), momentID); err != nil {
+		switch err.Error() {
+		case service.ErrNotMomentOwner:
+			ServiceError(c, http.StatusForbidden, err.Error())
+		case service.ErrMomentNotFound:
+			ServiceError(c, http.StatusNotFound, err.Error())
+		default:
+			Error(c, http.StatusInternalServerError, CodeInternalError, "内部错误")
+		}
+		return
+	}
+	Success(c, deleteMomentResponse{Ok: true})
+}
+
 // CommentMoment godoc
 // @Summary      评论动态
 // @Description  对指定动态发表评论
@@ -467,6 +534,8 @@ func (h *MomentHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	moment.GET("/user/:userID", h.GetUserMoments)
 	moment.POST("/:momentID/like", h.LikeMoment)
 	moment.DELETE("/:momentID/like", h.UnlikeMoment)
+	moment.GET("/:momentID/likers", h.GetMomentLikers)
+	moment.DELETE("/:momentID", h.DeleteMoment)
 	moment.POST("/:momentID/comment", h.CommentMoment)
 	moment.DELETE("/comment/:commentID", h.DeleteComment)
 	moment.GET("/feed", h.GetFeed)

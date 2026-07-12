@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check, ChevronRight, LoaderCircle, MapPin, MessageCircle, MoreHorizontal, Search, Trash2, UserRoundPlus, UsersRound, X } from "lucide-react";
+import { Check, ChevronRight, LoaderCircle, MessageCircle, Search, Trash2, UserRoundPlus, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -29,7 +29,7 @@ export function ContactsPage() {
   const selected = contacts.find((contact) => contact.routeId === contactId) ?? contacts[0];
 
   useEffect(() => {
-    if (contacts.length && !contacts.some((contact) => contact.routeId === contactId)) navigate(`/app/contacts/${contacts[0].routeId}`, { replace: true });
+    if (contactId && contacts.length && !contacts.some((contact) => contact.routeId === contactId)) navigate(`/app/contacts/${contacts[0].routeId}`, { replace: true });
   }, [contactId, contacts, navigate]);
 
   const startChat = (friend: FriendView) => {
@@ -67,7 +67,7 @@ export function ContactsPage() {
 
   return (
     <>
-      <aside className="module-sidebar contacts-sidebar">
+      <aside className={`module-sidebar contacts-sidebar ${contactId ? "contacts-sidebar--mobile-hidden" : ""}`}>
         <header className="module-sidebar__header"><div><span className="eyebrow">Contacts</span><h1>联系人</h1></div><IconButton label="添加好友" onClick={() => setRequestOpen(true)}><UserRoundPlus size={18} /></IconButton></header>
         <div className="module-sidebar__search"><TextField aria-label="搜索联系人" leadingIcon={<Search size={16} />} placeholder="搜索联系人" /></div>
         <button className="friend-request-entry" onClick={() => setRequestOpen(true)}><span className="friend-request-entry__icon"><UserRoundPlus size={18} /></span><span><strong>好友申请</strong><small>{requests.length ? `有 ${requests.length} 条待处理申请` : "暂无新的申请"}</small></span>{requests.length > 0 && <b>{requests.length}</b>}<ChevronRight size={16} /></button>
@@ -77,12 +77,11 @@ export function ContactsPage() {
         )}
       </aside>
 
-      <section className="module-main contact-main">
+      <section className={`module-main contact-main ${contactId ? "" : "contact-main--mobile-hidden"}`}>
         {selected ? <AnimatePresence mode="wait"><motion.div animate={{ opacity: 1, y: 0 }} className="contact-profile" initial={{ opacity: 0, y: reduceMotion ? 0 : 8 }} key={selected.routeId} transition={{ duration: reduceMotion ? 0 : .24 }}>
-          <div className="contact-profile__top"><Avatar name={selected.name} online={selected.online} size="xl" src={selected.avatarUrl} /><div className="contact-profile__identity"><div><h2>{selected.name}</h2>{selected.online && <Badge>在线</Badge>}{selected.isBlocked && <Badge>已拉黑</Badge>}</div><p>用户 #{selected.userId}</p></div><IconButton label="更多联系人操作" onClick={() => setDangerAction(selected.isBlocked ? "unblock" : "block")}><MoreHorizontal size={19} /></IconButton></div>
+          <div className="contact-profile__top"><Avatar name={selected.name} online={selected.online} size="xl" src={selected.avatarUrl} /><div className="contact-profile__identity"><div><h2>{selected.name}</h2>{selected.online && <Badge>在线</Badge>}{selected.isBlocked && <Badge>已拉黑</Badge>}</div><p>用户 #{selected.userId}</p></div></div>
           <p className="contact-profile__note">{selected.note}</p>
           <Button disabled={selected.isBlocked} leadingIcon={<MessageCircle size={17} />} onClick={() => startChat(selected)} size="lg">{selected.isBlocked ? "已拉黑" : "发消息"}</Button>
-          <div className="contact-info-grid"><div><span><MapPin size={16} />所在地</span><strong>{selected.location ?? "未提供"}</strong></div><div><span><UsersRound size={16} />共同群聊</span><strong>{selected.groups === undefined ? "暂不可用" : `${selected.groups} 个`}</strong></div></div>
           <div className="contact-profile__section"><header><h3>联系人管理</h3></header><div className="contact-danger-row"><button onClick={() => setDangerAction("remove")}><Trash2 size={15} />删除好友</button><button onClick={() => setDangerAction(selected.isBlocked ? "unblock" : "block")}>{selected.isBlocked ? "解除拉黑" : "加入黑名单"}</button></div></div>
         </motion.div></AnimatePresence> : <div className="contact-empty"><UsersRound size={24} /><h2>还没有联系人</h2><p>通过用户 ID 发送好友申请，建立第一段连接。</p><Button onClick={() => setRequestOpen(true)} size="sm">添加好友</Button></div>}
       </section>

@@ -38,6 +38,10 @@ func NewFriendService(mysqlRepo repository.MySQLRepo, redisRepo repository.Redis
 	}
 }
 
+func (s *FriendService) GetUserByID(ctx context.Context, userID int64) (*model.User, error) {
+	return s.mysqlRepo.GetUserByID(ctx, userID)
+}
+
 // SendFriendRequest 创建好友请求，并进行以下验证：
 // - 不能给自己发请求
 // - 不能已经是好友

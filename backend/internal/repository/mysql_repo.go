@@ -49,6 +49,7 @@ type MySQLRepo interface {
 	// ── 朋友圈 ──
 	CreateMoment(ctx context.Context, moment *model.Moment) error
 	GetMomentByID(ctx context.Context, id int64) (*model.Moment, error)
+	DeleteMoment(ctx context.Context, id int64) error
 	GetMomentsByIDs(ctx context.Context, ids []int64) ([]model.Moment, error)
 	GetMomentsByUser(ctx context.Context, userID int64, limit, offset int) ([]model.Moment, error)
 	// 点赞明细的持久化：写路径走 Redis，MySQL 由 like_persist 消费者批量镜像。
@@ -192,8 +193,8 @@ func (m *MySQLRepoImpl) CreateUser(ctx context.Context, user *model.User) error 
 }
 
 func (m *MySQLRepoImpl) UpdateUser(ctx context.Context, user *model.User) error {
-	query := `UPDATE users SET nickname=?, avatar_url=?, sign=?, gender=? WHERE id=?`
-	_, err := m.db.ExecContext(ctx, query, user.Nickname, user.AvatarURL, user.Sign, user.Gender, user.ID)
+	query := `UPDATE users SET username=?, password_hash=?, nickname=?, avatar_url=?, sign=?, gender=? WHERE id=?`
+	_, err := m.db.ExecContext(ctx, query, user.Username, user.PasswordHash, user.Nickname, user.AvatarURL, user.Sign, user.Gender, user.ID)
 	if err != nil {
 		return fmt.Errorf("更新用户: %w", err)
 	}
@@ -513,6 +514,28 @@ func (m *MySQLRepoImpl) GetMomentByID(ctx context.Context, id int64) (*model.Mom
 		return nil, fmt.Errorf("按ID获取朋友圈动态: %w", err)
 	}
 	return &moment, nil
+}
+
+// DeleteMoment 删除动态及其关联评论、持久化点赞明细。三张表不设外键，因此在事务内显式清理。
+func (m *MySQLRepoImpl) DeleteMoment(ctx context.Context, id int64) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("开启删除动态事务: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, query := range []string{
+		`DELETE FROM moment_comments WHERE moment_id = ?`,
+		`DELETE FROM moment_likes WHERE moment_id = ?`,
+		`DELETE FROM moments WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, id); err != nil {
+			return fmt.Errorf("删除动态关联数据: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交删除动态事务: %w", err)
+	}
+	return nil
 }
 
 // GetMomentsByIDs 批量按 ID 查询动态，用于 Feed 补全，消除 N+1 查询。

@@ -25,6 +25,13 @@ type MomentLike struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// MomentLiker 是动态点赞列表中可展示的用户资料。
+type MomentLiker struct {
+	UserID    int64  `json:"user_id"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
+}
+
 // MomentLikeKey 是点赞明细的联合主键 (momentID,userID)，用于批量删除。
 type MomentLikeKey struct {
 	MomentID int64

@@ -18,7 +18,7 @@ export default function RootApp() {
   return <ErrorBoundary><QueryClientProvider client={queryClient}><BrowserRouter><Suspense fallback={<PageLoading />}><Routes>
     <Route element={<GuestRoute />}><Route element={<AuthPage mode="login" />} path="/login" /><Route element={<AuthPage mode="register" />} path="/register" /></Route>
     <Route element={<FoundationPage />} path="/foundation" />
-    <Route element={<ProtectedRoute />}><Route element={<AppShell />} path="/app"><Route element={<Navigate replace to="chats/lin-cheng" />} index /><Route element={<ChatPage />} path="chats/:conversationId?" /><Route element={<ContactsPage />} path="contacts/:contactId?" /><Route element={<MomentsPage />} path="moments" /><Route element={<SettingsPage />} path="settings/:section?" /></Route></Route>
-    <Route element={<Navigate replace to="/app/chats/lin-cheng" />} path="*" />
+    <Route element={<ProtectedRoute />}><Route element={<AppShell />} path="/app"><Route element={<Navigate replace to="chats" />} index /><Route element={<ChatPage />} path="chats/:conversationId?" /><Route element={<ContactsPage />} path="contacts/:contactId?" /><Route element={<MomentsPage />} path="moments" /><Route element={<SettingsPage />} path="settings/:section?" /></Route></Route>
+    <Route element={<Navigate replace to="/app/chats" />} path="*" />
   </Routes></Suspense></BrowserRouter></QueryClientProvider></ErrorBoundary>;
 }

@@ -53,6 +53,7 @@ export const apiClient = new GoIMApiClient({
   onUnauthorized: refreshAccessToken,
 });
 
+export const accountApi = createAuthApi(apiClient);
 export const settingsApi = createSettingsApi(apiClient);
 export const friendsApi = createFriendsApi(apiClient);
 export const groupsApi = createGroupsApi(apiClient);

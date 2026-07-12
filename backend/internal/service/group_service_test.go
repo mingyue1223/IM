@@ -163,6 +163,7 @@ func (m *mockGroupMySQLRepo) GetUserByUsername(_ context.Context, _ string) (*mo
 }
 func (m *mockGroupMySQLRepo) CreateUser(_ context.Context, _ *model.User) error { return nil }
 func (m *mockGroupMySQLRepo) UpdateUser(_ context.Context, _ *model.User) error { return nil }
+func (m *mockGroupMySQLRepo) DeleteMoment(_ context.Context, _ int64) error     { return nil }
 
 func (m *mockGroupMySQLRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error {
 	return nil
@@ -225,7 +226,9 @@ func (m *mockGroupMySQLRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]mo
 func (m *mockGroupMySQLRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
-func (m *mockGroupMySQLRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) { return nil, nil }
+func (m *mockGroupMySQLRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) {
+	return nil, nil
+}
 
 func (m *mockGroupMySQLRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) {
 	return nil, nil
@@ -874,3 +877,7 @@ func (r *mockGroupRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64,
 func (r *mockGroupRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) {
 	return nil, nil, nil
 }
+func (r *mockGroupRedisRepo) GetMomentLikerIDs(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (r *mockGroupRedisRepo) DeleteMomentLikes(_ context.Context, _ int64) error { return nil }

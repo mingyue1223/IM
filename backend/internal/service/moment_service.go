@@ -22,6 +22,7 @@ const (
 	ErrMomentContentEmpty   = "动态内容不能为空"
 	ErrMomentContentTooLong = "内容不能超过 2000 个字符"
 	ErrMomentNotFound       = "动态未找到"
+	ErrNotMomentOwner       = "不是该动态的作者"
 	ErrNotCommentOwner      = "不是该评论的所有者"
 	ErrInvalidVisibility    = "可见性必须为 2（好友）或 3（仅自己）"
 	ErrCommentNotFound      = "评论未找到"
@@ -293,6 +294,67 @@ func (s *MomentService) UnlikeMoment(ctx context.Context, userID int64, momentID
 		s.publishLikeEvent(ctx, momentID, userID, model.LikeActionUnlike)
 	}
 	return count, nil
+}
+
+// GetMomentLikers 返回当前可见动态的点赞用户资料。点赞写入 Redis 后立即可见，
+// 因此必须从已预热的 Redis 集合读取，而不是只读取异步镜像的 MySQL。
+func (s *MomentService) GetMomentLikers(ctx context.Context, viewerID, momentID int64) ([]model.MomentLiker, error) {
+	moment, err := s.mysqlRepo.GetMomentByID(ctx, momentID)
+	if err != nil {
+		return nil, fmt.Errorf("获取动态: %w", err)
+	}
+	if moment == nil {
+		return nil, fmt.Errorf(ErrMomentNotFound)
+	}
+	visible, err := s.canViewMoment(ctx, viewerID, moment)
+	if err != nil {
+		return nil, fmt.Errorf("检查动态可见性: %w", err)
+	}
+	if !visible {
+		return nil, fmt.Errorf(ErrMomentNotFound)
+	}
+	if err := s.ensureLikesLoaded(ctx, momentID); err != nil {
+		return nil, fmt.Errorf("预热点赞缓存: %w", err)
+	}
+	ids, err := s.redisRepo.GetMomentLikerIDs(ctx, momentID)
+	if err != nil {
+		return nil, fmt.Errorf("读取点赞用户: %w", err)
+	}
+	likers := make([]model.MomentLiker, 0, len(ids))
+	for _, id := range ids {
+		user, err := s.mysqlRepo.GetUserByID(ctx, id)
+		if err != nil {
+			s.logger.Warn("读取点赞用户资料失败", zap.Int64("userID", id), zap.Error(err))
+			continue
+		}
+		if user == nil {
+			continue
+		}
+		likers = append(likers, model.MomentLiker{UserID: user.ID, Username: user.Username, AvatarURL: user.AvatarURL})
+	}
+	sort.Slice(likers, func(i, j int) bool { return likers[i].UserID < likers[j].UserID })
+	return likers, nil
+}
+
+// DeleteMoment 仅允许动态作者删除自己的动态。
+func (s *MomentService) DeleteMoment(ctx context.Context, userID, momentID int64) error {
+	moment, err := s.mysqlRepo.GetMomentByID(ctx, momentID)
+	if err != nil {
+		return fmt.Errorf("获取动态: %w", err)
+	}
+	if moment == nil {
+		return fmt.Errorf(ErrMomentNotFound)
+	}
+	if moment.AuthorID != userID {
+		return fmt.Errorf(ErrNotMomentOwner)
+	}
+	if err := s.mysqlRepo.DeleteMoment(ctx, momentID); err != nil {
+		return fmt.Errorf("删除动态: %w", err)
+	}
+	if err := s.redisRepo.DeleteMomentLikes(ctx, momentID); err != nil {
+		s.logger.Warn("清理删除动态的点赞缓存失败", zap.Int64("momentID", momentID), zap.Error(err))
+	}
+	return nil
 }
 
 // ensureLikesLoaded 触发点赞缓存的按需预热（loader 从 MySQL 拉取该动态全部点赞用户）。

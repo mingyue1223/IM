@@ -29,7 +29,7 @@ export function useFriends() {
   const [localContacts, setLocalContacts] = useState(previewContacts);
   const [localRequests, setLocalRequests] = useState(initialPreviewRequests);
 
-  const friendsQuery = useQuery({ queryKey: ["friends"], queryFn: () => friendsApi.list(100, 0), enabled: !previewMode });
+  const friendsQuery = useQuery({ queryKey: ["friends"], queryFn: () => friendsApi.list(100, 0), enabled: !previewMode, refetchInterval: 15_000 });
   const requestsQuery = useQuery({ queryKey: ["friend-requests"], queryFn: () => friendsApi.requests(100, 0), enabled: !previewMode });
   const acceptMutation = useMutation({ mutationFn: (requestId: number) => friendsApi.accept({ request_id: requestId }), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["friends"] }) });
   const rejectMutation = useMutation({ mutationFn: (requestId: number) => friendsApi.reject({ request_id: requestId }) });
@@ -40,7 +40,7 @@ export function useFriends() {
 
   const contacts: FriendView[] = useMemo(() => {
     if (previewMode) return localContacts.map((contact) => ({ routeId: contact.id, userId: previewIds[contact.id], name: contact.name, note: contact.note, online: contact.online, location: contact.location, groups: contact.groups, isBlocked: false }));
-    return (friendsQuery.data?.items ?? []).map((friend) => ({ routeId: String(friend.friend_id), userId: friend.friend_id, name: friend.nickname || `用户 #${friend.friend_id}`, avatarUrl: friend.avatar_url, note: "好友", isBlocked: friend.is_blocked }));
+    return (friendsQuery.data?.items ?? []).map((friend) => ({ routeId: String(friend.friend_id), userId: friend.friend_id, name: friend.nickname || `用户 #${friend.friend_id}`, avatarUrl: friend.avatar_url, note: "好友", online: friend.online, isBlocked: friend.is_blocked }));
   }, [friendsQuery.data, localContacts, previewMode]);
 
   const requests = previewMode ? localRequests : (requestsQuery.data?.items ?? []);

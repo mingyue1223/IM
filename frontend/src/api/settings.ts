@@ -1,4 +1,4 @@
-import type { MuteConversationRequest, UpdateSettingsRequest, UserSettings } from "../goim-api-types";
+import type { MuteConversationRequest, UpdateSettingsRequest, UserSettings } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createSettingsApi = (client: GoIMApiClient) => ({

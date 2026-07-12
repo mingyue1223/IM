@@ -1,27 +1,26 @@
-# Local development configuration for the root docker-compose.yaml.
 server:
-  port: 18080
-  pprof_port: 16060
+  port: 8080
+  pprof_port: 0
   ws_path: "/ws"
   upload_dir: "./uploads"
 
 mysql:
-  host: "localhost"
-  port: 13306 # Keep this aligned with MYSQL_PORT in the root .env file.
-  user: "goim"
-  password: "goim123"
-  db_name: "goim"
+  host: "mysql"
+  port: 3306
+  user: "${MYSQL_USER}"
+  password: "${MYSQL_PASSWORD}"
+  db_name: "${MYSQL_DATABASE}"
 
 redis:
-  addr: "localhost:16379"
+  addr: "redis:6379"
   password: ""
   db: 0
 
 rabbitmq:
-  url: "amqp://guest:guest@localhost:5673/"
+  url: "amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
 
 jwt:
-  secret: "goim-local-development-secret-change-before-production"
+  secret: "${JWT_SECRET}"
   access_exp_hours: 2
   refresh_exp_days: 7
 

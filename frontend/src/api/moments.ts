@@ -1,4 +1,4 @@
-import type { ApiId, CommentMomentRequest, CommentMomentResponse, Moment, MomentActionResponse, MomentFeedResponse, MomentLikersResponse, Page, PublishMomentRequest, PublishMomentResponse } from "../goim-api-types";
+import type { ApiId, CommentMomentRequest, CommentMomentResponse, Moment, MomentActionResponse, MomentFeedResponse, MomentLikersResponse, Page, PublishMomentRequest, PublishMomentResponse } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createMomentsApi = (client: GoIMApiClient) => ({

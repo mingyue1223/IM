@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 // @vitest-environment node
 
-import { ApiError, GoIMApiClient } from "../../api/client";
+import { ApiError, GoIMApiClient } from "../api/client";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });

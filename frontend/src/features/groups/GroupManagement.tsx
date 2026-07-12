@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Crown, LogOut, ShieldCheck, UserPlus, Users, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Group, GroupMember } from "../../../goim-api-types";
-import { ApiError } from "../../../api/client";
+import { ApiError } from "../../api/client";
 import { Avatar, Button, ConfirmDialog, Drawer, IconButton, Switch, TextField } from "../../components/ui";
 import { groupsApi } from "../../lib/api";
 import { friendsApi } from "../../lib/api";

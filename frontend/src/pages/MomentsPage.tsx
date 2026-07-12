@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUp, ChevronDown, CircleAlert, Heart, LoaderCircle, MessageCircle, PenLine, Trash2, Users, UsersRound } from "lucide-react";
 import { useState } from "react";
-import { ApiError } from "../../api/client";
+import { ApiError } from "../api/client";
 import { Avatar, Button, ConfirmDialog, Drawer } from "../components/ui";
 import type { MomentLiker } from "../../goim-api-types";
 import { useMoments, type MomentView } from "../features/moments/useMoments";

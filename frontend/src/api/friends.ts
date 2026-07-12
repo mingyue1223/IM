@@ -1,4 +1,4 @@
-import type { AcceptFriendRequestResponse, ApiId, BlockUserRequest, FriendRequest, FriendRequestActionRequest, Friendship, Page, SendFriendRequestRequest, SendFriendRequestResponse } from "../goim-api-types";
+import type { AcceptFriendRequestResponse, ApiId, BlockUserRequest, FriendRequest, FriendRequestActionRequest, Friendship, Page, SendFriendRequestRequest, SendFriendRequestResponse } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createFriendsApi = (client: GoIMApiClient) => ({

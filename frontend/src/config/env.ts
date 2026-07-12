@@ -1,6 +1,8 @@
-const defaultApiBaseUrl = "http://localhost:18080/api/v1";
-const defaultWsUrl = "ws://localhost:18080/ws";
-const defaultStaticBaseUrl = "http://localhost:18080";
+const defaultOrigin =
+  typeof window === "undefined" || import.meta.env.DEV ? "http://localhost:18080" : window.location.origin;
+const defaultApiBaseUrl = `${defaultOrigin}/api/v1`;
+const defaultWsUrl = `${defaultOrigin.replace(/^http/, "ws")}/ws`;
+const defaultStaticBaseUrl = defaultOrigin;
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/$/, "");

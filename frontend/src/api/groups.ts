@@ -1,4 +1,4 @@
-import type { AddGroupMemberRequest, ApiId, CreateGroupRequest, CreateGroupResponse, Group, GroupMember, Page, TransferGroupOwnerRequest, UpdateGroupMemberRoleRequest, UpdateGroupRequest } from "../goim-api-types";
+import type { AddGroupMemberRequest, ApiId, CreateGroupRequest, CreateGroupResponse, Group, GroupMember, Page, TransferGroupOwnerRequest, UpdateGroupMemberRoleRequest, UpdateGroupRequest } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createGroupsApi = (client: GoIMApiClient) => ({

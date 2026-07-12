@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { LockKeyhole, Sparkles, UserRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ApiError } from "../../api/client";
+import { ApiError } from "../api/client";
 import { Button, TextField } from "../components/ui";
 import { authApi } from "../lib/api";
 import { queryClient } from "../lib/queryClient";

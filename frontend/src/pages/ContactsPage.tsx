@@ -2,7 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, ChevronRight, LoaderCircle, MessageCircle, Search, Trash2, UserRoundPlus, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
-import { ApiError } from "../../api/client";
+import { ApiError } from "../api/client";
 import { buildPrivateConvId } from "../../goim-ws-types";
 import { Avatar, Badge, Button, ConfirmDialog, IconButton, TextField } from "../components/ui";
 import { useFriends, type FriendView } from "../features/friends/useFriends";

@@ -1,10 +1,10 @@
-import { createAuthApi } from "../../api/auth";
-import { GoIMApiClient } from "../../api/client";
-import { createSettingsApi } from "../../api/settings";
-import { createFriendsApi } from "../../api/friends";
-import { createGroupsApi } from "../../api/groups";
-import { createMomentsApi } from "../../api/moments";
-import { createUploadApi } from "../../api/upload";
+import { createAuthApi } from "../api/auth";
+import { GoIMApiClient } from "../api/client";
+import { createSettingsApi } from "../api/settings";
+import { createFriendsApi } from "../api/friends";
+import { createGroupsApi } from "../api/groups";
+import { createMomentsApi } from "../api/moments";
+import { createUploadApi } from "../api/upload";
 import { env } from "../config/env";
 import { useAuthStore } from "../stores/authStore";
 

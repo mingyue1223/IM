@@ -1,4 +1,4 @@
-import type { UploadAvatarResponse } from "../goim-api-types";
+import type { UploadAvatarResponse } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createUploadApi = (client: GoIMApiClient) => ({

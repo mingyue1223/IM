@@ -1,4 +1,4 @@
-import type { LoginResponse, RefreshRequest, RegisterRequest, RegisterResponse, UpdatePasswordRequest, UpdateUsernameRequest } from "../goim-api-types";
+import type { LoginResponse, RefreshRequest, RegisterRequest, RegisterResponse, UpdatePasswordRequest, UpdateUsernameRequest } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createAuthApi = (client: GoIMApiClient) => ({

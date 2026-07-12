@@ -1,4 +1,4 @@
-import type { ApiResponse } from "../goim-api-types";
+import type { ApiResponse } from "../../goim-api-types";
 
 export interface ApiClientOptions {
   baseUrl: string;

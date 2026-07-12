@@ -2,7 +2,7 @@ import { Bell, ChevronRight, Info, LogOut, MessageSquareText, ShieldCheck, UserR
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
-import { ApiError } from "../../api/client";
+import { ApiError } from "../api/client";
 import { Avatar, Badge, Button, Switch } from "../components/ui";
 import type { UpdateSettingsRequest } from "../../goim-api-types";
 import { accountApi, settingsApi, uploadApi } from "../lib/api";

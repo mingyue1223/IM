@@ -1,4 +1,4 @@
-import type { ApiId, Page, PrivateMessage, RevokeMessageRequest, SearchMessagesQuery } from "../goim-api-types";
+import type { ApiId, Page, PrivateMessage, RevokeMessageRequest, SearchMessagesQuery } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createMessagesApi = (client: GoIMApiClient) => ({

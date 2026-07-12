@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 
@@ -45,6 +46,10 @@ func TestJWTAuthMiddleware_InvalidToken(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
+	var response authErrorResponse
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, codeUnauthorized, response.Code)
+	assert.Equal(t, "无效令牌", response.Message)
 }
 
 func TestJWTAuthMiddleware_MissingToken(t *testing.T) {
@@ -61,6 +66,10 @@ func TestJWTAuthMiddleware_MissingToken(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, 401, w.Code)
+	var response authErrorResponse
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, codeUnauthorized, response.Code)
+	assert.Equal(t, "缺少令牌", response.Message)
 }
 
 func TestJWTAuthMiddleware_QueryParamToken(t *testing.T) {

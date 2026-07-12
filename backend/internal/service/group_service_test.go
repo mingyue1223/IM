@@ -41,11 +41,11 @@ type mockGroupMySQLRepo struct {
 
 func newMockGroupMySQLRepo() *mockGroupMySQLRepo {
 	return &mockGroupMySQLRepo{
-		groupsByID:      make(map[int64]*model.Group),
-		membersByKey:    make(map[string]*model.GroupMember),
-		membersByGroup:  make(map[int64][]model.GroupMember),
-		nextGroupID:     1,
-		nextMemberID:    1,
+		groupsByID:     make(map[int64]*model.Group),
+		membersByKey:   make(map[string]*model.GroupMember),
+		membersByGroup: make(map[int64][]model.GroupMember),
+		nextGroupID:    1,
+		nextMemberID:   1,
 	}
 }
 
@@ -73,6 +73,7 @@ func (m *mockGroupMySQLRepo) UpdateGroup(_ context.Context, group *model.Group) 
 	}
 	stored.Name = group.Name
 	stored.Notice = group.Notice
+	stored.OwnerID = group.OwnerID
 	stored.UpdatedAt = time.Now()
 	return nil
 }
@@ -154,43 +155,69 @@ func (m *mockGroupMySQLRepo) UpdateGroupMemberRole(_ context.Context, groupID, u
 
 // ── 存根：所有其他 MySQLRepo 方法 ──
 
-func (m *mockGroupMySQLRepo) GetUserByID(_ context.Context, _ int64) (*model.User, error)    { return nil, nil }
-func (m *mockGroupMySQLRepo) GetUserByUsername(_ context.Context, _ string) (*model.User, error) { return nil, nil }
-func (m *mockGroupMySQLRepo) CreateUser(_ context.Context, _ *model.User) error               { return nil }
-func (m *mockGroupMySQLRepo) UpdateUser(_ context.Context, _ *model.User) error               { return nil }
+func (m *mockGroupMySQLRepo) GetUserByID(_ context.Context, id int64) (*model.User, error) {
+	return &model.User{ID: id, Username: fmt.Sprintf("user%d", id)}, nil
+}
+func (m *mockGroupMySQLRepo) GetUserByUsername(_ context.Context, _ string) (*model.User, error) {
+	return nil, nil
+}
+func (m *mockGroupMySQLRepo) CreateUser(_ context.Context, _ *model.User) error { return nil }
+func (m *mockGroupMySQLRepo) UpdateUser(_ context.Context, _ *model.User) error { return nil }
 
-func (m *mockGroupMySQLRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error { return nil }
-func (m *mockGroupMySQLRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error    { return nil }
-func (m *mockGroupMySQLRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error        { return nil }
+func (m *mockGroupMySQLRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error {
+	return nil
+}
+func (m *mockGroupMySQLRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error {
+	return nil
+}
+func (m *mockGroupMySQLRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error {
+	return nil
+}
 
-func (m *mockGroupMySQLRepo) CreateFriendRequest(_ context.Context, _ *model.FriendRequest) error { return nil }
-func (m *mockGroupMySQLRepo) UpdateFriendRequest(_ context.Context, _ *model.FriendRequest) error { return nil }
+func (m *mockGroupMySQLRepo) CreateFriendRequest(_ context.Context, _ *model.FriendRequest) error {
+	return nil
+}
+func (m *mockGroupMySQLRepo) UpdateFriendRequest(_ context.Context, _ *model.FriendRequest) error {
+	return nil
+}
 func (m *mockGroupMySQLRepo) GetFriendRequestByID(_ context.Context, _ int64) (*model.FriendRequest, error) {
 	return nil, nil
 }
 func (m *mockGroupMySQLRepo) GetFriendRequestsByUser(_ context.Context, _ int64) ([]model.FriendRequest, error) {
 	return nil, nil
 }
-func (m *mockGroupMySQLRepo) CreateFriendship(_ context.Context, _ *model.Friendship) error { return nil }
-func (m *mockGroupMySQLRepo) DeleteFriendship(_ context.Context, _ int64, _ int64) error    { return nil }
+func (m *mockGroupMySQLRepo) CreateFriendship(_ context.Context, _ *model.Friendship) error {
+	return nil
+}
+func (m *mockGroupMySQLRepo) DeleteFriendship(_ context.Context, _ int64, _ int64) error { return nil }
 func (m *mockGroupMySQLRepo) GetFriendList(_ context.Context, _ int64) ([]model.Friendship, error) {
 	return nil, nil
 }
-func (m *mockGroupMySQLRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error) { return false, nil }
+func (m *mockGroupMySQLRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error) {
+	return true, nil
+}
 func (m *mockGroupMySQLRepo) CreateBlacklist(_ context.Context, _ *model.Blacklist) error { return nil }
 func (m *mockGroupMySQLRepo) DeleteBlacklist(_ context.Context, _ int64, _ int64) error   { return nil }
-func (m *mockGroupMySQLRepo) IsBlocked(_ context.Context, _ int64, _ int64) (bool, error) { return false, nil }
+func (m *mockGroupMySQLRepo) IsBlocked(_ context.Context, _ int64, _ int64) (bool, error) {
+	return false, nil
+}
 
-func (m *mockGroupMySQLRepo) CreateMoment(_ context.Context, _ *model.Moment) error          { return nil }
-func (m *mockGroupMySQLRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error) { return nil, nil }
+func (m *mockGroupMySQLRepo) CreateMoment(_ context.Context, _ *model.Moment) error { return nil }
+func (m *mockGroupMySQLRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error) {
+	return nil, nil
+}
 func (m *mockGroupMySQLRepo) GetMomentsByUser(_ context.Context, _ int64, _ int, _ int) ([]model.Moment, error) {
 	return nil, nil
 }
-func (m *mockGroupMySQLRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error    { return nil }
-func (m *mockGroupMySQLRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error       { return nil }
-func (m *mockGroupMySQLRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error { return nil }
-func (m *mockGroupMySQLRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
-func (m *mockGroupMySQLRepo) CountFriends(_ context.Context, _ int64) (int, error)             { return 0, nil }
+func (m *mockGroupMySQLRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error {
+	return nil
+}
+func (m *mockGroupMySQLRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error { return nil }
+func (m *mockGroupMySQLRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error {
+	return nil
+}
+func (m *mockGroupMySQLRepo) DeleteMomentComment(_ context.Context, _ int64) error { return nil }
+func (m *mockGroupMySQLRepo) CountFriends(_ context.Context, _ int64) (int, error) { return 0, nil }
 func (m *mockGroupMySQLRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
 	return nil, nil
 }
@@ -198,9 +225,14 @@ func (m *mockGroupMySQLRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]mo
 func (m *mockGroupMySQLRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
+func (m *mockGroupMySQLRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) { return nil, nil }
 
-func (m *mockGroupMySQLRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) { return nil, nil }
-func (m *mockGroupMySQLRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error { return nil }
+func (m *mockGroupMySQLRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) {
+	return nil, nil
+}
+func (m *mockGroupMySQLRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error {
+	return nil
+}
 func (m *mockGroupMySQLRepo) SearchPrivateMessages(_ context.Context, _ int64, _ string, _ int, _ int) ([]model.PrivateMessage, error) {
 	return nil, nil
 }
@@ -298,8 +330,12 @@ func (r *mockGroupRedisRepo) RemoveGroupMemberRedis(_ context.Context, groupID, 
 
 // ── 存根：所有其他 RedisRepo 方法 ──
 
-func (r *mockGroupRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
-func (r *mockGroupRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
+func (r *mockGroupRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error {
+	return nil
+}
+func (r *mockGroupRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error {
+	return nil
+}
 func (r *mockGroupRedisRepo) ReadInbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
@@ -313,21 +349,29 @@ func (r *mockGroupRedisRepo) GetConvList(_ context.Context, _ int64) ([]model.Co
 	return nil, nil
 }
 func (r *mockGroupRedisRepo) IncrementUnread(_ context.Context, _ int64, _ string) error { return nil }
-func (r *mockGroupRedisRepo) ClearUnread(_ context.Context, _ int64, _ string) error      { return nil }
+func (r *mockGroupRedisRepo) ClearUnread(_ context.Context, _ int64, _ string) error     { return nil }
 func (r *mockGroupRedisRepo) GetUnreadMap(_ context.Context, _ int64) (map[string]int64, error) {
 	return nil, nil
 }
-func (r *mockGroupRedisRepo) SetGroupReadPos(_ context.Context, _ int64, _ string, _ int64) error { return nil }
+func (r *mockGroupRedisRepo) SetGroupReadPos(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
 func (r *mockGroupRedisRepo) GetGroupReadPos(_ context.Context, _ int64, _ string) (int64, error) {
 	return 0, nil
 }
-func (r *mockGroupRedisRepo) CheckDuplicate(_ context.Context, _ int64, _ string) (bool, error) { return false, nil }
-func (r *mockGroupRedisRepo) TrimInbox(_ context.Context, _ int64, _ int) error         { return nil }
-func (r *mockGroupRedisRepo) TrimOutbox(_ context.Context, _ int64, _ int) error        { return nil }
+func (r *mockGroupRedisRepo) CheckDuplicate(_ context.Context, _ int64, _ string) (bool, error) {
+	return false, nil
+}
+func (r *mockGroupRedisRepo) TrimInbox(_ context.Context, _ int64, _ int) error          { return nil }
+func (r *mockGroupRedisRepo) TrimOutbox(_ context.Context, _ int64, _ int) error         { return nil }
 func (r *mockGroupRedisRepo) TrimInboxByTime(_ context.Context, _ int64, _ int64) error  { return nil }
 func (r *mockGroupRedisRepo) TrimOutboxByTime(_ context.Context, _ int64, _ int64) error { return nil }
-func (r *mockGroupRedisRepo) TrimConvListByTime(_ context.Context, _ int64, _ int64) error { return nil }
-func (r *mockGroupRedisRepo) TrimTimelineByTime(_ context.Context, _ int64, _ int64) error { return nil }
+func (r *mockGroupRedisRepo) TrimConvListByTime(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (r *mockGroupRedisRepo) TrimTimelineByTime(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
 
 func (r *mockGroupRedisRepo) ExecPrivateMsgCheck(_ context.Context, _ int64, _ int64, _ string) (*redis.PrivateMsgCheckResult, error) {
 	return nil, nil
@@ -335,25 +379,35 @@ func (r *mockGroupRedisRepo) ExecPrivateMsgCheck(_ context.Context, _ int64, _ i
 func (r *mockGroupRedisRepo) ExecGroupMsgCheck(_ context.Context, _ int64, _ int64, _ string) (*redis.GroupMsgCheckResult, error) {
 	return nil, nil
 }
-func (r *mockGroupRedisRepo) ExecInboxMarkRead(_ context.Context, _ int64, _ string) (int64, error) { return 0, nil }
+func (r *mockGroupRedisRepo) ExecInboxMarkRead(_ context.Context, _ int64, _ string) (int64, error) {
+	return 0, nil
+}
 func (r *mockGroupRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string, _ int64, _ string, _ int64) (bool, error) {
 	return false, nil
 }
-func (r *mockGroupRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
+func (r *mockGroupRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error {
+	return nil
+}
 func (r *mockGroupRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
-func (r *mockGroupRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error { return nil }
-func (r *mockGroupRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error         { return nil }
-func (r *mockGroupRedisRepo) MarkBigUser(_ context.Context, _ int64) error                                  { return nil }
-func (r *mockGroupRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error)                  { return nil, nil }
+func (r *mockGroupRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error {
+	return nil
+}
+func (r *mockGroupRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error {
+	return nil
+}
+func (r *mockGroupRedisRepo) MarkBigUser(_ context.Context, _ int64) error { return nil }
+func (r *mockGroupRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error) {
+	return nil, nil
+}
 func (r *mockGroupRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
 func (r *mockGroupRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
-func (r *mockGroupRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
+func (r *mockGroupRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error { return nil }
 
 // ──────────────────────────────────────────────────────
 // 辅助：验证 mockMySQLRepo 满足 MySQLRepo 接口
@@ -602,6 +656,28 @@ func TestGroup_RemoveMember_SelfLeave(t *testing.T) {
 	assert.Len(t, members, 1)
 }
 
+func TestGroup_RemoveMember_AdminCannotRemoveAdmin(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	for _, userID := range []int64{2, 3} {
+		member := &model.GroupMember{GroupID: groupID, UserID: userID, Role: 1}
+		_ = mysqlRepo.AddGroupMember(context.Background(), member)
+	}
+	err := svc.RemoveMember(context.Background(), groupID, 2, 3)
+	assert.EqualError(t, err, ErrCannotRemovePeer)
+}
+
+func TestGroup_RemoveMember_MissingMember(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	err := svc.RemoveMember(context.Background(), groupID, 1, 99)
+	assert.EqualError(t, err, ErrMemberNotFound)
+}
+
 // ──────────────────────────────────────────────────────
 // LeaveGroup 测试
 // ──────────────────────────────────────────────────────
@@ -633,6 +709,15 @@ func TestGroup_LeaveGroup_OwnerCannotLeave(t *testing.T) {
 	err := svc.LeaveGroup(context.Background(), groupID, 1)
 	assert.Error(t, err)
 	assert.Equal(t, ErrCannotLeaveAsOwner, err.Error())
+}
+
+func TestGroup_LeaveGroup_MissingMember(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	err := svc.LeaveGroup(context.Background(), groupID, 2)
+	assert.EqualError(t, err, ErrMemberNotFound)
 }
 
 // ──────────────────────────────────────────────────────
@@ -767,11 +852,25 @@ func TestGroup_GetMembers_Success(t *testing.T) {
 
 // ── 高并发点赞新增接口的 mock 桩 ──
 
-func (m *mockGroupMySQLRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
-func (m *mockGroupMySQLRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
-func (m *mockGroupMySQLRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }
+func (m *mockGroupMySQLRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockGroupMySQLRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error {
+	return nil
+}
+func (m *mockGroupMySQLRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error {
+	return nil
+}
 
-func (r *mockGroupRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)   { return false, 0, nil }
-func (r *mockGroupRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) { return false, 0, nil }
-func (r *mockGroupRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
-func (r *mockGroupRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }
+func (r *mockGroupRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) {
+	return false, 0, nil
+}
+func (r *mockGroupRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) {
+	return false, 0, nil
+}
+func (r *mockGroupRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error {
+	return nil
+}
+func (r *mockGroupRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) {
+	return nil, nil, nil
+}

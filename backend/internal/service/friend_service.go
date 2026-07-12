@@ -48,6 +48,13 @@ func (s *FriendService) SendFriendRequest(ctx context.Context, fromUserID, toUse
 	if fromUserID == toUserID {
 		return nil, fmt.Errorf(ErrSelfRequest)
 	}
+	target, err := s.mysqlRepo.GetUserByID(ctx, toUserID)
+	if err != nil {
+		return nil, fmt.Errorf("检查目标用户: %w", err)
+	}
+	if target == nil {
+		return nil, fmt.Errorf(ErrUserNotFound)
+	}
 
 	// 2. 不能已经是好友
 	isFriend, err := s.mysqlRepo.IsFriend(ctx, fromUserID, toUserID)
@@ -202,6 +209,7 @@ type FriendListItem struct {
 	model.Friendship
 	Nickname  string `json:"nickname"`
 	AvatarURL string `json:"avatar_url"`
+	IsBlocked bool   `json:"is_blocked"`
 }
 
 // GetFriendList 返回用户的好友列表，包含昵称和头像。
@@ -213,6 +221,10 @@ func (s *FriendService) GetFriendList(ctx context.Context, userID int64) ([]Frie
 
 	items := make([]FriendListItem, 0, len(friendships))
 	for _, fs := range friendships {
+		isBlocked, err := s.mysqlRepo.IsBlocked(ctx, userID, fs.FriendID)
+		if err != nil {
+			return nil, fmt.Errorf("获取好友黑名单状态: %w", err)
+		}
 		user, err := s.mysqlRepo.GetUserByID(ctx, fs.FriendID)
 		if err != nil {
 			s.logger.Warn("获取好友个人资料失败",
@@ -220,17 +232,18 @@ func (s *FriendService) GetFriendList(ctx context.Context, userID int64) ([]Frie
 				zap.Error(err),
 			)
 			// 仍然包含好友关系，只是没有个人资料信息
-			items = append(items, FriendListItem{Friendship: fs})
+			items = append(items, FriendListItem{Friendship: fs, IsBlocked: isBlocked})
 			continue
 		}
 		if user == nil {
-			items = append(items, FriendListItem{Friendship: fs})
+			items = append(items, FriendListItem{Friendship: fs, IsBlocked: isBlocked})
 			continue
 		}
 		items = append(items, FriendListItem{
 			Friendship: fs,
 			Nickname:   user.Nickname,
 			AvatarURL:  user.AvatarURL,
+			IsBlocked:  isBlocked,
 		})
 	}
 

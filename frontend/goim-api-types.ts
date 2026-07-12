@@ -14,15 +14,15 @@ export interface Page<T> { items: T[]; pagination: Pagination; }
 
 export interface RegisterRequest { username: string; password: string; }
 export interface RegisterResponse { user_id: ApiId; username: string; }
-export interface LoginResponse { access_token: string; refresh_token: string; expires_in: number; }
+export interface LoginResponse { access_token: string; refresh_token: string; expires_in: number; avatar_url?: string; }
 export interface RefreshRequest { refresh_token: string; }
 
 export interface FriendRequest { id: ApiId; from_user_id: ApiId; to_user_id: ApiId; message: string; status: 0 | 1 | 2; created_at: IsoDateTime; updated_at: IsoDateTime; }
-export interface Friendship { id: ApiId; user_id: ApiId; friend_id: ApiId; nickname?: string; avatar_url?: string; created_at: IsoDateTime; }
+export interface Friendship { id: ApiId; user_id: ApiId; friend_id: ApiId; nickname?: string; avatar_url?: string; is_blocked: boolean; created_at: IsoDateTime; }
 export interface Group { id: ApiId; name: string; notice: string; owner_id: ApiId; max_members: number; created_at: IsoDateTime; updated_at: IsoDateTime; }
-export interface GroupMember { id: ApiId; group_id: ApiId; user_id: ApiId; role: 0 | 1 | 2; muted_until?: IsoDateTime | null; joined_at: IsoDateTime; }
-export interface Moment { id: ApiId; author_id: ApiId; content: string; media_urls?: string | null; visibility: 1 | 2 | 3; created_at: IsoDateTime; like_count: number; liked_by_me: boolean; }
-export interface MomentComment { id: ApiId; moment_id: ApiId; user_id: ApiId; content: string; created_at: IsoDateTime; }
+export interface GroupMember { id: ApiId; group_id: ApiId; user_id: ApiId; role: 0 | 1 | 2; username: string; avatar_url?: string; muted_until?: IsoDateTime | null; joined_at: IsoDateTime; }
+export interface Moment { id: ApiId; author_id: ApiId; author_name: string; author_avatar?: string; content: string; media_urls?: string | null; visibility: 1 | 2 | 3; created_at: IsoDateTime; like_count: number; liked_by_me: boolean; comments: MomentComment[]; }
+export interface MomentComment { id: ApiId; moment_id: ApiId; user_id: ApiId; username: string; avatar_url?: string; content: string; created_at: IsoDateTime; }
 export interface UserSettings { id: ApiId; user_id: ApiId; notification_enabled: boolean; msg_preview_enabled: boolean; mute_list: string; created_at: IsoDateTime; updated_at: IsoDateTime; }
 export interface UploadAvatarResponse { url: string; file_path: string; size: number; }
 
@@ -31,7 +31,8 @@ export interface CreateGroupResponse { group_id: ApiId; }
 export interface UpdateGroupRequest { name: string; notice: string; }
 export interface AddGroupMemberRequest { member_id: ApiId; }
 export interface UpdateGroupMemberRoleRequest { role: 0 | 1; }
-export interface PublishMomentRequest { content: string; media_urls?: string; visibility: 1 | 2 | 3; }
+export interface TransferGroupOwnerRequest { new_owner_id: ApiId; }
+export interface PublishMomentRequest { content: string; media_urls?: string; visibility: 2 | 3; }
 export interface PublishMomentResponse { moment_id: ApiId; }
 export interface MomentActionResponse { ok: boolean; liked: boolean; count: number; }
 export interface CommentMomentRequest { content: string; }

@@ -57,6 +57,7 @@ type MySQLRepo interface {
 	BatchDeleteMomentLikes(ctx context.Context, keys []model.MomentLikeKey) error // 批量删除取消赞
 	CreateMomentComment(ctx context.Context, comment *model.MomentComment) error
 	GetMomentCommentByID(ctx context.Context, id int64) (*model.MomentComment, error)
+	GetMomentComments(ctx context.Context, momentID int64) ([]model.MomentComment, error)
 	DeleteMomentComment(ctx context.Context, id int64) error
 
 	// ── 用户设置 ──
@@ -254,9 +255,9 @@ func (m *MySQLRepoImpl) GetFriendRequestByID(ctx context.Context, id int64) (*mo
 func (m *MySQLRepoImpl) GetFriendRequestsByUser(ctx context.Context, userID int64) ([]model.FriendRequest, error) {
 	query := `SELECT id, from_user_id, to_user_id, message, status, created_at, updated_at
 	          FROM friend_requests
-	          WHERE (from_user_id = ? OR to_user_id = ?) AND status = 0
+	          WHERE to_user_id = ? AND status = 0
 	          ORDER BY created_at DESC`
-	rows, err := m.db.QueryContext(ctx, query, userID, userID)
+	rows, err := m.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("按用户获取好友请求: %w", err)
 	}
@@ -397,8 +398,8 @@ func (m *MySQLRepoImpl) CreateGroup(ctx context.Context, group *model.Group) (in
 }
 
 func (m *MySQLRepoImpl) UpdateGroup(ctx context.Context, group *model.Group) error {
-	query := "UPDATE `groups` SET name=?, notice=?, updated_at=NOW() WHERE id=?"
-	_, err := m.db.ExecContext(ctx, query, group.Name, group.Notice, group.ID)
+	query := "UPDATE `groups` SET name=?, notice=?, owner_id=?, updated_at=NOW() WHERE id=?"
+	_, err := m.db.ExecContext(ctx, query, group.Name, group.Notice, group.OwnerID, group.ID)
 	if err != nil {
 		return fmt.Errorf("更新群组: %w", err)
 	}
@@ -662,6 +663,26 @@ func (m *MySQLRepoImpl) GetMomentCommentByID(ctx context.Context, id int64) (*mo
 		return nil, fmt.Errorf("按ID获取朋友圈评论: %w", err)
 	}
 	return &comment, nil
+}
+
+func (m *MySQLRepoImpl) GetMomentComments(ctx context.Context, momentID int64) ([]model.MomentComment, error) {
+	query := `SELECT c.id, c.moment_id, c.user_id, c.content, c.created_at, u.username, u.avatar_url
+	          FROM moment_comments c JOIN users u ON u.id = c.user_id
+	          WHERE c.moment_id = ? ORDER BY c.id ASC`
+	rows, err := m.db.QueryContext(ctx, query, momentID)
+	if err != nil {
+		return nil, fmt.Errorf("获取朋友圈评论列表: %w", err)
+	}
+	defer rows.Close()
+	comments := make([]model.MomentComment, 0)
+	for rows.Next() {
+		var comment model.MomentComment
+		if err := rows.Scan(&comment.ID, &comment.MomentID, &comment.UserID, &comment.Content, &comment.CreatedAt, &comment.Username, &comment.AvatarURL); err != nil {
+			return nil, fmt.Errorf("扫描朋友圈评论: %w", err)
+		}
+		comments = append(comments, comment)
+	}
+	return comments, rows.Err()
 }
 
 func (m *MySQLRepoImpl) DeleteMomentComment(ctx context.Context, id int64) error {

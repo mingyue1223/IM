@@ -5,14 +5,15 @@ import type { Group, GroupMember } from "../../../goim-api-types";
 import { ApiError } from "../../../api/client";
 import { Avatar, Button, ConfirmDialog, Drawer, IconButton, TextField } from "../../components/ui";
 import { groupsApi } from "../../lib/api";
+import { friendsApi } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
 import { useChatStore, type ChatConversation } from "../../stores/chatStore";
 
 const previewMembers: GroupMember[] = [
-  { id: 1, group_id: 3001, user_id: 10086, role: 2, joined_at: new Date().toISOString() },
-  { id: 2, group_id: 3001, user_id: 2001, role: 1, joined_at: new Date().toISOString() },
-  { id: 3, group_id: 3001, user_id: 2002, role: 0, joined_at: new Date().toISOString() },
-  { id: 4, group_id: 3001, user_id: 2003, role: 0, joined_at: new Date().toISOString() },
+  { id: 1, group_id: 3001, user_id: 10086, role: 2, username: "顾言", joined_at: new Date().toISOString() },
+  { id: 2, group_id: 3001, user_id: 2001, role: 1, username: "林澄", joined_at: new Date().toISOString() },
+  { id: 3, group_id: 3001, user_id: 2002, role: 0, username: "周屿", joined_at: new Date().toISOString() },
+  { id: 4, group_id: 3001, user_id: 2003, role: 0, username: "陈曦", joined_at: new Date().toISOString() },
 ];
 
 const roleNames = { 0: "成员", 1: "管理员", 2: "群主" } as const;
@@ -57,14 +58,14 @@ export function GroupManagementDrawer({ conversation, open, onClose }: GroupMana
   const previewMode = useAuthStore((state) => state.previewMode);
   const currentUserId = useAuthStore((state) => state.user?.id ?? 0);
   const queryClient = useQueryClient();
+  const removeConversation = useChatStore((state) => state.removeConversation);
   const groupId = conversation.targetId;
   const [localGroup, setLocalGroup] = useState<Group>({ id: groupId, name: conversation.name, notice: "保持信息透明，重要结论及时同步。", owner_id: currentUserId, max_members: 500, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
   const [localMembers, setLocalMembers] = useState(previewMembers.map((member) => ({ ...member, group_id: groupId })));
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(conversation.name);
   const [notice, setNotice] = useState(localGroup.notice);
-  const [newMemberId, setNewMemberId] = useState("");
-  const [danger, setDanger] = useState<{ type: "remove" | "leave"; memberId?: number } | null>(null);
+  const [danger, setDanger] = useState<{ type: "remove" | "leave" | "transfer"; memberId?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const groupQuery = useQuery({ queryKey: ["group", groupId], queryFn: () => groupsApi.get(groupId), enabled: open && !previewMode });
   const membersQuery = useQuery({ queryKey: ["group-members", groupId], queryFn: () => groupsApi.members(groupId, 100, 0), enabled: open && !previewMode });
@@ -74,6 +75,7 @@ export function GroupManagementDrawer({ conversation, open, onClose }: GroupMana
   const currentMember = members.find((member) => member.user_id === currentUserId);
   const canManage = currentMember?.role === 1 || currentMember?.role === 2;
   const isOwner = group?.owner_id === currentUserId || currentMember?.role === 2;
+  const friendsQuery = useQuery({ queryKey: ["friends"], queryFn: () => friendsApi.list(100, 0), enabled: open && !previewMode && canManage });
 
   useEffect(() => {
     if (!groupQuery.data) return;
@@ -82,28 +84,33 @@ export function GroupManagementDrawer({ conversation, open, onClose }: GroupMana
 
   const run = async (previewAction: () => void, liveAction: () => Promise<unknown>) => {
     setError(null);
-    try { previewMode ? previewAction() : await actionMutation.mutateAsync(liveAction); }
-    catch (failure) { setError(failure instanceof ApiError ? failure.message : "操作失败，请稍后重试"); }
+    try { previewMode ? previewAction() : await actionMutation.mutateAsync(liveAction); return true; }
+    catch (failure) { setError(failure instanceof ApiError ? failure.message : "操作失败，请稍后重试"); return false; }
   };
 
-  const saveInfo = () => void run(() => setLocalGroup((current) => ({ ...current, name: name.trim(), notice: notice.trim() })), () => groupsApi.update(groupId, { name: name.trim(), notice: notice.trim() })).then(() => setEditing(false));
-  const addMember = () => { const memberId = Number(newMemberId); if (!memberId) return; void run(() => setLocalMembers((current) => [...current, { id: Date.now(), group_id: groupId, user_id: memberId, role: 0, joined_at: new Date().toISOString() }]), () => groupsApi.addMember(groupId, { member_id: memberId })).then(() => setNewMemberId("")); };
+  const saveInfo = () => void run(() => setLocalGroup((current) => ({ ...current, name: name.trim(), notice: notice.trim() })), () => groupsApi.update(groupId, { name: name.trim(), notice: notice.trim() })).then((succeeded) => { if (succeeded) setEditing(false); });
+  const addMember = (memberId: number, username: string, avatarUrl?: string) => { void run(() => setLocalMembers((current) => [...current, { id: Date.now(), group_id: groupId, user_id: memberId, role: 0, username, avatar_url: avatarUrl, joined_at: new Date().toISOString() }]), () => groupsApi.addMember(groupId, { member_id: memberId })); };
   const updateRole = (member: GroupMember) => void run(() => setLocalMembers((current) => current.map((item) => item.user_id === member.user_id ? { ...item, role: member.role === 1 ? 0 : 1 } : item)), () => groupsApi.updateRole(groupId, member.user_id, { role: member.role === 1 ? 0 : 1 }));
   const confirmDanger = async () => {
     if (!danger) return;
-    if (danger.type === "remove" && danger.memberId) await run(() => setLocalMembers((current) => current.filter((member) => member.user_id !== danger.memberId)), () => groupsApi.removeMember(groupId, danger.memberId!));
-    if (danger.type === "leave") await run(() => undefined, () => groupsApi.leave(groupId));
+    let succeeded = false;
+    if (danger.type === "remove" && danger.memberId) succeeded = await run(() => setLocalMembers((current) => current.filter((member) => member.user_id !== danger.memberId)), () => groupsApi.removeMember(groupId, danger.memberId!));
+    if (danger.type === "leave") succeeded = await run(() => undefined, () => groupsApi.leave(groupId));
+    if (danger.type === "transfer" && danger.memberId) succeeded = await run(() => undefined, () => groupsApi.transferOwner(groupId, { new_owner_id: danger.memberId! }));
+    if (!succeeded) return;
     setDanger(null);
-    if (danger.type === "leave") onClose();
+    if (danger.type === "leave") { removeConversation(conversation.id); onClose(); }
   };
 
   const sortedMembers = useMemo(() => [...members].sort((a, b) => b.role - a.role), [members]);
+  const memberIds = useMemo(() => new Set(members.map((member) => member.user_id)), [members]);
+  const inviteCandidates = (friendsQuery.data?.items ?? []).filter((friend) => !memberIds.has(friend.friend_id) && !friend.is_blocked);
 
   return <><Drawer description={`${members.length} 位成员 · 最多 ${group?.max_members ?? 500} 人`} onClose={onClose} open={open} title="群聊资料"><div className="group-profile-head"><Avatar name={group?.name ?? conversation.name} size="xl" /><div><h3>{group?.name ?? conversation.name}</h3><p>{group?.notice || "暂无群公告"}</p></div>{canManage && <Button onClick={() => setEditing((value) => !value)} size="sm" variant="secondary">{editing ? "取消编辑" : "编辑资料"}</Button>}</div>
     {error && <p className="inline-error">{error}</p>}
     {editing && <div className="group-edit-panel"><TextField label="群名称" onChange={(event) => setName(event.target.value)} value={name} /><TextField label="群公告" onChange={(event) => setNotice(event.target.value)} value={notice} /><Button disabled={!name.trim()} onClick={saveInfo} size="sm">保存更改</Button></div>}
-    {canManage && <div className="group-add-member"><TextField label="邀请成员" onChange={(event) => setNewMemberId(event.target.value)} placeholder="输入用户 ID" type="number" value={newMemberId} /><Button disabled={!newMemberId} leadingIcon={<UserPlus size={14} />} onClick={addMember} size="sm">添加</Button></div>}
-    <section className="group-members"><header><h3><Users size={16} />群成员</h3><span>{members.length}</span></header>{sortedMembers.map((member) => <div className="group-member-row" key={member.user_id}><Avatar name={`用户 ${member.user_id}`} size="sm" /><div><strong>{member.user_id === currentUserId ? "我" : `用户 #${member.user_id}`}</strong><small>{roleNames[member.role]}</small></div><span className={`role-badge role-badge--${member.role}`}>{member.role === 2 ? <Crown size={11} /> : member.role === 1 ? <ShieldCheck size={11} /> : null}{roleNames[member.role]}</span>{isOwner && member.role !== 2 && <IconButton label={member.role === 1 ? "取消管理员" : "设为管理员"} onClick={() => updateRole(member)}><ShieldCheck size={15} /></IconButton>}{canManage && member.role !== 2 && member.user_id !== currentUserId && <IconButton label="移除成员" onClick={() => setDanger({ type: "remove", memberId: member.user_id })}><X size={15} /></IconButton>}</div>)}</section>
-    <Button disabled={isOwner} leadingIcon={<LogOut size={15} />} onClick={() => setDanger({ type: "leave" })} variant="danger">{isOwner ? "群主需先转让身份才能退出" : "退出群聊"}</Button>
-  </Drawer><ConfirmDialog confirmLabel={danger?.type === "leave" ? "退出群聊" : "移除成员"} description={danger?.type === "leave" ? "退出后将不再接收这个群的消息。" : `确认将用户 #${danger?.memberId ?? ""} 移出群聊？`} destructive onClose={() => setDanger(null)} onConfirm={() => void confirmDanger()} open={Boolean(danger)} title={danger?.type === "leave" ? "确定退出群聊？" : "移除这位成员？"} /></>;
+    {canManage && <div className="group-add-member"><h3>从好友中邀请</h3>{inviteCandidates.length === 0 ? <p>暂无可邀请的好友</p> : inviteCandidates.map((friend) => <div className="group-invite-row" key={friend.friend_id}><Avatar name={friend.nickname || `用户 ${friend.friend_id}`} size="sm" src={friend.avatar_url} /><span><strong>{friend.nickname || `用户 #${friend.friend_id}`}</strong><small>用户 #{friend.friend_id}</small></span><Button leadingIcon={<UserPlus size={14} />} onClick={() => addMember(friend.friend_id, friend.nickname || `用户 ${friend.friend_id}`, friend.avatar_url)} size="sm">添加</Button></div>)}</div>}
+    <section className="group-members"><header><h3><Users size={16} />群成员</h3><span>{members.length}</span></header>{sortedMembers.map((member) => <div className="group-member-row" key={member.user_id}><Avatar name={member.username || `用户 ${member.user_id}`} size="sm" src={member.avatar_url} /><div className="group-member-copy"><strong>{member.user_id === currentUserId ? `${member.username || "我"}（我）` : member.username || `用户 #${member.user_id}`}</strong><small>用户 #{member.user_id} · {roleNames[member.role]}</small></div><span className={`role-badge role-badge--${member.role}`}>{member.role === 2 ? <Crown size={11} /> : member.role === 1 ? <ShieldCheck size={11} /> : null}{roleNames[member.role]}</span><div className="group-member-actions">{isOwner && member.role !== 2 && <IconButton label={member.role === 1 ? "取消管理员" : "设为管理员"} onClick={() => updateRole(member)}><ShieldCheck size={15} /></IconButton>}{isOwner && member.role !== 2 && <IconButton label="转让群主" onClick={() => setDanger({ type: "transfer", memberId: member.user_id })}><Crown size={15} /></IconButton>}{canManage && member.role === 0 && member.user_id !== currentUserId && <IconButton label="移除成员" onClick={() => setDanger({ type: "remove", memberId: member.user_id })}><X size={15} /></IconButton>}</div></div>)}</section>
+    <Button disabled={isOwner || actionMutation.isPending || !currentMember} leadingIcon={<LogOut size={15} />} onClick={() => setDanger({ type: "leave" })} variant="danger">{isOwner ? "群主需先转让身份才能退出" : "退出群聊"}</Button>
+  </Drawer><ConfirmDialog confirmLabel={danger?.type === "leave" ? "退出群聊" : danger?.type === "transfer" ? "转让群主" : "移除成员"} description={danger?.type === "leave" ? "退出后将不再接收这个群的消息。" : danger?.type === "transfer" ? `转让后，用户 #${danger.memberId ?? ""} 将成为新群主，你将变为普通成员。` : `确认将用户 #${danger?.memberId ?? ""} 移出群聊？`} destructive={danger?.type !== "transfer"} onClose={() => setDanger(null)} onConfirm={() => void confirmDanger()} open={Boolean(danger)} title={danger?.type === "leave" ? "确定退出群聊？" : danger?.type === "transfer" ? "转让群主？" : "移除这位成员？"} /></>;
 }

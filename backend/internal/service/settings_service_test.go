@@ -123,6 +123,7 @@ func (m *mockSettingsRepo) CreateMomentComment(_ context.Context, _ *model.Momen
 func (m *mockSettingsRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
+func (m *mockSettingsRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) { return nil, nil }
 func (m *mockSettingsRepo) DeleteMomentComment(_ context.Context, _ int64) error { return nil }
 func (m *mockSettingsRepo) CountFriends(_ context.Context, _ int64) (int, error)             { return 0, nil }
 func (m *mockSettingsRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {

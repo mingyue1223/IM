@@ -9,7 +9,7 @@ import { useFriends, type FriendView } from "../features/friends/useFriends";
 import { useAuthStore } from "../stores/authStore";
 import { useChatStore } from "../stores/chatStore";
 
-type DangerAction = "block" | "remove" | null;
+type DangerAction = "block" | "unblock" | "remove" | null;
 
 export function ContactsPage() {
   const { contactId } = useParams();
@@ -18,13 +18,14 @@ export function ContactsPage() {
   const userId = useAuthStore((state) => state.user?.id ?? 0);
   const previewMode = useAuthStore((state) => state.previewMode);
   const addPrivateConversation = useChatStore((state) => state.addPrivateConversation);
-  const { contacts, requests, isLoading, error, isMutating, accept, reject, sendRequest, remove, block } = useFriends();
+  const { contacts, requests, isLoading, error, isMutating, accept, reject, sendRequest, remove, block, unblock } = useFriends();
   const [requestOpen, setRequestOpen] = useState(false);
   const [dangerAction, setDangerAction] = useState<DangerAction>(null);
   const [targetUserId, setTargetUserId] = useState("");
   const [requestMessage, setRequestMessage] = useState("");
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestSent, setRequestSent] = useState(false);
+  const [requestActionError, setRequestActionError] = useState<string | null>(null);
   const selected = contacts.find((contact) => contact.routeId === contactId) ?? contacts[0];
 
   useEffect(() => {
@@ -33,7 +34,7 @@ export function ContactsPage() {
 
   const startChat = (friend: FriendView) => {
     const convId = previewMode ? friend.routeId : buildPrivateConvId(userId, friend.userId);
-    addPrivateConversation(convId, friend.userId, friend.name);
+    addPrivateConversation(convId, friend.userId, friend.name, friend.avatarUrl);
     navigate(`/app/chats/${convId}`);
   };
 
@@ -53,8 +54,15 @@ export function ContactsPage() {
 
   const confirmDangerAction = async () => {
     if (!selected || !dangerAction) return;
-    dangerAction === "block" ? await block(selected) : await remove(selected);
+    if (dangerAction === "block") await block(selected);
+    else if (dangerAction === "unblock") await unblock(selected.userId);
+    else await remove(selected);
     setDangerAction(null);
+  };
+  const handleRequestAction = async (action: () => Promise<void>) => {
+    setRequestActionError(null);
+    try { await action(); }
+    catch (failure) { setRequestActionError(failure instanceof ApiError ? failure.message : "处理好友申请失败"); }
   };
 
   return (
@@ -71,21 +79,21 @@ export function ContactsPage() {
 
       <section className="module-main contact-main">
         {selected ? <AnimatePresence mode="wait"><motion.div animate={{ opacity: 1, y: 0 }} className="contact-profile" initial={{ opacity: 0, y: reduceMotion ? 0 : 8 }} key={selected.routeId} transition={{ duration: reduceMotion ? 0 : .24 }}>
-          <div className="contact-profile__top"><Avatar name={selected.name} online={selected.online} size="xl" src={selected.avatarUrl} /><div className="contact-profile__identity"><div><h2>{selected.name}</h2>{selected.online && <Badge>在线</Badge>}</div><p>用户 #{selected.userId}</p></div><IconButton label="更多联系人操作" onClick={() => setDangerAction("block")}><MoreHorizontal size={19} /></IconButton></div>
+          <div className="contact-profile__top"><Avatar name={selected.name} online={selected.online} size="xl" src={selected.avatarUrl} /><div className="contact-profile__identity"><div><h2>{selected.name}</h2>{selected.online && <Badge>在线</Badge>}{selected.isBlocked && <Badge>已拉黑</Badge>}</div><p>用户 #{selected.userId}</p></div><IconButton label="更多联系人操作" onClick={() => setDangerAction(selected.isBlocked ? "unblock" : "block")}><MoreHorizontal size={19} /></IconButton></div>
           <p className="contact-profile__note">{selected.note}</p>
-          <Button leadingIcon={<MessageCircle size={17} />} onClick={() => startChat(selected)} size="lg">发消息</Button>
+          <Button disabled={selected.isBlocked} leadingIcon={<MessageCircle size={17} />} onClick={() => startChat(selected)} size="lg">{selected.isBlocked ? "已拉黑" : "发消息"}</Button>
           <div className="contact-info-grid"><div><span><MapPin size={16} />所在地</span><strong>{selected.location ?? "未提供"}</strong></div><div><span><UsersRound size={16} />共同群聊</span><strong>{selected.groups === undefined ? "暂不可用" : `${selected.groups} 个`}</strong></div></div>
-          <div className="contact-profile__section"><header><h3>联系人管理</h3></header><div className="contact-danger-row"><button onClick={() => setDangerAction("remove")}><Trash2 size={15} />删除好友</button><button onClick={() => setDangerAction("block")}>加入黑名单</button></div></div>
+          <div className="contact-profile__section"><header><h3>联系人管理</h3></header><div className="contact-danger-row"><button onClick={() => setDangerAction("remove")}><Trash2 size={15} />删除好友</button><button onClick={() => setDangerAction(selected.isBlocked ? "unblock" : "block")}>{selected.isBlocked ? "解除拉黑" : "加入黑名单"}</button></div></div>
         </motion.div></AnimatePresence> : <div className="contact-empty"><UsersRound size={24} /><h2>还没有联系人</h2><p>通过用户 ID 发送好友申请，建立第一段连接。</p><Button onClick={() => setRequestOpen(true)} size="sm">添加好友</Button></div>}
       </section>
 
       <div className={`request-panel ${requestOpen ? "is-open" : ""}`} aria-hidden={!requestOpen}><button aria-label="关闭好友申请" className="request-panel__backdrop" onClick={() => setRequestOpen(false)} /><motion.aside animate={{ x: requestOpen ? 0 : 30, opacity: requestOpen ? 1 : 0 }} className="request-panel__content">
         <header><div><h2>好友</h2><p>添加联系人或处理收到的申请</p></div><IconButton label="关闭" onClick={() => setRequestOpen(false)}><X size={18} /></IconButton></header>
         <section className="add-friend-form"><h3>添加好友</h3><TextField label="用户 ID" onChange={(event) => setTargetUserId(event.target.value)} placeholder="输入数字用户 ID" type="number" value={targetUserId} /><TextField label="验证信息（选填）" onChange={(event) => setRequestMessage(event.target.value)} placeholder="介绍一下自己" value={requestMessage} />{requestError && <p className="inline-error">{requestError}</p>}{requestSent && <p className="inline-success">好友申请已发送</p>}<Button disabled={isMutating || !targetUserId} onClick={submitFriendRequest} size="sm">发送申请</Button></section>
-        <section className="request-list"><h3>收到的申请 <span>{requests.length}</span></h3>{requests.length === 0 && <p className="request-list__empty">暂无待处理申请</p>}{requests.map((request) => <div className="friend-request-card" key={request.id}><Avatar name={`用户 ${request.from_user_id}`} /><div><strong>用户 #{request.from_user_id}</strong><p>{request.message || "希望添加你为好友"}</p><span><Button leadingIcon={<Check size={14} />} onClick={() => void accept(request.id)} size="sm">接受</Button><Button onClick={() => void reject(request.id)} size="sm" variant="ghost">拒绝</Button></span></div></div>)}</section>
+        <section className="request-list"><h3>收到的申请 <span>{requests.length}</span></h3>{requestActionError && <p className="inline-error">{requestActionError}</p>}{requests.length === 0 && <p className="request-list__empty">暂无待处理申请</p>}{requests.map((request) => <div className="friend-request-card" key={request.id}><Avatar name={`用户 ${request.from_user_id}`} /><div><strong>用户 #{request.from_user_id}</strong><p>{request.message || "希望添加你为好友"}</p><span><Button disabled={isMutating} leadingIcon={<Check size={14} />} onClick={() => void handleRequestAction(() => accept(request.id))} size="sm">接受</Button><Button disabled={isMutating} onClick={() => void handleRequestAction(() => reject(request.id))} size="sm" variant="ghost">拒绝</Button></span></div></div>)}</section>
       </motion.aside></div>
 
-      <ConfirmDialog confirmLabel={dangerAction === "remove" ? "删除好友" : "确认拉黑"} description={dangerAction === "remove" ? `删除后，你与 ${selected?.name ?? "该用户"} 将不再是好友。` : `拉黑后，${selected?.name ?? "该用户"} 将无法向你发送消息。`} destructive onClose={() => setDangerAction(null)} onConfirm={() => void confirmDangerAction()} open={Boolean(dangerAction)} title={dangerAction === "remove" ? "删除这个联系人？" : "拉黑这个联系人？"} />
+      <ConfirmDialog confirmLabel={dangerAction === "remove" ? "删除好友" : dangerAction === "unblock" ? "解除拉黑" : "确认拉黑"} description={dangerAction === "remove" ? `删除后，你与 ${selected?.name ?? "该用户"} 将不再是好友。` : dangerAction === "unblock" ? `解除后，${selected?.name ?? "该用户"} 可以重新与你互动。` : `拉黑后，${selected?.name ?? "该用户"} 将无法向你发送消息。`} destructive={dangerAction !== "unblock"} onClose={() => setDangerAction(null)} onConfirm={() => void confirmDangerAction()} open={Boolean(dangerAction)} title={dangerAction === "remove" ? "删除这个联系人？" : dangerAction === "unblock" ? "解除拉黑？" : "拉黑这个联系人？"} />
     </>
   );
 }

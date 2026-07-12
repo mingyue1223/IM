@@ -229,6 +229,17 @@ func (s *MsgService) HandleReadAck(userID int64, data []byte) {
 		s.sendError(userID, 500, "标记已读失败")
 		return
 	}
+	// 群消息存放在共享 outbox 而非个人 inbox，所以上面的 Lua 对群聊会返回 0。
+	// 无论会话类型如何，收到 readAck 都应清空该会话的服务端未读计数。
+	if err := s.redisRepo.ClearUnread(ctx, userID, req.ConvID); err != nil {
+		s.logger.Error("ClearUnread 执行失败",
+			zap.Int64("userID", userID),
+			zap.String("convID", req.ConvID),
+			zap.Error(err),
+		)
+		s.sendError(userID, 500, "标记已读失败")
+		return
+	}
 
 	s.logger.Debug("收件箱已标记为已读",
 		zap.Int64("userID", userID),
@@ -275,23 +286,14 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 
 	var groupMsgs []model.InboxMessage
 	for _, gid := range groupIDs {
-		convID := model.BuildConvID(model.ConvTypeGroup, gid, 0)
-		lastReadSeq, _ := s.redisRepo.GetGroupReadPos(ctx, userID, convID)
-
-		// 多拉取 3 倍 batchSize 以弥补 groupSeq 过滤带来的损耗。
-		// 许多发件箱条目可能因低于 lastReadSeq 而被丢弃，
-		// 因此仅请求 batchSize+1 条不足以可靠地检测 hasMore。
-		outboxMsgs, err := s.redisRepo.ReadOutbox(ctx, gid, req.LastSyncTime, req.LastSyncMsgID, req.BatchSize*3)
+		// 历史同步只由客户端复合游标控制。群已读位置用于未读语义，
+		// 不能用来过滤历史，否则客户端清空本地状态后重新登录会永久缺消息。
+		outboxMsgs, err := s.redisRepo.ReadOutbox(ctx, gid, req.LastSyncTime, req.LastSyncMsgID, req.BatchSize+1)
 		if err != nil {
 			s.logger.Warn("ReadOutbox 读取失败", zap.Int64("groupID", gid), zap.Error(err))
 			continue
 		}
-
-		for _, m := range outboxMsgs {
-			if m.GroupSeq > lastReadSeq {
-				groupMsgs = append(groupMsgs, m)
-			}
-		}
+		groupMsgs = append(groupMsgs, outboxMsgs...)
 	}
 
 	// ── 3. 合并并排序所有消息 ──
@@ -331,23 +333,7 @@ func (s *MsgService) HandleSyncReq(userID int64, data []byte) {
 	}
 	s.pushToUser(userID, protocol.TypeSyncBatch, batch)
 
-	// ── 7. 更新群组已读位置 ──
-	for _, gid := range groupIDs {
-		convID := model.BuildConvID(model.ConvTypeGroup, gid, 0)
-		maxSeq := int64(0)
-		for _, m := range allMsgs {
-			if m.ConvID == convID && m.GroupSeq > maxSeq {
-				maxSeq = m.GroupSeq
-			}
-		}
-		if maxSeq > 0 {
-			if err := s.redisRepo.SetGroupReadPos(ctx, userID, convID, maxSeq); err != nil {
-				s.logger.Warn("SetGroupReadPos 执行失败", zap.Error(err))
-			}
-		}
-	}
-
-	// ── 8. 推送 ConvSync ──
+	// ── 7. 推送 ConvSync ──
 	convList, err := s.redisRepo.GetConvList(ctx, userID)
 	if err != nil {
 		s.logger.Warn("GetConvList 查询失败", zap.Error(err))

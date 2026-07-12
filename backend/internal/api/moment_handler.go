@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/goim/goim/internal/model"
 	"github.com/goim/goim/internal/service"
 )
 
@@ -24,7 +25,7 @@ func NewMomentHandler(momentSvc *service.MomentService) *MomentHandler {
 type publishMomentRequest struct {
 	Content    string  `json:"content"`
 	MediaUrls  *string `json:"media_urls,omitempty"` // 可空的 JSON 字符串
-	Visibility *int    `json:"visibility,omitempty"`  // nil=默认全部, 1=全部, 2=好友, 3=私密
+	Visibility *int    `json:"visibility,omitempty"` // nil=默认好友可见, 2=好友, 3=仅自己
 }
 
 type publishMomentResponse struct {
@@ -32,14 +33,17 @@ type publishMomentResponse struct {
 }
 
 type getMomentResponse struct {
-	ID         int64     `json:"id"`
-	AuthorID   int64     `json:"author_id"`
-	Content    string    `json:"content"`
-	MediaUrls  *string   `json:"media_urls,omitempty"`
-	Visibility int       `json:"visibility"`
-	CreatedAt  string    `json:"created_at"` // RFC3339 格式
-	LikeCount  int64     `json:"like_count"`   // 点赞数
-	LikedByMe  bool      `json:"liked_by_me"`  // 当前用户是否已赞
+	ID           int64                 `json:"id"`
+	AuthorID     int64                 `json:"author_id"`
+	Content      string                `json:"content"`
+	MediaUrls    *string               `json:"media_urls,omitempty"`
+	Visibility   int                   `json:"visibility"`
+	CreatedAt    string                `json:"created_at"`  // RFC3339 格式
+	LikeCount    int64                 `json:"like_count"`  // 点赞数
+	LikedByMe    bool                  `json:"liked_by_me"` // 当前用户是否已赞
+	AuthorName   string                `json:"author_name"`
+	AuthorAvatar string                `json:"author_avatar"`
+	Comments     []model.MomentComment `json:"comments"`
 }
 
 type likeMomentResponse struct {
@@ -98,8 +102,8 @@ func (h *MomentHandler) PublishMoment(c *gin.Context) {
 		return
 	}
 
-	// 如果未指定，默认可见性为 1（全部可见）
-	visibility := 1
+	// 如果未指定，默认好友可见。
+	visibility := 2
 	if req.Visibility != nil {
 		visibility = *req.Visibility
 	}
@@ -107,7 +111,7 @@ func (h *MomentHandler) PublishMoment(c *gin.Context) {
 	momentID, err := h.momentSvc.PublishMoment(c.Request.Context(), userID.(int64), req.Content, req.MediaUrls, visibility)
 	if err != nil {
 		switch err.Error() {
-		case service.ErrMomentContentEmpty:
+		case service.ErrMomentContentEmpty, service.ErrMomentContentTooLong:
 			ServiceError(c, http.StatusBadRequest, err.Error())
 		case service.ErrInvalidVisibility:
 			ServiceError(c, http.StatusBadRequest, err.Error())
@@ -155,14 +159,17 @@ func (h *MomentHandler) GetMoment(c *gin.Context) {
 	}
 
 	Success(c, getMomentResponse{
-		ID:         moment.ID,
-		AuthorID:   moment.AuthorID,
-		Content:    moment.Content,
-		MediaUrls:  moment.MediaUrls,
-		Visibility: moment.Visibility,
-		CreatedAt:  moment.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		LikeCount:  moment.LikeCount,
-		LikedByMe:  moment.LikedByMe,
+		ID:           moment.ID,
+		AuthorID:     moment.AuthorID,
+		Content:      moment.Content,
+		MediaUrls:    moment.MediaUrls,
+		Visibility:   moment.Visibility,
+		CreatedAt:    moment.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		LikeCount:    moment.LikeCount,
+		LikedByMe:    moment.LikedByMe,
+		AuthorName:   moment.AuthorName,
+		AuthorAvatar: moment.AuthorAvatar,
+		Comments:     moment.Comments,
 	})
 }
 
@@ -208,14 +215,17 @@ func (h *MomentHandler) GetUserMoments(c *gin.Context) {
 	response := make([]getMomentResponse, 0, len(moments))
 	for _, m := range moments {
 		response = append(response, getMomentResponse{
-			ID:         m.ID,
-			AuthorID:   m.AuthorID,
-			Content:    m.Content,
-			MediaUrls:  m.MediaUrls,
-			Visibility: m.Visibility,
-			CreatedAt:  m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			LikeCount:  m.LikeCount,
-			LikedByMe:  m.LikedByMe,
+			ID:           m.ID,
+			AuthorID:     m.AuthorID,
+			Content:      m.Content,
+			MediaUrls:    m.MediaUrls,
+			Visibility:   m.Visibility,
+			CreatedAt:    m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			LikeCount:    m.LikeCount,
+			LikedByMe:    m.LikedByMe,
+			AuthorName:   m.AuthorName,
+			AuthorAvatar: m.AuthorAvatar,
+			Comments:     m.Comments,
 		})
 	}
 
@@ -340,7 +350,7 @@ func (h *MomentHandler) CommentMoment(c *gin.Context) {
 	commentID, err := h.momentSvc.CommentMoment(c.Request.Context(), userID.(int64), momentID, req.Content)
 	if err != nil {
 		switch err.Error() {
-		case service.ErrMomentContentEmpty:
+		case service.ErrMomentContentEmpty, service.ErrMomentContentTooLong:
 			ServiceError(c, http.StatusBadRequest, err.Error())
 		case service.ErrMomentNotFound:
 			ServiceError(c, http.StatusNotFound, err.Error())
@@ -432,14 +442,17 @@ func (h *MomentHandler) GetFeed(c *gin.Context) {
 	response := make([]getMomentResponse, 0, len(moments))
 	for _, m := range moments {
 		response = append(response, getMomentResponse{
-			ID:         m.ID,
-			AuthorID:   m.AuthorID,
-			Content:    m.Content,
-			MediaUrls:  m.MediaUrls,
-			Visibility: m.Visibility,
-			CreatedAt:  m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			LikeCount:  m.LikeCount,
-			LikedByMe:  m.LikedByMe,
+			ID:           m.ID,
+			AuthorID:     m.AuthorID,
+			Content:      m.Content,
+			MediaUrls:    m.MediaUrls,
+			Visibility:   m.Visibility,
+			CreatedAt:    m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			LikeCount:    m.LikeCount,
+			LikedByMe:    m.LikedByMe,
+			AuthorName:   m.AuthorName,
+			AuthorAvatar: m.AuthorAvatar,
+			Comments:     m.Comments,
 		})
 	}
 

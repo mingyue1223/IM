@@ -35,18 +35,18 @@ type mockFriendRepo struct {
 	nextBlackID   int64
 
 	// 错误覆盖
-	isFriendErr    error
-	isBlockedErr   error
-	getRequestsErr error
-	createReqErr   error
-	getReqByIDErr  error
-	updateReqErr   error
-	createFsErr    error
-	deleteFsErr    error
+	isFriendErr      error
+	isBlockedErr     error
+	getRequestsErr   error
+	createReqErr     error
+	getReqByIDErr    error
+	updateReqErr     error
+	createFsErr      error
+	deleteFsErr      error
 	getFriendListErr error
-	createBlackErr error
-	deleteBlackErr error
-	getUserByIDErr error
+	createBlackErr   error
+	deleteBlackErr   error
+	getUserByIDErr   error
 }
 
 func newMockFriendRepo() *mockFriendRepo {
@@ -239,26 +239,34 @@ func (m *mockFriendRepo) GetUserByID(_ context.Context, userID int64) (*model.Us
 	}
 	u, ok := m.users[userID]
 	if !ok {
-		return nil, nil
+		return &model.User{ID: userID, Username: fmt.Sprintf("user%d", userID)}, nil
 	}
 	return u, nil
 }
 
-func (m *mockFriendRepo) GetUserByUsername(_ context.Context, _ string) (*model.User, error) { return nil, nil }
-func (m *mockFriendRepo) CreateUser(_ context.Context, _ *model.User) error                  { return nil }
-func (m *mockFriendRepo) UpdateUser(_ context.Context, _ *model.User) error                  { return nil }
+func (m *mockFriendRepo) GetUserByUsername(_ context.Context, _ string) (*model.User, error) {
+	return nil, nil
+}
+func (m *mockFriendRepo) CreateUser(_ context.Context, _ *model.User) error { return nil }
+func (m *mockFriendRepo) UpdateUser(_ context.Context, _ *model.User) error { return nil }
 
 // ── 桩实现：其他所有 MySQLRepo 方法 ──
 
-func (m *mockFriendRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error { return nil }
-func (m *mockFriendRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error       { return nil }
-func (m *mockFriendRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error           { return nil }
+func (m *mockFriendRepo) InsertPrivateMessage(_ context.Context, _ *model.PrivateMessage) error {
+	return nil
+}
+func (m *mockFriendRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMessage) error {
+	return nil
+}
+func (m *mockFriendRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error { return nil }
 
 func (m *mockFriendRepo) CreateGroup(_ context.Context, _ *model.Group) (int64, error) { return 0, nil }
-func (m *mockFriendRepo) UpdateGroup(_ context.Context, _ *model.Group) error           { return nil }
-func (m *mockFriendRepo) GetGroupByID(_ context.Context, _ int64) (*model.Group, error) { return nil, nil }
-func (m *mockFriendRepo) AddGroupMember(_ context.Context, _ *model.GroupMember) error  { return nil }
-func (m *mockFriendRepo) RemoveGroupMember(_ context.Context, _ int64, _ int64) error   { return nil }
+func (m *mockFriendRepo) UpdateGroup(_ context.Context, _ *model.Group) error          { return nil }
+func (m *mockFriendRepo) GetGroupByID(_ context.Context, _ int64) (*model.Group, error) {
+	return nil, nil
+}
+func (m *mockFriendRepo) AddGroupMember(_ context.Context, _ *model.GroupMember) error { return nil }
+func (m *mockFriendRepo) RemoveGroupMember(_ context.Context, _ int64, _ int64) error  { return nil }
 func (m *mockFriendRepo) GetGroupMembers(_ context.Context, _ int64) ([]model.GroupMember, error) {
 	return nil, nil
 }
@@ -266,16 +274,20 @@ func (m *mockFriendRepo) UpdateGroupMemberRole(_ context.Context, _ int, _ int, 
 	return nil
 }
 
-func (m *mockFriendRepo) CreateMoment(_ context.Context, _ *model.Moment) error          { return nil }
-func (m *mockFriendRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error) { return nil, nil }
+func (m *mockFriendRepo) CreateMoment(_ context.Context, _ *model.Moment) error { return nil }
+func (m *mockFriendRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error) {
+	return nil, nil
+}
 func (m *mockFriendRepo) GetMomentsByUser(_ context.Context, _ int64, _ int, _ int) ([]model.Moment, error) {
 	return nil, nil
 }
-func (m *mockFriendRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error    { return nil }
-func (m *mockFriendRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error       { return nil }
-func (m *mockFriendRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error { return nil }
-func (m *mockFriendRepo) DeleteMomentComment(_ context.Context, _ int64) error              { return nil }
-func (m *mockFriendRepo) CountFriends(_ context.Context, _ int64) (int, error)              { return 0, nil }
+func (m *mockFriendRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error { return nil }
+func (m *mockFriendRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error    { return nil }
+func (m *mockFriendRepo) CreateMomentComment(_ context.Context, _ *model.MomentComment) error {
+	return nil
+}
+func (m *mockFriendRepo) DeleteMomentComment(_ context.Context, _ int64) error { return nil }
+func (m *mockFriendRepo) CountFriends(_ context.Context, _ int64) (int, error) { return 0, nil }
 func (m *mockFriendRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {
 	return nil, nil
 }
@@ -283,9 +295,14 @@ func (m *mockFriendRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.
 func (m *mockFriendRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
+func (m *mockFriendRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) { return nil, nil }
 
-func (m *mockFriendRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) { return nil, nil }
-func (m *mockFriendRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error { return nil }
+func (m *mockFriendRepo) GetUserSettings(_ context.Context, _ int64) (*model.UserSettings, error) {
+	return nil, nil
+}
+func (m *mockFriendRepo) CreateOrUpdateUserSettings(_ context.Context, _ *model.UserSettings) error {
+	return nil
+}
 func (m *mockFriendRepo) SearchPrivateMessages(_ context.Context, _ int64, _ string, _ int, _ int) ([]model.PrivateMessage, error) {
 	return nil, nil
 }
@@ -296,8 +313,12 @@ func (m *mockFriendRepo) SearchPrivateMessages(_ context.Context, _ int64, _ str
 
 type mockFriendRedisRepo struct{}
 
-func (m *mockFriendRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
-func (m *mockFriendRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error { return nil }
+func (m *mockFriendRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error {
+	return nil
+}
+func (m *mockFriendRedisRepo) WriteOutbox(_ context.Context, _ int64, _ *model.InboxMessage) error {
+	return nil
+}
 func (m *mockFriendRedisRepo) ReadInbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
@@ -315,17 +336,31 @@ func (m *mockFriendRedisRepo) ClearUnread(_ context.Context, _ int64, _ string) 
 func (m *mockFriendRedisRepo) GetUnreadMap(_ context.Context, _ int64) (map[string]int64, error) {
 	return nil, nil
 }
-func (m *mockFriendRedisRepo) SetGroupReadPos(_ context.Context, _ int64, _ string, _ int64) error { return nil }
-func (m *mockFriendRedisRepo) GetGroupReadPos(_ context.Context, _ int64, _ string) (int64, error) { return 0, nil }
-func (m *mockFriendRedisRepo) GetGroupMemberships(_ context.Context, _ int64) ([]int64, error)     { return nil, nil }
-func (m *mockFriendRedisRepo) GetGroupMembers(_ context.Context, _ int64) ([]int64, error)         { return nil, nil }
-func (m *mockFriendRedisRepo) CheckDuplicate(_ context.Context, _ int64, _ string) (bool, error)  { return false, nil }
-func (m *mockFriendRedisRepo) TrimInbox(_ context.Context, _ int64, _ int) error                  { return nil }
-func (m *mockFriendRedisRepo) TrimOutbox(_ context.Context, _ int64, _ int) error                 { return nil }
-func (m *mockFriendRedisRepo) TrimInboxByTime(_ context.Context, _ int64, _ int64) error          { return nil }
-func (m *mockFriendRedisRepo) TrimOutboxByTime(_ context.Context, _ int64, _ int64) error         { return nil }
-func (m *mockFriendRedisRepo) TrimConvListByTime(_ context.Context, _ int64, _ int64) error       { return nil }
-func (m *mockFriendRedisRepo) TrimTimelineByTime(_ context.Context, _ int64, _ int64) error       { return nil }
+func (m *mockFriendRedisRepo) SetGroupReadPos(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
+func (m *mockFriendRedisRepo) GetGroupReadPos(_ context.Context, _ int64, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *mockFriendRedisRepo) GetGroupMemberships(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockFriendRedisRepo) GetGroupMembers(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockFriendRedisRepo) CheckDuplicate(_ context.Context, _ int64, _ string) (bool, error) {
+	return false, nil
+}
+func (m *mockFriendRedisRepo) TrimInbox(_ context.Context, _ int64, _ int) error          { return nil }
+func (m *mockFriendRedisRepo) TrimOutbox(_ context.Context, _ int64, _ int) error         { return nil }
+func (m *mockFriendRedisRepo) TrimInboxByTime(_ context.Context, _ int64, _ int64) error  { return nil }
+func (m *mockFriendRedisRepo) TrimOutboxByTime(_ context.Context, _ int64, _ int64) error { return nil }
+func (m *mockFriendRedisRepo) TrimConvListByTime(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (m *mockFriendRedisRepo) TrimTimelineByTime(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
 
 func (m *mockFriendRedisRepo) ExecPrivateMsgCheck(_ context.Context, _ int64, _ int64, _ string) (*redislua.PrivateMsgCheckResult, error) {
 	return nil, nil
@@ -333,27 +368,41 @@ func (m *mockFriendRedisRepo) ExecPrivateMsgCheck(_ context.Context, _ int64, _ 
 func (m *mockFriendRedisRepo) ExecGroupMsgCheck(_ context.Context, _ int64, _ int64, _ string) (*redislua.GroupMsgCheckResult, error) {
 	return nil, nil
 }
-func (m *mockFriendRedisRepo) ExecInboxMarkRead(_ context.Context, _ int64, _ string) (int64, error) { return 0, nil }
+func (m *mockFriendRedisRepo) ExecInboxMarkRead(_ context.Context, _ int64, _ string) (int64, error) {
+	return 0, nil
+}
 func (m *mockFriendRedisRepo) ExecRevokeMsg(_ context.Context, _ int64, _ string, _ int64, _ string, _ int64) (bool, error) {
 	return false, nil
 }
-func (m *mockFriendRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error   { return nil }
-func (m *mockFriendRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error { return nil }
-func (m *mockFriendRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error { return nil }
+func (m *mockFriendRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (m *mockFriendRedisRepo) RemoveGroupMemberRedis(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (m *mockFriendRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ int64, _ int64) error {
+	return nil
+}
 func (m *mockFriendRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
-func (m *mockFriendRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error { return nil }
-func (m *mockFriendRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error         { return nil }
-func (m *mockFriendRedisRepo) MarkBigUser(_ context.Context, _ int64) error                                 { return nil }
-func (m *mockFriendRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error)                 { return nil, nil }
+func (m *mockFriendRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error {
+	return nil
+}
+func (m *mockFriendRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error {
+	return nil
+}
+func (m *mockFriendRedisRepo) MarkBigUser(_ context.Context, _ int64) error { return nil }
+func (m *mockFriendRedisRepo) FilterBigUsers(_ context.Context, _ []int64) ([]int64, error) {
+	return nil, nil
+}
 func (m *mockFriendRedisRepo) GetTimelinePage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
 func (m *mockFriendRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64, _ int64, _ int) ([]model.FeedEntry, error) {
 	return nil, nil
 }
-func (m *mockFriendRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error                        { return nil }
+func (m *mockFriendRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error { return nil }
 
 // ──────────────────────────────────────────────────────
 // 辅助函数：新建测试用 FriendService
@@ -729,6 +778,7 @@ func TestFriend_GetFriendList_WithProfile(t *testing.T) {
 	repo.mu.Lock()
 	repo.friendships[friendKey(1, 2)] = &model.Friendship{ID: 1, UserID: 1, FriendID: 2, CreatedAt: time.Now()}
 	repo.users[2] = &model.User{ID: 2, Nickname: "bob", AvatarURL: "avatar2"}
+	repo.blacklist[blackKey(1, 2)] = &model.Blacklist{ID: 1, UserID: 1, BlockedID: 2}
 	repo.mu.Unlock()
 
 	friends, err := svc.GetFriendList(context.Background(), 1)
@@ -736,15 +786,30 @@ func TestFriend_GetFriendList_WithProfile(t *testing.T) {
 	assert.Len(t, friends, 1)
 	assert.Equal(t, "bob", friends[0].Nickname)
 	assert.Equal(t, "avatar2", friends[0].AvatarURL)
+	assert.True(t, friends[0].IsBlocked)
 }
 
 // ── 高并发点赞新增接口的 mock 桩 ──
 
-func (m *mockFriendRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error)          { return nil, nil }
-func (m *mockFriendRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error { return nil }
-func (m *mockFriendRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error { return nil }
+func (m *mockFriendRepo) GetMomentLikers(_ context.Context, _ int64) ([]int64, error) {
+	return nil, nil
+}
+func (m *mockFriendRepo) BatchUpsertMomentLikes(_ context.Context, _ []model.MomentLike) error {
+	return nil
+}
+func (m *mockFriendRepo) BatchDeleteMomentLikes(_ context.Context, _ []model.MomentLikeKey) error {
+	return nil
+}
 
-func (m *mockFriendRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error)   { return false, 0, nil }
-func (m *mockFriendRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) { return false, 0, nil }
-func (m *mockFriendRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error { return nil }
-func (m *mockFriendRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) { return nil, nil, nil }
+func (m *mockFriendRedisRepo) LikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) {
+	return false, 0, nil
+}
+func (m *mockFriendRedisRepo) UnlikeMomentAtomic(_ context.Context, _ int64, _ int64) (bool, int64, error) {
+	return false, 0, nil
+}
+func (m *mockFriendRedisRepo) EnsureMomentLikesLoaded(_ context.Context, _ int64, _ func(context.Context) ([]int64, error), _ time.Duration) error {
+	return nil
+}
+func (m *mockFriendRedisRepo) GetMomentLikeStats(_ context.Context, _ int64, _ []int64) (map[int64]int64, map[int64]bool, error) {
+	return nil, nil, nil
+}

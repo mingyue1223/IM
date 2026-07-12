@@ -19,8 +19,8 @@ import (
 // ── 常量 ──
 
 const (
-	privateMsgQueue  = "private_msg_persist"
-	inboxMaxCount    = 2000 // 每个用户收件箱在裁剪后保留的最大条目数
+	privateMsgQueue = "private_msg_persist"
+	inboxMaxCount   = 2000 // 每个用户收件箱在裁剪后保留的最大条目数
 )
 
 // PrivateMsgConsumer 处理来自 private_msg_persist 队列的消息。
@@ -59,11 +59,11 @@ func (c *PrivateMsgConsumer) Start(ctx context.Context) error {
 	deliveries, err := c.ch.Consume(
 		privateMsgQueue,
 		"goim-private-msg-consumer", // 消费者标签
-		false,                        // autoAck — 我们手动确认
-		false,                        // exclusive
-		false,                        // noLocal
-		false,                        // noWait
-		nil,                          // args
+		false,                       // autoAck — 我们手动确认
+		false,                       // exclusive
+		false,                       // noLocal
+		false,                       // noWait
+		nil,                         // args
 	)
 	if err != nil {
 		return fmt.Errorf("消费 private_msg_persist 失败: %w", err)
@@ -147,18 +147,31 @@ func (c *PrivateMsgConsumer) process(ctx context.Context, msg *model.PrivateMess
 	}
 
 	// ── 4. 更新双方的 conv_list ──
-	convSummary := buildPrivateConvSummary(convID, msg)
-	summaryJSON, err := json.Marshal(convSummary)
+	senderSummary := buildPrivateConvSummaryForTarget(convID, msg, msg.ReceiverID)
+	receiverSummary := buildPrivateConvSummaryForTarget(convID, msg, msg.SenderID)
+	if c.mysqlRepo != nil {
+		if user, _ := c.mysqlRepo.GetUserByID(ctx, msg.ReceiverID); user != nil {
+			senderSummary.TargetName, senderSummary.TargetAvatar = user.Username, user.AvatarURL
+		}
+		if user, _ := c.mysqlRepo.GetUserByID(ctx, msg.SenderID); user != nil {
+			receiverSummary.TargetName, receiverSummary.TargetAvatar = user.Username, user.AvatarURL
+		}
+	}
+	senderJSON, err := json.Marshal(senderSummary)
 	if err != nil {
 		c.logger.Warn("序列化会话摘要失败", zap.Error(err))
-		summaryJSON = []byte(convID) // 降级方案
+		senderJSON = []byte(convID)
+	}
+	receiverJSON, err := json.Marshal(receiverSummary)
+	if err != nil {
+		receiverJSON = []byte(convID)
 	}
 
-	if err := c.redisRepo.UpdateConvList(ctx, msg.SenderID, convID, string(summaryJSON), timestamp); err != nil {
+	if err := c.redisRepo.UpdateConvList(ctx, msg.SenderID, convID, string(senderJSON), timestamp); err != nil {
 		c.logger.Warn("更新发送者 conv_list 失败", zap.Error(err))
 		// 非关键操作 — 不要因此使整个投递失败
 	}
-	if err := c.redisRepo.UpdateConvList(ctx, msg.ReceiverID, convID, string(summaryJSON), timestamp); err != nil {
+	if err := c.redisRepo.UpdateConvList(ctx, msg.ReceiverID, convID, string(receiverJSON), timestamp); err != nil {
 		c.logger.Warn("更新接收者 conv_list 失败", zap.Error(err))
 	}
 
@@ -224,10 +237,14 @@ func deserializePrivateMsg(body []byte) (*model.PrivateMessage, error) {
 // TargetName 和 TargetAvatar 留空 — 它们将在同步时
 // 由消息服务或单独的用户查询来填充。
 func buildPrivateConvSummary(convID string, msg *model.PrivateMessage) *model.ConvSummary {
+	return buildPrivateConvSummaryForTarget(convID, msg, msg.ReceiverID)
+}
+
+func buildPrivateConvSummaryForTarget(convID string, msg *model.PrivateMessage, targetID int64) *model.ConvSummary {
 	return &model.ConvSummary{
 		ConvID:      convID,
 		ConvType:    model.ConvTypePrivate,
-		TargetID:    msg.ReceiverID,
+		TargetID:    targetID,
 		LastMsg:     truncateContent(msg.Content, 50),
 		LastMsgTime: msg.CreatedAt.UnixMilli(),
 	}

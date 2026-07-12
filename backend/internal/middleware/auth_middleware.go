@@ -17,6 +17,20 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+type authErrorResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+const codeUnauthorized = 1003
+
+func abortUnauthorized(c *gin.Context, message string) {
+	c.AbortWithStatusJSON(http.StatusUnauthorized, authErrorResponse{
+		Code:    codeUnauthorized,
+		Message: message,
+	})
+}
+
 // GenerateAccessToken 使用给定的过期时间创建签名的 JWT 访问令牌。
 // expireHours 是令牌的有效期，以小时为单位（通常为 2）。
 func GenerateAccessToken(userID int64, username, secret string, expireHours int) (string, error) {
@@ -77,7 +91,7 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 			// 同时检查查询参数以支持 WebSocket 连接
 			token := c.Query("token")
 			if token == "" {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "缺少令牌"})
+				abortUnauthorized(c, "缺少令牌")
 				return
 			}
 			authHeader = "Bearer " + token
@@ -86,7 +100,7 @@ func JWTAuthMiddleware(secret string) gin.HandlerFunc {
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 		_, claims, err := ParseToken(tokenStr, secret)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "无效令牌"})
+			abortUnauthorized(c, "无效令牌")
 			return
 		}
 

@@ -89,6 +89,8 @@ func (h *FriendHandler) SendFriendRequest(c *gin.Context) {
 			ServiceError(c, http.StatusForbidden, err.Error())
 		case service.ErrDuplicateRequest:
 			ServiceError(c, http.StatusConflict, err.Error())
+		case service.ErrUserNotFound:
+			ServiceError(c, http.StatusNotFound, err.Error())
 		default:
 			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
 		}

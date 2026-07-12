@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -18,12 +19,15 @@ import (
 // ── 验证/业务错误常量 ──
 
 const (
-	ErrMomentContentEmpty = "动态内容不能为空"
-	ErrMomentNotFound     = "动态未找到"
-	ErrNotCommentOwner    = "不是该评论的所有者"
-	ErrInvalidVisibility  = "可见性必须为 1（全部）、2（好友）或 3（私密）"
-	ErrCommentNotFound    = "评论未找到"
+	ErrMomentContentEmpty   = "动态内容不能为空"
+	ErrMomentContentTooLong = "内容不能超过 2000 个字符"
+	ErrMomentNotFound       = "动态未找到"
+	ErrNotCommentOwner      = "不是该评论的所有者"
+	ErrInvalidVisibility    = "可见性必须为 2（好友）或 3（仅自己）"
+	ErrCommentNotFound      = "评论未找到"
 )
+
+const maxMomentContentRunes = 2000
 
 // MomentService 处理动态发布、点赞/评论操作以及动态流获取。
 type MomentService struct {
@@ -52,10 +56,13 @@ func NewMomentService(mysqlRepo repository.MySQLRepo, redisRepo repository.Redis
 // PublishMoment 在 MySQL 中创建动态并发布到 MQ 以进行动态流扇出。
 // 成功时返回所创建动态的 ID。
 func (s *MomentService) PublishMoment(ctx context.Context, userID int64, content string, mediaUrls *string, visibility int) (int64, error) {
-	if content == "" {
+	if strings.TrimSpace(content) == "" {
 		return 0, fmt.Errorf(ErrMomentContentEmpty)
 	}
-	if visibility < 1 || visibility > 3 {
+	if utf8.RuneCountInString(content) > maxMomentContentRunes {
+		return 0, fmt.Errorf(ErrMomentContentTooLong)
+	}
+	if visibility != 2 && visibility != 3 {
 		return 0, fmt.Errorf(ErrInvalidVisibility)
 	}
 
@@ -79,10 +86,34 @@ func (s *MomentService) PublishMoment(ctx context.Context, userID int64, content
 			zap.Int64("authorID", userID),
 			zap.Error(err),
 		)
-		// 非关键：动态已持久化到 MySQL，动态流扇出将会重试
+		// MQ 通道异常时同步补偿 Feed 索引，避免“发布成功但任何人都看不到”。
+		if fallbackErr := s.distributeMomentFallback(ctx, moment); fallbackErr != nil {
+			return 0, fmt.Errorf("动态已保存但分发失败: %w", fallbackErr)
+		}
 	}
 
 	return moment.ID, nil
+}
+
+func (s *MomentService) distributeMomentFallback(ctx context.Context, moment *model.Moment) error {
+	timestamp := moment.CreatedAt.UnixMilli()
+	if err := s.redisRepo.AddToOutbox(ctx, moment.AuthorID, moment.ID, timestamp, 1000); err != nil {
+		return err
+	}
+	if moment.Visibility == 3 {
+		return nil
+	}
+	friends, err := s.mysqlRepo.GetFriendList(ctx, moment.AuthorID)
+	if err != nil {
+		return err
+	}
+	friendIDs := make([]int64, 0, len(friends))
+	for _, friend := range friends {
+		if friend.FriendID != moment.AuthorID {
+			friendIDs = append(friendIDs, friend.FriendID)
+		}
+	}
+	return s.redisRepo.FanoutMomentFeed(ctx, friendIDs, moment.ID, timestamp, 1000)
 }
 
 // GetMoment 根据 ID 返回单条动态（含点赞数与"我是否已赞"）。
@@ -104,6 +135,8 @@ func (s *MomentService) GetMoment(ctx context.Context, viewerID int64, momentID 
 	}
 	batch := []model.Moment{*moment}
 	s.enrichLikes(ctx, viewerID, batch)
+	s.enrichAuthors(ctx, batch)
+	s.enrichComments(ctx, batch)
 	return &batch[0], nil
 }
 
@@ -157,7 +190,42 @@ func (s *MomentService) GetUserMoments(ctx context.Context, viewerID int64, user
 	}
 
 	s.enrichLikes(ctx, viewerID, visibleMoments)
+	s.enrichAuthors(ctx, visibleMoments)
+	s.enrichComments(ctx, visibleMoments)
 	return visibleMoments, nil
+}
+
+func (s *MomentService) enrichAuthors(ctx context.Context, moments []model.Moment) {
+	profiles := make(map[int64]*model.User)
+	for i := range moments {
+		profile, cached := profiles[moments[i].AuthorID]
+		if !cached {
+			var err error
+			profile, err = s.mysqlRepo.GetUserByID(ctx, moments[i].AuthorID)
+			if err != nil {
+				s.logger.Warn("读取动态作者资料失败", zap.Int64("authorID", moments[i].AuthorID), zap.Error(err))
+			}
+			profiles[moments[i].AuthorID] = profile
+		}
+		if profile != nil {
+			moments[i].AuthorName = profile.Username
+			if profile.Nickname != "" {
+				moments[i].AuthorName = profile.Nickname
+			}
+			moments[i].AuthorAvatar = profile.AvatarURL
+		}
+	}
+}
+
+func (s *MomentService) enrichComments(ctx context.Context, moments []model.Moment) {
+	for i := range moments {
+		comments, err := s.mysqlRepo.GetMomentComments(ctx, moments[i].ID)
+		if err != nil {
+			s.logger.Warn("读取动态评论失败", zap.Int64("momentID", moments[i].ID), zap.Error(err))
+			continue
+		}
+		moments[i].Comments = comments
+	}
 }
 
 // canViewMoment 是详情、用户动态列表和 Feed 共用的可见性规则。
@@ -166,8 +234,8 @@ func (s *MomentService) canViewMoment(ctx context.Context, viewerID int64, momen
 		return true, nil
 	}
 	switch moment.Visibility {
-	case 1:
-		return true, nil
+	case 1: // 历史“公开”数据按新规则降级为好友可见。
+		return s.mysqlRepo.IsFriend(ctx, viewerID, moment.AuthorID)
 	case 2:
 		return s.mysqlRepo.IsFriend(ctx, viewerID, moment.AuthorID)
 	case 3:
@@ -187,6 +255,13 @@ func (s *MomentService) LikeMoment(ctx context.Context, userID int64, momentID i
 		return 0, fmt.Errorf("检查动态: %w", err)
 	}
 	if moment == nil {
+		return 0, fmt.Errorf(ErrMomentNotFound)
+	}
+	visible, err := s.canViewMoment(ctx, userID, moment)
+	if err != nil {
+		return 0, fmt.Errorf("检查动态可见性: %w", err)
+	}
+	if !visible {
 		return 0, fmt.Errorf(ErrMomentNotFound)
 	}
 
@@ -271,8 +346,11 @@ func (s *MomentService) enrichLikes(ctx context.Context, viewerID int64, moments
 
 // CommentMoment 在动态上创建一条评论。
 func (s *MomentService) CommentMoment(ctx context.Context, userID int64, momentID int64, content string) (int64, error) {
-	if content == "" {
+	if strings.TrimSpace(content) == "" {
 		return 0, fmt.Errorf(ErrMomentContentEmpty)
+	}
+	if utf8.RuneCountInString(content) > maxMomentContentRunes {
+		return 0, fmt.Errorf(ErrMomentContentTooLong)
 	}
 
 	// 验证动态是否存在
@@ -281,6 +359,13 @@ func (s *MomentService) CommentMoment(ctx context.Context, userID int64, momentI
 		return 0, fmt.Errorf("检查动态: %w", err)
 	}
 	if moment == nil {
+		return 0, fmt.Errorf(ErrMomentNotFound)
+	}
+	visible, err := s.canViewMoment(ctx, userID, moment)
+	if err != nil {
+		return 0, fmt.Errorf("检查动态可见性: %w", err)
+	}
+	if !visible {
 		return 0, fmt.Errorf(ErrMomentNotFound)
 	}
 
@@ -448,6 +533,8 @@ func (s *MomentService) GetFeed(ctx context.Context, userID int64, cursor string
 
 	// 富化点赞数与"我是否已赞"
 	s.enrichLikes(ctx, userID, moments)
+	s.enrichAuthors(ctx, moments)
+	s.enrichComments(ctx, moments)
 
 	return moments, nextCursor, nil
 }

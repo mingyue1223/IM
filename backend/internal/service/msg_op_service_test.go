@@ -144,6 +144,7 @@ func (m *mockMsgOpRepo) CreateMomentComment(_ context.Context, _ *model.MomentCo
 func (m *mockMsgOpRepo) GetMomentCommentByID(_ context.Context, _ int64) (*model.MomentComment, error) {
 	return nil, nil
 }
+func (m *mockMsgOpRepo) GetMomentComments(_ context.Context, _ int64) ([]model.MomentComment, error) { return nil, nil }
 func (m *mockMsgOpRepo) DeleteMomentComment(_ context.Context, _ int64) error { return nil }
 func (m *mockMsgOpRepo) CountFriends(_ context.Context, _ int64) (int, error)             { return 0, nil }
 func (m *mockMsgOpRepo) GetMomentsByIDs(_ context.Context, _ []int64) ([]model.Moment, error) {

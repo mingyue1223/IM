@@ -178,6 +178,20 @@ func (r *RedisRepoImpl) readMessagesAfter(ctx context.Context, key string, lastS
 
 func (r *RedisRepoImpl) UpdateConvList(ctx context.Context, userID int64, convID string, summary string, timestamp int64) error {
 	key := fmt.Sprintf("conv_list:%d", userID)
+	// Legacy representation stores the complete JSON summary as the ZSet member.
+	// Remove every older member for this convID before adding the latest summary.
+	members, err := r.rdb.ZRange(ctx, key, 0, -1).Result()
+	if err != nil {
+		return fmt.Errorf("读取旧会话摘要: %w", err)
+	}
+	for _, existing := range members {
+		var old model.ConvSummary
+		if (json.Unmarshal([]byte(existing), &old) == nil && old.ConvID == convID) || existing == convID {
+			if err := r.rdb.ZRem(ctx, key, existing).Err(); err != nil {
+				return fmt.Errorf("移除旧会话摘要: %w", err)
+			}
+		}
+	}
 	// 将摘要JSON存储为ZSet成员，以便GetConvList可以返回完整的元数据。
 	member := summary
 	if member == "" {
@@ -198,11 +212,16 @@ func (r *RedisRepoImpl) GetConvList(ctx context.Context, userID int64) ([]model.
 	}
 
 	summaries := make([]model.ConvSummary, 0, len(members))
+	seen := make(map[string]struct{}, len(members))
 	for _, member := range members {
 		// 如果成员是JSON格式，尝试将其解析为ConvSummary。
 		// 如果解析失败，则将其视为普通的convID字符串。
 		var s model.ConvSummary
 		if err := json.Unmarshal([]byte(member), &s); err == nil && s.ConvID != "" {
+			if _, ok := seen[s.ConvID]; ok {
+				continue
+			}
+			seen[s.ConvID] = struct{}{}
 			summaries = append(summaries, s)
 		} else {
 			summaries = append(summaries, model.ConvSummary{ConvID: member})
@@ -318,11 +337,25 @@ func (r *RedisRepoImpl) RemoveGroupMemberRedis(ctx context.Context, groupID, use
 	userIDStr := strconv.FormatInt(userID, 10)
 	groupIDStr := strconv.FormatInt(groupID, 10)
 
-	if err := r.rdb.SRem(ctx, groupKey, userIDStr).Err(); err != nil {
-		return fmt.Errorf("SREM群组成员: %w", err)
+	convID := fmt.Sprintf("g_%d", groupID)
+	convKey := fmt.Sprintf("conv_list:%d", userID)
+	members, err := r.rdb.ZRange(ctx, convKey, 0, -1).Result()
+	if err != nil {
+		return fmt.Errorf("读取退群用户会话摘要: %w", err)
 	}
-	if err := r.rdb.SRem(ctx, userKey, groupIDStr).Err(); err != nil {
-		return fmt.Errorf("SREM用户群组: %w", err)
+	pipe := r.rdb.Pipeline()
+	pipe.SRem(ctx, groupKey, userIDStr)
+	pipe.SRem(ctx, userKey, groupIDStr)
+	for _, existing := range members {
+		var summary model.ConvSummary
+		if (json.Unmarshal([]byte(existing), &summary) == nil && summary.ConvID == convID) || existing == convID {
+			pipe.ZRem(ctx, convKey, existing)
+		}
+	}
+	pipe.HDel(ctx, fmt.Sprintf("unread:%d", userID), convID)
+	pipe.HDel(ctx, fmt.Sprintf("group_read_pos:%d", userID), convID)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("清理退群用户缓存: %w", err)
 	}
 	return nil
 }

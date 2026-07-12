@@ -1,22 +1,29 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/goim/goim/internal/conn"
 	"github.com/goim/goim/internal/service"
 )
 
 // GroupHandler 提供群组端点的 Gin HTTP 处理程序。
 type GroupHandler struct {
 	groupSvc *service.GroupService
+	cm       *conn.ConnectionManager
 }
 
 // NewGroupHandler 创建一个包装了给定 GroupService 的 GroupHandler。
-func NewGroupHandler(groupSvc *service.GroupService) *GroupHandler {
-	return &GroupHandler{groupSvc: groupSvc}
+func NewGroupHandler(groupSvc *service.GroupService, managers ...*conn.ConnectionManager) *GroupHandler {
+	var cm *conn.ConnectionManager
+	if len(managers) > 0 {
+		cm = managers[0]
+	}
+	return &GroupHandler{groupSvc: groupSvc, cm: cm}
 }
 
 // ── Request / response DTOs ──
@@ -41,6 +48,10 @@ type addMemberRequest struct {
 
 type updateMemberRoleRequest struct {
 	Role *int64 `json:"role" binding:"required"`
+}
+
+type transferOwnerRequest struct {
+	NewOwnerID int64 `json:"new_owner_id" binding:"required"`
 }
 
 // ── Handlers ──
@@ -121,6 +132,8 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 			ServiceError(c, http.StatusForbidden, err.Error())
 		case service.ErrGroupNotFound:
 			ServiceError(c, http.StatusNotFound, err.Error())
+		case service.ErrMemberNotFound:
+			ServiceError(c, http.StatusNotFound, err.Error())
 		default:
 			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
 		}
@@ -162,6 +175,15 @@ func (h *GroupHandler) GetGroupInfo(c *gin.Context) {
 	}
 
 	Success(c, group)
+}
+
+func (h *GroupHandler) ListMyGroups(c *gin.Context) {
+	groups, err := h.groupSvc.ListUserGroups(c.Request.Context(), c.GetInt64("userID"))
+	if err != nil {
+		Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		return
+	}
+	Success(c, groups)
 }
 
 // AddMember godoc
@@ -210,6 +232,10 @@ func (h *GroupHandler) AddMember(c *gin.Context) {
 			ServiceError(c, http.StatusConflict, err.Error())
 		case service.ErrGroupFull:
 			ServiceError(c, http.StatusConflict, err.Error())
+		case service.ErrMemberNotFound:
+			ServiceError(c, http.StatusNotFound, err.Error())
+		case service.ErrMemberNotFriend:
+			ServiceError(c, http.StatusForbidden, err.Error())
 		default:
 			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
 		}
@@ -217,6 +243,32 @@ func (h *GroupHandler) AddMember(c *gin.Context) {
 	}
 
 	SuccessMessage(c, "member added")
+}
+
+func (h *GroupHandler) TransferOwnership(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("groupID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid group_id")
+		return
+	}
+	var req transferOwnerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeMissingParam, "new_owner_id is required")
+		return
+	}
+	err = h.groupSvc.TransferOwnership(c.Request.Context(), groupID, c.GetInt64("userID"), req.NewOwnerID)
+	if err != nil {
+		switch err.Error() {
+		case service.ErrNotOwnerOrAdmin:
+			ServiceError(c, http.StatusForbidden, err.Error())
+		case service.ErrGroupNotFound, service.ErrMemberNotFound:
+			ServiceError(c, http.StatusNotFound, err.Error())
+		default:
+			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		}
+		return
+	}
+	SuccessMessage(c, "group ownership transferred")
 }
 
 // RemoveMember godoc
@@ -262,12 +314,23 @@ func (h *GroupHandler) RemoveMember(c *gin.Context) {
 			ServiceError(c, http.StatusForbidden, err.Error())
 		case service.ErrGroupNotFound:
 			ServiceError(c, http.StatusNotFound, err.Error())
-		case service.ErrCannotRemoveOwner:
+		case service.ErrCannotRemoveOwner, service.ErrCannotRemovePeer:
 			ServiceError(c, http.StatusForbidden, err.Error())
+		case service.ErrMemberNotFound:
+			ServiceError(c, http.StatusNotFound, err.Error())
 		default:
 			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
 		}
 		return
+	}
+	if memberID != userID && h.cm != nil {
+		if client, ok := h.cm.Get(memberID); ok {
+			notice, _ := json.Marshal(map[string]interface{}{"type": "groupRemoved", "data": map[string]interface{}{"groupId": groupID, "reason": "removed"}})
+			select {
+			case client.SendCh <- notice:
+			default:
+			}
+		}
 	}
 
 	SuccessMessage(c, "member removed")
@@ -370,6 +433,8 @@ func (h *GroupHandler) UpdateMemberRole(c *gin.Context) {
 			ServiceError(c, http.StatusForbidden, err.Error())
 		case service.ErrGroupNotFound:
 			ServiceError(c, http.StatusNotFound, err.Error())
+		case service.ErrMemberNotFound:
+			ServiceError(c, http.StatusNotFound, err.Error())
 		case service.ErrCannotRemoveOwner:
 			ServiceError(c, http.StatusForbidden, err.Error())
 		case service.ErrInvalidRole:
@@ -430,11 +495,13 @@ func (h *GroupHandler) LeaveGroup(c *gin.Context) {
 func (h *GroupHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/group")
 	g.POST("", h.CreateGroup)
+	g.GET("/list", h.ListMyGroups)
 	g.PUT("/:groupID", h.UpdateGroup)
 	g.GET("/:groupID", h.GetGroupInfo)
 	g.POST("/:groupID/member", h.AddMember)
 	g.DELETE("/:groupID/member/:memberID", h.RemoveMember)
 	g.GET("/:groupID/members", h.GetMembers)
 	g.PUT("/:groupID/member/:memberID/role", h.UpdateMemberRole)
+	g.PUT("/:groupID/owner", h.TransferOwnership)
 	g.POST("/:groupID/leave", h.LeaveGroup)
 }

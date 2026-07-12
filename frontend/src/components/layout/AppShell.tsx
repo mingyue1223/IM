@@ -43,7 +43,7 @@ export function AppShell() {
               );
             })}
           </nav>
-          <NavLink aria-label="个人设置" className="nav-rail__profile" to="/app/settings/profile"><Avatar name={user?.username ?? "用户"} online size="sm" /></NavLink>
+          <NavLink aria-label="个人设置" className="nav-rail__profile" to="/app/settings/profile"><Avatar name={user?.username ?? "用户"} online size="sm" src={user?.avatarUrl} /></NavLink>
         </aside>
         <AnimatePresence initial={false} mode="wait">
           <motion.div

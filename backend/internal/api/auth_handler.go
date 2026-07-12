@@ -39,6 +39,7 @@ type loginResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int64  `json:"expires_in"`
+	AvatarURL    string `json:"avatar_url"`
 }
 
 type refreshRequest struct {
@@ -118,11 +119,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		}
 		return
 	}
+	user, err := h.authSvc.GetUserByUsername(c.Request.Context(), req.Username)
+	if err != nil || user == nil {
+		Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		return
+	}
 
 	Success(c, loginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,
+		AvatarURL:    user.AvatarURL,
 	})
 }
 

@@ -25,21 +25,21 @@ const (
 
 // AuthService 处理用户注册、登录和令牌刷新。
 type AuthService struct {
-	repo            repository.MySQLRepo
-	jwtSecret       string
-	bcryptCost      int
-	accessExpHours  int
-	refreshExpDays  int
+	repo           repository.MySQLRepo
+	jwtSecret      string
+	bcryptCost     int
+	accessExpHours int
+	refreshExpDays int
 }
 
 // NewAuthService 使用给定的 MySQL 仓库和 JWT 配置创建 AuthService。
 func NewAuthService(repo repository.MySQLRepo, jwtSecret string, accessExpHours, refreshExpDays int) *AuthService {
 	return &AuthService{
-		repo:            repo,
-		jwtSecret:       jwtSecret,
-		bcryptCost:      10,
-		accessExpHours:  accessExpHours,
-		refreshExpDays:  refreshExpDays,
+		repo:           repo,
+		jwtSecret:      jwtSecret,
+		bcryptCost:     10,
+		accessExpHours: accessExpHours,
+		refreshExpDays: refreshExpDays,
 	}
 }
 
@@ -113,6 +113,10 @@ func (s *AuthService) Login(ctx context.Context, username, password string) (str
 
 	expiresIn := int64(s.accessExpHours * 3600)
 	return accessToken, refreshToken, expiresIn, nil
+}
+
+func (s *AuthService) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
+	return s.repo.GetUserByUsername(ctx, username)
 }
 
 // Refresh 验证刷新令牌并颁发新的访问令牌。

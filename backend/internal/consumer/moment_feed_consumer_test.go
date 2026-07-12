@@ -95,7 +95,9 @@ func (m *momentConsumerMySQLMock) IsBlocked(context.Context, int64, int64) (bool
 func (m *momentConsumerMySQLMock) CreateGroup(context.Context, *model.Group) (int64, error) {
 	panic("未实现")
 }
-func (m *momentConsumerMySQLMock) UpdateGroup(context.Context, *model.Group) error { panic("未实现") }
+func (m *momentConsumerMySQLMock) UpdateGroup(context.Context, *model.Group) error {
+	panic("未实现")
+}
 func (m *momentConsumerMySQLMock) GetGroupByID(context.Context, int64) (*model.Group, error) {
 	panic("未实现")
 }
@@ -111,7 +113,9 @@ func (m *momentConsumerMySQLMock) GetGroupMembers(context.Context, int64) ([]mod
 func (m *momentConsumerMySQLMock) UpdateGroupMemberRole(context.Context, int, int, int) error {
 	panic("未实现")
 }
-func (m *momentConsumerMySQLMock) CreateMoment(context.Context, *model.Moment) error { panic("未实现") }
+func (m *momentConsumerMySQLMock) CreateMoment(context.Context, *model.Moment) error {
+	panic("未实现")
+}
 func (m *momentConsumerMySQLMock) GetMomentByID(context.Context, int64) (*model.Moment, error) {
 	panic("未实现")
 }
@@ -127,16 +131,27 @@ func (m *momentConsumerMySQLMock) CreateMomentLike(context.Context, *model.Momen
 func (m *momentConsumerMySQLMock) DeleteMomentLike(context.Context, int64, int64) error {
 	panic("未实现")
 }
-func (m *momentConsumerMySQLMock) GetMomentLikers(context.Context, int64) ([]int64, error)    { panic("未实现") }
-func (m *momentConsumerMySQLMock) BatchUpsertMomentLikes(context.Context, []model.MomentLike) error { panic("未实现") }
-func (m *momentConsumerMySQLMock) BatchDeleteMomentLikes(context.Context, []model.MomentLikeKey) error { panic("未实现") }
+func (m *momentConsumerMySQLMock) GetMomentLikers(context.Context, int64) ([]int64, error) {
+	panic("未实现")
+}
+func (m *momentConsumerMySQLMock) BatchUpsertMomentLikes(context.Context, []model.MomentLike) error {
+	panic("未实现")
+}
+func (m *momentConsumerMySQLMock) BatchDeleteMomentLikes(context.Context, []model.MomentLikeKey) error {
+	panic("未实现")
+}
 func (m *momentConsumerMySQLMock) CreateMomentComment(context.Context, *model.MomentComment) error {
 	panic("未实现")
 }
 func (m *momentConsumerMySQLMock) GetMomentCommentByID(context.Context, int64) (*model.MomentComment, error) {
 	panic("未实现")
 }
-func (m *momentConsumerMySQLMock) DeleteMomentComment(context.Context, int64) error { panic("未实现") }
+func (m *momentConsumerMySQLMock) GetMomentComments(context.Context, int64) ([]model.MomentComment, error) {
+	return nil, nil
+}
+func (m *momentConsumerMySQLMock) DeleteMomentComment(context.Context, int64) error {
+	panic("未实现")
+}
 func (m *momentConsumerMySQLMock) GetUserSettings(context.Context, int64) (*model.UserSettings, error) {
 	panic("未实现")
 }

@@ -159,7 +159,7 @@ func TestMain(m *testing.M) {
 	momentHandler := api.NewMomentHandler(momentSvc)
 	msgOpHandler := api.NewMsgOpHandler(msgOpSvc)
 	settingsHandler := api.NewSettingsHandler(settingsSvc)
-	uploadHandler := api.NewUploadHandler(cfg.Server.UploadDir, cfg.File.MaxSizeMB, cfg.File.AllowedExts)
+	uploadHandler := api.NewUploadHandler(cfg.Server.UploadDir, cfg.File.MaxSizeMB, cfg.File.AllowedExts, mysqlRepo)
 	avatarHandler := api.NewAvatarHandler()
 
 	// ── 构建 Gin 路由器 ──
@@ -356,6 +356,15 @@ func TestE2E_AvatarAndUpload(t *testing.T) {
 	if fileResp.StatusCode != http.StatusOK || !bytes.Equal(stored, []byte("png test payload")) {
 		t.Fatalf("uploaded avatar mismatch: status=%d body=%s", fileResp.StatusCode, stored)
 	}
+	status, loginBody := doRequest(t, http.MethodPost, env.baseURL, "/api/v1/auth/login", map[string]string{"username": username, "password": "pass1234"}, "")
+	if status != http.StatusOK {
+		t.Fatalf("login after avatar upload: status=%d body=%s", status, loginBody)
+	}
+	var login authLoginResp
+	decodeSuccessResponse(t, loginBody, &login)
+	if login.AvatarURL != upload.URL {
+		t.Fatalf("avatar not persisted in login response: got=%q want=%q", login.AvatarURL, upload.URL)
+	}
 }
 
 func TestE2E_WebSocketSingleDeviceKick(t *testing.T) {
@@ -495,13 +504,27 @@ func TestE2E_FriendFlow(t *testing.T) {
 func TestE2E_GroupMessaging(t *testing.T) {
 	u1Name := fmt.Sprintf("e2e_grp1_%d", time.Now().UnixNano())
 	u2Name := fmt.Sprintf("e2e_grp2_%d", time.Now().UnixNano())
-	_ = registerUser(t, env.baseURL, u1Name, "pass1234")
+	u1ID := registerUser(t, env.baseURL, u1Name, "pass1234")
 	u2ID := registerUser(t, env.baseURL, u2Name, "pass1234")
 	u1Token := loginUser(t, env.baseURL, u1Name, "pass1234")
 	u2Token := loginUser(t, env.baseURL, u2Name, "pass1234")
 
+	// 群成员只能从群主的好友中邀请，先建立测试所需的好友关系。
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
+		map[string]interface{}{"to_user_id": u2ID, "message": "join test group"}, u1Token)
+	if status != http.StatusCreated {
+		t.Fatalf("创建好友请求: from=%d to=%d status=%d body=%s", u1ID, u2ID, status, body)
+	}
+	var friendRequest friendRequestResp
+	decodeSuccessResponse(t, body, &friendRequest)
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept",
+		map[string]interface{}{"request_id": friendRequest.RequestID}, u2Token)
+	if status != http.StatusOK {
+		t.Fatalf("接受好友请求: status=%d body=%s", status, body)
+	}
+
 	// 步骤 1：创建群组（u1 为群主）
-	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/group",
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/group",
 		map[string]interface{}{"name": "E2E Test Group", "notice": "test group"}, u1Token)
 	if status != http.StatusCreated {
 		t.Fatalf("创建群组: status=%d body=%s", status, body)
@@ -789,23 +812,43 @@ func TestE2E_FriendRequestManagement(t *testing.T) {
 		t.Fatalf("reopened request mismatch: old=%d reopened=%+v", request.RequestID, reopened)
 	}
 
-	// 重置为待处理后再次重复申请，仍应返回冲突而不是成功或 500。
+	// 重置为待处理后再次重复申请是幂等操作，返回同一待处理记录。
 	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request",
 		map[string]interface{}{"to_user_id": bID}, aToken)
-	if status != http.StatusConflict {
+	if status != http.StatusCreated {
 		t.Fatalf("duplicate pending request: status=%d body=%s", status, body)
+	}
+	var duplicate friendRequestResp
+	decodeSuccessResponse(t, body, &duplicate)
+	if duplicate.RequestID != request.RequestID || duplicate.Status != 0 {
+		t.Fatalf("duplicate request should return existing pending record: %+v", duplicate)
 	}
 }
 
 func TestE2E_GroupManagement(t *testing.T) {
 	ownerName := fmt.Sprintf("e2e_group_owner_%d", time.Now().UnixNano())
 	memberName := fmt.Sprintf("e2e_group_member_%d", time.Now().UnixNano())
-	_ = registerUser(t, env.baseURL, ownerName, "pass1234")
+	ownerID := registerUser(t, env.baseURL, ownerName, "pass1234")
 	memberID := registerUser(t, env.baseURL, memberName, "pass1234")
 	ownerToken := loginUser(t, env.baseURL, ownerName, "pass1234")
 	memberToken := loginUser(t, env.baseURL, memberName, "pass1234")
 
-	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/group", map[string]string{"name": "management group"}, ownerToken)
+	// 群成员邀请仅允许从好友中选择，先建立好友关系。
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/request", map[string]int64{"to_user_id": memberID}, ownerToken)
+	if status != http.StatusCreated {
+		t.Fatalf("create owner-member friendship request: status=%d body=%s", status, body)
+	}
+	var friendRequest friendRequestResp
+	decodeSuccessResponse(t, body, &friendRequest)
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/friend/accept", map[string]int64{"request_id": friendRequest.RequestID}, memberToken)
+	if status != http.StatusOK {
+		t.Fatalf("accept owner-member friendship request: status=%d body=%s", status, body)
+	}
+	if ownerID <= 0 {
+		t.Fatal("invalid owner id")
+	}
+
+	status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/group", map[string]string{"name": "management group"}, ownerToken)
 	if status != http.StatusCreated {
 		t.Fatalf("create group: status=%d body=%s", status, body)
 	}
@@ -859,7 +902,7 @@ func TestE2E_UserMoments(t *testing.T) {
 	username := fmt.Sprintf("e2e_user_moments_%d", time.Now().UnixNano())
 	userID := registerUser(t, env.baseURL, username, "pass1234")
 	token := loginUser(t, env.baseURL, username, "pass1234")
-	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment", map[string]interface{}{"content": "author timeline", "visibility": 1}, token)
+	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment", map[string]interface{}{"content": "author timeline", "visibility": 2}, token)
 	if status != http.StatusCreated {
 		t.Fatalf("publish moment: status=%d body=%s", status, body)
 	}
@@ -893,11 +936,11 @@ func TestE2E_MomentVisibilityValidation(t *testing.T) {
 	var moment struct {
 		Visibility int `json:"visibility"`
 	}
-	if err := json.Unmarshal(envelope.Data, &moment); err != nil || moment.Visibility != 1 {
-		t.Fatalf("missing visibility should persist as 1: visibility=%d err=%v", moment.Visibility, err)
+	if err := json.Unmarshal(envelope.Data, &moment); err != nil || moment.Visibility != 2 {
+		t.Fatalf("missing visibility should persist as 2: visibility=%d err=%v", moment.Visibility, err)
 	}
 
-	for _, visibility := range []int{0, 4} {
+	for _, visibility := range []int{0, 1, 4} {
 		status, body = doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment",
 			map[string]interface{}{"content": "invalid visibility", "visibility": visibility}, token)
 		if status != http.StatusBadRequest {
@@ -926,11 +969,11 @@ func TestE2E_MomentEmptyContentCodes(t *testing.T) {
 		}
 	}
 
-	assertEmptyContent("/api/v1/moment", map[string]interface{}{"content": "", "visibility": 1})
-	assertEmptyContent("/api/v1/moment", map[string]interface{}{"visibility": 1})
+	assertEmptyContent("/api/v1/moment", map[string]interface{}{"content": "", "visibility": 2})
+	assertEmptyContent("/api/v1/moment", map[string]interface{}{"visibility": 2})
 
 	status, body := doAuthedRequest(t, http.MethodPost, env.baseURL, "/api/v1/moment",
-		map[string]interface{}{"content": "comment target", "visibility": 1}, token)
+		map[string]interface{}{"content": "comment target", "visibility": 2}, token)
 	if status != http.StatusCreated {
 		t.Fatalf("create comment target: status=%d body=%s", status, body)
 	}
@@ -976,7 +1019,6 @@ func TestE2E_MomentPrivacyAcrossReadEndpoints(t *testing.T) {
 		decodeSuccessResponse(t, body, &response)
 		return response.MomentID
 	}
-	publicID := publish("privacy public", 1)
 	friendsID := publish("privacy friends", 2)
 	privateID := publish("privacy private", 3)
 	time.Sleep(100 * time.Millisecond)
@@ -992,13 +1034,11 @@ func TestE2E_MomentPrivacyAcrossReadEndpoints(t *testing.T) {
 			t.Fatalf("detail moment=%d: code=%d want=%d err=%v body=%s", momentID, response.Code, wantCode, err, body)
 		}
 	}
-	for _, id := range []int64{publicID, friendsID, privateID} {
+	for _, id := range []int64{friendsID, privateID} {
 		assertDetail(authorToken, id, http.StatusOK, 0)
 	}
-	assertDetail(friendToken, publicID, http.StatusOK, 0)
 	assertDetail(friendToken, friendsID, http.StatusOK, 0)
 	assertDetail(friendToken, privateID, http.StatusNotFound, api.CodeMomentNotFound)
-	assertDetail(strangerToken, publicID, http.StatusOK, 0)
 	assertDetail(strangerToken, friendsID, http.StatusNotFound, api.CodeMomentNotFound)
 	assertDetail(strangerToken, privateID, http.StatusNotFound, api.CodeMomentNotFound)
 
@@ -1027,13 +1067,13 @@ func TestE2E_MomentPrivacyAcrossReadEndpoints(t *testing.T) {
 	authorIDs := listIDs(authorToken)
 	friendIDs := listIDs(friendToken)
 	strangerIDs := listIDs(strangerToken)
-	if !authorIDs[publicID] || !authorIDs[friendsID] || !authorIDs[privateID] {
+	if !authorIDs[friendsID] || !authorIDs[privateID] {
 		t.Fatalf("author list missing privacy moments: %+v", authorIDs)
 	}
-	if !friendIDs[publicID] || !friendIDs[friendsID] || friendIDs[privateID] {
+	if !friendIDs[friendsID] || friendIDs[privateID] {
 		t.Fatalf("friend list visibility mismatch: %+v", friendIDs)
 	}
-	if !strangerIDs[publicID] || strangerIDs[friendsID] || strangerIDs[privateID] {
+	if strangerIDs[friendsID] || strangerIDs[privateID] {
 		t.Fatalf("stranger list visibility mismatch: %+v", strangerIDs)
 	}
 
@@ -1055,7 +1095,7 @@ func TestE2E_MomentPrivacyAcrossReadEndpoints(t *testing.T) {
 	for _, item := range feed.Data.Moments {
 		feedIDs[item.ID] = true
 	}
-	if !feedIDs[publicID] || !feedIDs[friendsID] || feedIDs[privateID] {
+	if !feedIDs[friendsID] || feedIDs[privateID] {
 		t.Fatalf("friend feed visibility mismatch: %+v", feedIDs)
 	}
 }
@@ -1168,8 +1208,8 @@ func TestE2E_SyncCompositeCursorSameTimestamp(t *testing.T) {
 		Messages []struct {
 			MsgID int64 `json:"msgId"`
 		} `json:"msgs"`
-		HasMore  bool  `json:"hasMore"`
-		SyncTime int64 `json:"syncTime"`
+		HasMore   bool  `json:"hasMore"`
+		SyncTime  int64 `json:"syncTime"`
 		SyncMsgID int64 `json:"syncMsgId"`
 	}
 	sendWSMessage(t, receiverWS, "syncReq", map[string]interface{}{

@@ -20,6 +20,9 @@ const (
 	ErrCannotRemoveOwner  = "无法移除群主"
 	ErrCannotLeaveAsOwner = "群主无法退出群组；请先转让群主身份或解散群组"
 	ErrInvalidRole        = "角色值必须为 0（普通成员）或 1（管理员）"
+	ErrMemberNotFound     = "用户未找到"
+	ErrMemberNotFriend    = "只能邀请好友加入群组"
+	ErrCannotRemovePeer   = "管理员只能移除普通成员"
 )
 
 const maxGroupMembers = 500
@@ -106,6 +109,24 @@ func (s *GroupService) GetGroupInfo(ctx context.Context, groupID int64) (*model.
 	return group, nil
 }
 
+func (s *GroupService) ListUserGroups(ctx context.Context, userID int64) ([]model.Group, error) {
+	ids, err := s.redisRepo.GetGroupMemberships(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user groups: %w", err)
+	}
+	groups := make([]model.Group, 0, len(ids))
+	for _, id := range ids {
+		group, err := s.mysqlRepo.GetGroupByID(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("get group: %w", err)
+		}
+		if group != nil {
+			groups = append(groups, *group)
+		}
+	}
+	return groups, nil
+}
+
 // AddMember 向群组添加新成员。userID 必须是群主或管理员。
 // 检查最大成员上限（500）以及 newMemberID 是否已是成员。
 func (s *GroupService) AddMember(ctx context.Context, groupID, userID, newMemberID int64) error {
@@ -120,6 +141,21 @@ func (s *GroupService) AddMember(ctx context.Context, groupID, userID, newMember
 	// 验证 userID 是否为群主或管理员
 	if !s.isOwnerOrAdmin(ctx, groupID, userID) {
 		return fmt.Errorf(ErrNotOwnerOrAdmin)
+	}
+
+	user, err := s.mysqlRepo.GetUserByID(ctx, newMemberID)
+	if err != nil {
+		return fmt.Errorf("get member user: %w", err)
+	}
+	if user == nil {
+		return fmt.Errorf(ErrMemberNotFound)
+	}
+	isFriend, err := s.mysqlRepo.IsFriend(ctx, userID, newMemberID)
+	if err != nil {
+		return fmt.Errorf("check member friendship: %w", err)
+	}
+	if !isFriend {
+		return fmt.Errorf(ErrMemberNotFriend)
 	}
 
 	// 检查群组容量
@@ -168,16 +204,32 @@ func (s *GroupService) RemoveMember(ctx context.Context, groupID, userID, remove
 		return fmt.Errorf(ErrGroupNotFound)
 	}
 
-	// 允许自行退出
+	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get group members: %w", err)
+	}
+	var actor, target *model.GroupMember
+	for i := range members {
+		if members[i].UserID == userID {
+			actor = &members[i]
+		}
+		if members[i].UserID == removeMemberID {
+			target = &members[i]
+		}
+	}
+	if target == nil {
+		return fmt.Errorf(ErrMemberNotFound)
+	}
 	if userID != removeMemberID {
-		// 非自行退出 —— 必须是群主或管理员
-		if !s.isOwnerOrAdmin(ctx, groupID, userID) {
+		if actor == nil || (actor.Role != 1 && actor.Role != 2) {
 			return fmt.Errorf(ErrNotOwnerOrAdmin)
+		}
+		if actor.Role == 1 && target.Role != 0 {
+			return fmt.Errorf(ErrCannotRemovePeer)
 		}
 	}
 
-	// 不能移除群主
-	if removeMemberID == group.OwnerID {
+	if target.Role == 2 || removeMemberID == group.OwnerID {
 		return fmt.Errorf(ErrCannotRemoveOwner)
 	}
 
@@ -196,7 +248,9 @@ func (s *GroupService) RemoveMember(ctx context.Context, groupID, userID, remove
 
 // KickMember 移除成员并通过 WebSocket 发送踢出通知。
 // userID 必须是群主/管理员。群主不能被踢出。
-func (s *GroupService) KickMember(ctx context.Context, groupID, userID, kickMemberID int64, cm interface{ Get(int64) (interface{}, bool) }) error {
+func (s *GroupService) KickMember(ctx context.Context, groupID, userID, kickMemberID int64, cm interface {
+	Get(int64) (interface{}, bool)
+}) error {
 	// 委托移除逻辑给 RemoveMember
 	if err := s.RemoveMember(ctx, groupID, userID, kickMemberID); err != nil {
 		return err
@@ -236,12 +290,70 @@ func tryGetSendCh(client interface{}) (chan []byte, bool) {
 }
 
 // GetMembers 返回群组成员列表。
-func (s *GroupService) GetMembers(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
+type GroupMemberListItem struct {
+	model.GroupMember
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+func (s *GroupService) GetMembers(ctx context.Context, groupID int64) ([]GroupMemberListItem, error) {
 	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("get group members: %w", err)
 	}
-	return members, nil
+	items := make([]GroupMemberListItem, 0, len(members))
+	for _, member := range members {
+		user, err := s.mysqlRepo.GetUserByID(ctx, member.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("get group member profile: %w", err)
+		}
+		item := GroupMemberListItem{GroupMember: member}
+		if user != nil {
+			item.Username = user.Username
+			item.AvatarURL = user.AvatarURL
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// TransferOwnership transfers owner role to an existing member.
+func (s *GroupService) TransferOwnership(ctx context.Context, groupID, ownerID, newOwnerID int64) error {
+	group, err := s.mysqlRepo.GetGroupByID(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get group: %w", err)
+	}
+	if group == nil {
+		return fmt.Errorf(ErrGroupNotFound)
+	}
+	if group.OwnerID != ownerID {
+		return fmt.Errorf(ErrNotOwnerOrAdmin)
+	}
+	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get group members: %w", err)
+	}
+	found := false
+	for _, member := range members {
+		if member.UserID == newOwnerID {
+			found = true
+			break
+		}
+	}
+	if !found || newOwnerID == ownerID {
+		return fmt.Errorf(ErrMemberNotFound)
+	}
+	if err := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(ownerID), 0); err != nil {
+		return fmt.Errorf("demote old owner: %w", err)
+	}
+	if err := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(newOwnerID), 2); err != nil {
+		return fmt.Errorf("promote new owner: %w", err)
+	}
+	group.OwnerID = newOwnerID
+	if err := s.mysqlRepo.UpdateGroup(ctx, group); err != nil {
+		return fmt.Errorf("update group owner: %w", err)
+	}
+	return nil
 }
 
 // UpdateMemberRole 更改成员的角色。userID 必须是群主。
@@ -289,6 +401,20 @@ func (s *GroupService) LeaveGroup(ctx context.Context, groupID, userID int64) er
 	// 群主不能退出
 	if userID == group.OwnerID {
 		return fmt.Errorf(ErrCannotLeaveAsOwner)
+	}
+	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get group members: %w", err)
+	}
+	found := false
+	for _, member := range members {
+		if member.UserID == userID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf(ErrMemberNotFound)
 	}
 
 	// 从 MySQL 中移除

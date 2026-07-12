@@ -12,19 +12,12 @@ export function ProtectedRoute() {
   const location = useLocation();
   const refreshToken = useAuthStore((state) => state.refreshToken);
   const previewMode = useAuthStore((state) => state.previewMode);
-  const enterPreview = useAuthStore((state) => state.enterPreview);
   const previewAllowed = import.meta.env.DEV && previewMode;
   const [checking, setChecking] = useState(Boolean(refreshToken) && !previewAllowed);
   const [authenticated, setAuthenticated] = useState(previewAllowed);
 
   useEffect(() => {
     let active = true;
-    if (import.meta.env.DEV && !refreshToken && !previewMode) {
-      enterPreview();
-      setChecking(false);
-      setAuthenticated(true);
-      return;
-    }
     if (previewAllowed) {
       setChecking(false);
       setAuthenticated(true);
@@ -40,7 +33,7 @@ export function ProtectedRoute() {
       if (active) { setAuthenticated(valid); setChecking(false); }
     });
     return () => { active = false; };
-  }, [enterPreview, previewAllowed, previewMode, refreshToken]);
+  }, [previewAllowed, refreshToken]);
 
   if (checking) return <SessionLoading />;
   if (!authenticated) return <Navigate replace state={{ from: location.pathname }} to="/login" />;

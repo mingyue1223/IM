@@ -15,6 +15,7 @@ export interface ChatConversation {
   online?: boolean;
   muted?: boolean;
   group?: boolean;
+  avatarUrl?: string;
 }
 
 export interface ChatMessage {
@@ -23,6 +24,7 @@ export interface ChatMessage {
   serverMsgId?: number;
   convId: string;
   from: "me" | "other";
+  senderId: number;
   content: string;
   time: string;
   timestamp: number;
@@ -33,12 +35,16 @@ export interface ChatMessage {
 
 interface ChatState {
   mode: "preview" | "live" | null;
+  liveUserId: number | null;
   connectionState: ConnectionState;
+  syncCompleted: boolean;
   conversations: ChatConversation[];
   messagesByConversation: Record<string, ChatMessage[]>;
   lastSyncTime: number;
+  lastSyncMsgId: number;
   initializePreview: () => void;
-  initializeLive: () => void;
+  initializeLive: (userId: number) => void;
+  resetSession: () => void;
   setConnectionState: (state: ConnectionState) => void;
   sendText: (conversation: ChatConversation, content: string, preview: boolean) => void;
   retryMessage: (convId: string, messageId: string, preview: boolean) => void;
@@ -46,12 +52,14 @@ interface ChatState {
   acknowledge: (ack: ServerAck) => void;
   failLatestPending: (message: string) => void;
   receiveMessage: (message: InboxMessage, currentUserId: number) => void;
+  setConversationIdentity: (convId: string, name: string, avatarUrl?: string) => void;
   applySyncBatch: (batch: SyncBatch, currentUserId: number) => void;
   applyConversationSync: (summaries: ConvSummary[], unreadMap: Record<string, number>) => void;
   revokeMessage: (convId: string, serverMsgId: number) => void;
   addGroupConversation: (groupId: number, name: string) => void;
-  addPrivateConversation: (id: string, targetId: number, name: string) => void;
+  addPrivateConversation: (id: string, targetId: number, name: string, avatarUrl?: string) => void;
   setConversationMuted: (convId: string, muted: boolean) => void;
+  removeConversation: (convId: string) => void;
 }
 
 const previewTargets: Record<string, number> = {
@@ -79,6 +87,7 @@ function previewState() {
       id: `preview-${convId}-${message.id}`,
       convId,
       from: message.from,
+      senderId: message.from === "me" ? 0 : -1,
       content: message.content,
       time: message.time,
       timestamp: Date.now() - (messages.length - index) * 60_000,
@@ -94,6 +103,7 @@ function serverMessageToChat(message: InboxMessage, currentUserId: number): Chat
     serverMsgId: message.msgId,
     convId: message.convId,
     from: message.fromId === currentUserId ? "me" : "other",
+    senderId: message.fromId,
     content: message.content,
     time: formatTime(message.timestamp),
     timestamp: message.timestamp,
@@ -114,26 +124,30 @@ function mergeServerMessages(existing: ChatMessage[], incoming: ChatMessage[]) {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   mode: null,
+  liveUserId: null,
   connectionState: "idle",
+  syncCompleted: false,
   conversations: [],
   messagesByConversation: {},
   lastSyncTime: 0,
+  lastSyncMsgId: 0,
 
   initializePreview: () => {
     if (get().mode === "preview") return;
-    set({ mode: "preview", connectionState: "connected", lastSyncTime: Date.now(), ...previewState() });
+    set({ mode: "preview", liveUserId: null, connectionState: "connected", syncCompleted: true, lastSyncTime: Date.now(), lastSyncMsgId: 0, ...previewState() });
   },
-  initializeLive: () => {
-    if (get().mode === "live") return;
-    set({ mode: "live", connectionState: "connecting", conversations: [], messagesByConversation: {}, lastSyncTime: 0 });
+  initializeLive: (userId) => {
+    if (get().mode === "live" && get().liveUserId === userId) return;
+    set({ mode: "live", liveUserId: userId, connectionState: "connecting", syncCompleted: false, conversations: [], messagesByConversation: {}, lastSyncTime: 0, lastSyncMsgId: 0 });
   },
+  resetSession: () => set({ mode: null, liveUserId: null, connectionState: "idle", syncCompleted: false, conversations: [], messagesByConversation: {}, lastSyncTime: 0, lastSyncMsgId: 0 }),
   setConnectionState: (connectionState) => set({ connectionState }),
 
   sendText: (conversation, content, preview) => {
     const clientMsgId = crypto.randomUUID();
     const timestamp = Date.now();
     const outbound: SendMessage = { msgId: clientMsgId, convType: conversation.convType, toId: conversation.targetId, msgType: MsgType.Text, content, timestamp };
-    const localMessage: ChatMessage = { id: `client-${clientMsgId}`, clientMsgId, convId: conversation.id, from: "me", content, time: formatTime(timestamp), timestamp, status: "pending", outbound };
+    const localMessage: ChatMessage = { id: `client-${clientMsgId}`, clientMsgId, convId: conversation.id, from: "me", senderId: get().liveUserId ?? 0, content, time: formatTime(timestamp), timestamp, status: "pending", outbound };
     set((state) => ({
       messagesByConversation: { ...state.messagesByConversation, [conversation.id]: [...(state.messagesByConversation[conversation.id] ?? []), localMessage] },
       conversations: state.conversations.map((item) => item.id === conversation.id ? { ...item, preview: content, time: "刚刚" } : item),
@@ -183,11 +197,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const current = state.messagesByConversation[message.convId] ?? [];
     const exists = current.some((item) => item.serverMsgId === message.msgId);
     if (exists) return state;
+    const existingConversation = state.conversations.find((conversation) => conversation.id === message.convId);
+    const targetId = message.convType === ConvType.Group
+      ? message.toId
+      : message.fromId === currentUserId ? message.toId : message.fromId;
+    const updatedConversation: ChatConversation = existingConversation
+      ? { ...existingConversation, preview: message.content, time: formatTime(message.timestamp), unread: existingConversation.unread + (message.fromId === currentUserId ? 0 : 1) }
+      : { id: message.convId, name: message.convType === ConvType.Group ? `群聊 #${message.toId}` : `用户 #${targetId}`, preview: message.content, time: formatTime(message.timestamp), unread: message.fromId === currentUserId ? 0 : 1, targetId, convType: message.convType, group: message.convType === ConvType.Group };
     return {
       messagesByConversation: { ...state.messagesByConversation, [message.convId]: mergeServerMessages(current, [converted]) },
-      conversations: state.conversations.map((conversation) => conversation.id === message.convId ? { ...conversation, preview: message.content, time: formatTime(message.timestamp), unread: conversation.unread + (message.fromId === currentUserId ? 0 : 1) } : conversation),
+      conversations: [updatedConversation, ...state.conversations.filter((conversation) => conversation.id !== message.convId)],
     };
   }),
+  setConversationIdentity: (convId, name, avatarUrl) => set((state) => ({ conversations: state.conversations.map((conversation) => conversation.id === convId ? { ...conversation, name, avatarUrl } : conversation) })),
 
   applySyncBatch: (batch, currentUserId) => set((state) => {
     const next = { ...state.messagesByConversation };
@@ -195,11 +217,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const converted = serverMessageToChat(message, currentUserId);
       next[message.convId] = mergeServerMessages(next[message.convId] ?? [], [converted]);
     }
-    return { messagesByConversation: next, lastSyncTime: batch.syncTime || state.lastSyncTime };
+    return {
+      messagesByConversation: next,
+      lastSyncTime: batch.syncTime || state.lastSyncTime,
+      lastSyncMsgId: batch.syncMsgId ?? 0,
+    };
   }),
 
   applyConversationSync: (summaries, unreadMap) => set((state) => ({
-    conversations: summaries.map((summary) => ({
+    syncCompleted: true,
+    conversations: [...summaries.map((summary) => ({
       id: summary.convId,
       name: summary.targetName || `会话 ${summary.targetId}`,
       preview: summary.lastMsg,
@@ -208,8 +235,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       targetId: summary.targetId,
       convType: summary.convType,
       group: summary.convType === ConvType.Group,
+      avatarUrl: summary.targetAvatar || undefined,
       muted: state.conversations.find((item) => item.id === summary.convId)?.muted,
-    })),
+    }))],
   })),
 
   revokeMessage: (convId, serverMsgId) => set((state) => ({
@@ -218,20 +246,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addGroupConversation: (groupId, name) => set((state) => {
     const id = state.mode === "preview" ? `preview-group-${groupId}` : `g_${groupId}`;
-    if (state.conversations.some((conversation) => conversation.id === id)) return state;
+    if (state.conversations.some((conversation) => conversation.id === id)) {
+      return { conversations: state.conversations.map((conversation) => conversation.id === id ? { ...conversation, name, targetId: groupId, convType: ConvType.Group, group: true } : conversation) };
+    }
     return {
       conversations: [{ id, name, preview: "群聊已创建", time: "刚刚", unread: 0, targetId: groupId, convType: ConvType.Group, group: true }, ...state.conversations],
       messagesByConversation: { ...state.messagesByConversation, [id]: [] },
     };
   }),
-  addPrivateConversation: (id, targetId, name) => set((state) => {
+  addPrivateConversation: (id, targetId, name, avatarUrl) => set((state) => {
     if (state.conversations.some((conversation) => conversation.id === id)) return state;
     return {
-      conversations: [{ id, name, preview: "还没有消息，打个招呼吧", time: "", unread: 0, targetId, convType: ConvType.Private }, ...state.conversations],
+      conversations: [{ id, name, avatarUrl, preview: "还没有消息，打个招呼吧", time: "", unread: 0, targetId, convType: ConvType.Private }, ...state.conversations],
       messagesByConversation: { ...state.messagesByConversation, [id]: [] },
     };
   }),
-  setConversationMuted: (convId, muted) => set((state) => ({
-    conversations: state.conversations.map((conversation) => conversation.id === convId ? { ...conversation, muted } : conversation),
-  })),
+  setConversationMuted: (convId, muted) => set((state) => {
+    const conversation = state.conversations.find((item) => item.id === convId);
+    if (!conversation || Boolean(conversation.muted) === muted) return state;
+    return { conversations: state.conversations.map((item) => item.id === convId ? { ...item, muted } : item) };
+  }),
+  removeConversation: (convId) => set((state) => {
+    const messagesByConversation = { ...state.messagesByConversation };
+    delete messagesByConversation[convId];
+    return { conversations: state.conversations.filter((conversation) => conversation.id !== convId), messagesByConversation };
+  }),
 }));

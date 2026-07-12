@@ -53,6 +53,7 @@
 .conversation-item__meta svg { color: var(--color-text-tertiary); }
 
 .chat-main { display: grid; grid-template-rows: auto minmax(0,1fr) auto; background: linear-gradient(180deg, rgba(255,255,255,.86), rgba(250,251,253,.8)); }
+.chat-main > .ui-empty-state { grid-row: 1 / -1; align-self: stretch; }
 .chat-header { display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 25px; border-bottom: 1px solid var(--color-border); background: rgba(255,255,255,.65); backdrop-filter: blur(22px); }
 .chat-header__person { display: flex; align-items: center; gap: 12px; }
 .chat-header__person h2 { margin: 0 0 4px; font-size: 14px; }
@@ -75,15 +76,20 @@
 .message-row.is-me .message-time svg { color: var(--color-accent); }
 .message-time--failed { color: var(--color-danger); }
 .message-time--failed button { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: transparent; color: var(--color-danger); cursor: pointer; font-size: 9px; }
+.message-revoke { padding: 0; border: 0; background: transparent; color: var(--color-text-tertiary); cursor: pointer; font-size: 9px; }
+.message-revoke:hover { color: var(--color-text); }
 .conversation-empty { display: grid; justify-items: center; padding: 60px 20px; color: var(--color-text-tertiary); }
 .conversation-empty p { margin: 9px 0 0; font-size: 10px; }
 .composer-wrap { padding: 12px clamp(24px, 4vw, 58px) 22px; }
-.composer { padding: 12px 14px 10px; border: 1px solid var(--color-border); border-radius: 19px; background: rgba(255,255,255,.92); box-shadow: 0 12px 35px rgba(34,38,55,.07); transition: border var(--duration-fast), box-shadow var(--duration-fast); }
+.composer { position: relative; display: flex; min-height: 72px; align-items: center; padding: 12px 112px 12px 18px; border: 1px solid var(--color-border); border-radius: 22px; background: rgba(255,255,255,.92); box-shadow: 0 12px 35px rgba(34,38,55,.07); transition: border var(--duration-fast), box-shadow var(--duration-fast); }
 .composer:focus-within { border-color: rgba(92,114,232,.34); box-shadow: 0 12px 38px rgba(34,38,55,.08), var(--focus-ring); }
-.composer textarea { display: block; width: 100%; min-height: 45px; max-height: 120px; resize: none; border: 0; outline: 0; background: transparent; color: var(--color-text); font-size: 12px; line-height: 1.6; }
+.composer textarea { display: block; width: 100%; min-height: 48px; max-height: 120px; padding: 0; resize: none; appearance: none; border: 0; outline: 0; background: transparent; color: var(--color-text); font: inherit; font-size: 12px; line-height: 1.6; }
 .composer textarea::placeholder { color: var(--color-text-tertiary); }
-.composer__footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.composer__footer > span { color: var(--color-text-tertiary); font-size: 9px; }
+.composer__count { position: absolute; right: 72px; bottom: 26px; color: var(--color-text-tertiary); font-size: 9px; }
+.composer__send { position: absolute; right: 14px; bottom: 14px; display: grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 50%; background: var(--color-accent); color: white; cursor: pointer; box-shadow: 0 8px 20px rgba(92,114,232,.24); transition: transform var(--duration-fast), background var(--duration-fast), opacity var(--duration-fast); }
+.composer__send:hover:not(:disabled) { transform: translateY(-1px); background: var(--color-accent-hover); }
+.composer__send:active:not(:disabled) { transform: scale(.96); }
+.composer__send:disabled { cursor: not-allowed; opacity: .34; }
 .profile-hero { display: grid; justify-items: center; padding: 8px 0 30px; text-align: center; }
 .profile-hero h3 { margin: 14px 0 7px; font-size: 17px; }
 .profile-hero p { max-width: 240px; margin: 0 0 12px; color: var(--color-text-secondary); font-size: 11px; line-height: 1.6; }
@@ -162,13 +168,20 @@
 .group-profile-head h3 { margin: 13px 0 6px; font-size: 17px; }
 .group-profile-head p { max-width: 270px; margin: 0 0 13px; color: var(--color-text-secondary); font-size: 10px; line-height: 1.6; }
 .group-edit-panel, .group-add-member { display: grid; gap: 11px; margin: 16px 0; padding: 14px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-canvas-soft); }
-.group-add-member { grid-template-columns: 1fr auto; align-items: end; }
+.group-add-member h3, .group-add-member p { margin: 0; font-size: 11px; }
+.group-add-member p { color: var(--color-text-tertiary); }
+.group-invite-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; padding-top: 9px; border-top: 1px solid var(--color-border); }
+.group-invite-row > span { display: grid; gap: 3px; }
+.group-invite-row strong { font-size: 10px; }
+.group-invite-row small { color: var(--color-text-tertiary); font-size: 8px; }
 .group-members { margin: 22px 0; }
 .group-members > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .group-members h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 12px; }
 .group-members header > span { color: var(--color-text-tertiary); font-size: 9px; }
-.group-member-row { display: grid; grid-template-columns: auto 1fr auto auto auto; align-items: center; gap: 7px; min-height: 54px; border-bottom: 1px solid var(--color-border); }
-.group-member-row > div { display: grid; gap: 3px; }
+.group-member-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 7px; min-height: 58px; border-bottom: 1px solid var(--color-border); }
+.group-member-copy { display: grid; min-width: 0; gap: 3px; }
+.group-member-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-member-actions { display: flex; min-width: 114px; align-items: center; justify-content: flex-end; gap: 1px; }
 .group-member-row strong { font-size: 10px; }
 .group-member-row small { color: var(--color-text-tertiary); font-size: 8px; }
 .role-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 8px; background: var(--color-canvas); color: var(--color-text-secondary); font-size: 8px; }
@@ -198,6 +211,7 @@
 .moment-composer footer { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); }
 .moment-composer footer > button { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--color-text-secondary); font-size: 10px; }
 .moment-composer footer > span { display: flex; gap: 6px; }
+.moment-composer .composer__send { position: static; width: 38px; height: 38px; flex: 0 0 38px; }
 .visibility-picker { position: relative; }
 .visibility-picker > button { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 0; border-radius: 9px; background: transparent; color: var(--color-text-secondary); cursor: pointer; font-size: 10px; }
 .visibility-picker > div { position: absolute; z-index: 5; bottom: 35px; left: 0; display: grid; min-width: 150px; padding: 5px; border: 1px solid var(--color-border); border-radius: 13px; background: rgba(255,255,255,.96); box-shadow: var(--shadow-md); }
@@ -254,6 +268,8 @@
 .muted-row { display: flex; min-height: 78px; align-items: center; justify-content: space-between; }
 .muted-row strong { font-size: 12px; }
 .muted-row p { margin: 5px 0 0; color: var(--color-text-secondary); font-size: 10px; }
+.notification-permission-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; color: var(--color-text-secondary); font-size: 12px; }
+.notification-permission-row strong { color: var(--color-text-primary); }
 .mute-conversation-list { display: grid; margin-top: 15px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 19px; background: rgba(255,255,255,.7); }
 .mute-conversation-list > div { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; min-height: 66px; padding: 10px 16px; border-bottom: 1px solid var(--color-border); }
 .mute-conversation-list > div:last-child { border: 0; }

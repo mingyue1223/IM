@@ -123,11 +123,11 @@ func main() {
 	// ── 初始化 HTTP 处理器 ──
 	authHandler := api.NewAuthHandler(authSvc)
 	friendHandler := api.NewFriendHandler(friendSvc)
-	groupHandler := api.NewGroupHandler(groupSvc)
+	groupHandler := api.NewGroupHandler(groupSvc, cm)
 	momentHandler := api.NewMomentHandler(momentSvc)
 	msgOpHandler := api.NewMsgOpHandler(msgOpSvc)
 	settingsHandler := api.NewSettingsHandler(settingsSvc)
-	uploadHandler := api.NewUploadHandler(cfg.Server.UploadDir, cfg.File.MaxSizeMB, cfg.File.AllowedExts)
+	uploadHandler := api.NewUploadHandler(cfg.Server.UploadDir, cfg.File.MaxSizeMB, cfg.File.AllowedExts, mysqlRepo)
 	avatarHandler := api.NewAvatarHandler()
 
 	// ── 设置 Gin 路由 ──

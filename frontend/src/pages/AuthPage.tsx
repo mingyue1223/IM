@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, LockKeyhole, Sparkles, UserRound } from "lucide-react";
+import { LockKeyhole, Sparkles, UserRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -68,7 +68,7 @@ export function AuthPage({ mode }: AuthPageProps) {
           <TextField autoComplete={isLogin ? "current-password" : "new-password"} disabled={loading} label="密码" leadingIcon={<LockKeyhole size={16} />} minLength={6} onChange={(event) => setPassword(event.target.value)} placeholder="至少 6 位字符" required type="password" value={password} />
           {!isLogin && <TextField autoComplete="new-password" disabled={loading} label="确认密码" leadingIcon={<LockKeyhole size={16} />} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="再次输入密码" required type="password" value={confirmPassword} />}
           {error && <div className="auth-error" role="alert">{error}</div>}
-          <Button loading={loading} size="lg" type="submit">{isLogin ? "登录" : "注册"}<ArrowRight size={16} /></Button>
+          <Button loading={loading} size="lg" type="submit">{isLogin ? "登录" : "注册"}</Button>
         </form>
         <footer>
           <span>{isLogin ? "还没有账户？" : "已经有账户？"}</span>

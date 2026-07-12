@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { LoginResponse } from "../../goim-api-types";
+import { env } from "../config/env";
 
 export interface AuthUser {
   id: number;
@@ -57,6 +58,7 @@ export const useAuthStore = create<AuthState>()(
           user: {
             id: claims?.user_id ?? 0,
             username: claims?.username ?? fallbackUsername ?? "用户",
+            avatarUrl: response.avatar_url ? (response.avatar_url.startsWith("http") ? response.avatar_url : `${env.staticBaseUrl}${response.avatar_url}`) : undefined,
           },
           previewMode: false,
         });
@@ -74,7 +76,7 @@ export const useAuthStore = create<AuthState>()(
           accessToken,
           accessTokenExpiresAt: claims?.exp ? claims.exp * 1000 : Date.now() + expiresIn * 1000,
           user: claims?.user_id
-            ? { id: claims.user_id, username: claims.username ?? state.user?.username ?? "用户" }
+            ? { id: claims.user_id, username: claims.username ?? state.user?.username ?? "用户", avatarUrl: state.user?.avatarUrl }
             : state.user,
         }));
       },

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/goim/goim/internal/repository"
 )
 
 // UploadHandler 提供文件上传端点的 Gin HTTP 处理函数。
@@ -17,19 +18,25 @@ type UploadHandler struct {
 	uploadDir   string
 	maxSizeMB   int
 	allowedExts map[string]bool
+	userRepo    repository.MySQLRepo
 }
 
 // NewUploadHandler 创建一个 UploadHandler。
 // uploadDir 是文件存储根目录，maxSizeMB 是单文件大小上限，allowedExts 是允许的扩展名列表。
-func NewUploadHandler(uploadDir string, maxSizeMB int, allowedExts []string) *UploadHandler {
+func NewUploadHandler(uploadDir string, maxSizeMB int, allowedExts []string, repos ...repository.MySQLRepo) *UploadHandler {
 	extMap := make(map[string]bool, len(allowedExts))
 	for _, ext := range allowedExts {
 		extMap[strings.ToLower(ext)] = true
+	}
+	var userRepo repository.MySQLRepo
+	if len(repos) > 0 {
+		userRepo = repos[0]
 	}
 	return &UploadHandler{
 		uploadDir:   uploadDir,
 		maxSizeMB:   maxSizeMB,
 		allowedExts: extMap,
+		userRepo:    userRepo,
 	}
 }
 
@@ -112,6 +119,20 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 
 	// 返回可访问的相对路径
 	url := "/uploads/avatars/" + filename
+	if h.userRepo != nil {
+		user, err := h.userRepo.GetUserByID(c.Request.Context(), uid)
+		if err != nil || user == nil {
+			_ = os.Remove(savePath)
+			Error(c, http.StatusInternalServerError, CodeInternalError, "保存头像资料失败")
+			return
+		}
+		user.AvatarURL = url
+		if err := h.userRepo.UpdateUser(c.Request.Context(), user); err != nil {
+			_ = os.Remove(savePath)
+			Error(c, http.StatusInternalServerError, CodeInternalError, "保存头像资料失败")
+			return
+		}
+	}
 
 	Success(c, uploadAvatarResponse{
 		URL:      url,

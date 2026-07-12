@@ -731,6 +731,18 @@ func TestReadAck_Success(t *testing.T) {
 
 	// 验证：Lua 标记已读已被调用
 	assert.True(t, redisMock.markReadCalled)
+	assert.Equal(t, int64(0), redisMock.unreadMap["p_1_2"])
+}
+
+func TestReadAck_GroupClearsUnreadWithoutInboxMessages(t *testing.T) {
+	redisMock := newMockRedisRepo()
+	redisMock.unreadMap["g_100"] = 10
+	cm := conn.NewConnectionManager()
+	svc := NewMsgService(redisMock, newMockMQRepo(), cm, testLogger())
+	data, _ := json.Marshal(model.ReadAck{ConvID: "g_100"})
+	svc.HandleReadAck(1, data)
+	assert.True(t, redisMock.markReadCalled)
+	assert.Equal(t, int64(0), redisMock.unreadMap["g_100"], "群聊没有个人 inbox 消息时也必须清零未读")
 }
 
 func TestReadAck_InvalidFormat(t *testing.T) {
@@ -767,8 +779,8 @@ func TestSyncReq_WithMessages(t *testing.T) {
 	redisMock.outboxMessages[100] = []model.InboxMessage{
 		{MsgID: 3, ConvID: "g_100", ConvType: 2, FromID: 5, ToID: 100, Content: "group msg", Timestamp: 1300000, GroupSeq: 5},
 	}
-	// 用户 1 在 g_100 的已读位置是 seq 3
-	redisMock.groupReadPos["g_100"] = 3
+	// 即使群已读位置已经超过消息序号，重新同步历史时也不能隐藏消息。
+	redisMock.groupReadPos["g_100"] = 6
 	// 未读映射表
 	redisMock.unreadMap = map[string]int64{"p_1_2": 2, "g_100": 1}
 
@@ -795,17 +807,18 @@ func TestSyncReq_WithMessages(t *testing.T) {
 
 	var batch model.SyncBatch
 	assert.NoError(t, json.Unmarshal(wsMsg1.Data, &batch))
-	// 应包含收件箱消息 + 满足 groupSeq > lastReadSeq 的群组消息
+	// 应包含收件箱消息 + 群组历史消息
 	assert.True(t, len(batch.Messages) >= 2) // 至少 2 条私聊 + 1 条群组消息
 
-	// 验证 groupSeq=5 > lastReadSeq=3 的群组消息已被包含
+	// 群历史恢复由复合游标控制，不受已读位置过滤。
 	groupFound := false
 	for _, m := range batch.Messages {
 		if m.ConvID == "g_100" && m.GroupSeq == 5 {
 			groupFound = true
 		}
 	}
-	assert.True(t, groupFound, "满足 groupSeq > lastReadSeq 的群组消息应被包含")
+	assert.True(t, groupFound, "已读群消息在从零同步时仍应作为历史返回")
+	assert.Equal(t, int64(6), redisMock.groupReadPos["g_100"], "同步本身不应推进或改写群已读位置")
 
 	msg2, ok := drainSendCh(client)
 	assert.True(t, ok, "期望在 SendCh 上收到 ConvSync")

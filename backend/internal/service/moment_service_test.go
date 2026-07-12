@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +24,8 @@ type mockMySQLRepo struct {
 	likes       map[string]*model.MomentLike // 键："momentID:userID"
 	comments    map[int64]*model.MomentComment
 	friends     map[int64][]int64 // userID -> friendID 列表
-	friendCount map[int64]int     // userID -> 好友数
+	users       map[int64]*model.User
+	friendCount map[int64]int // userID -> 好友数
 	nextID      int64
 	commentErr  error // CreateMomentComment 的可注入错误
 }
@@ -34,6 +36,7 @@ func newMockMySQLRepo() *mockMySQLRepo {
 		likes:       make(map[string]*model.MomentLike),
 		comments:    make(map[int64]*model.MomentComment),
 		friends:     make(map[int64][]int64),
+		users:       make(map[int64]*model.User),
 		friendCount: make(map[int64]int),
 		nextID:      1,
 	}
@@ -140,6 +143,22 @@ func (m *mockMySQLRepo) GetMomentCommentByID(ctx context.Context, id int64) (*mo
 	return comment, nil
 }
 
+func (m *mockMySQLRepo) GetMomentComments(_ context.Context, momentID int64) ([]model.MomentComment, error) {
+	comments := make([]model.MomentComment, 0)
+	for _, comment := range m.comments {
+		if comment.MomentID == momentID {
+			copy := *comment
+			if user := m.users[copy.UserID]; user != nil {
+				copy.Username = user.Username
+				copy.AvatarURL = user.AvatarURL
+			}
+			comments = append(comments, copy)
+		}
+	}
+	sort.Slice(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
+	return comments, nil
+}
+
 func (m *mockMySQLRepo) DeleteMomentComment(ctx context.Context, id int64) error {
 	delete(m.comments, id)
 	return nil
@@ -156,8 +175,11 @@ func (m *mockMySQLRepo) InsertGroupMessage(_ context.Context, _ *model.GroupMess
 func (m *mockMySQLRepo) InsertMsgRevoked(_ context.Context, _ *model.MsgRevoked) error {
 	panic("未实现")
 }
-func (m *mockMySQLRepo) GetUserByID(_ context.Context, _ int64) (*model.User, error) {
-	panic("未实现")
+func (m *mockMySQLRepo) GetUserByID(_ context.Context, userID int64) (*model.User, error) {
+	if user, ok := m.users[userID]; ok {
+		return user, nil
+	}
+	return &model.User{ID: userID, Username: fmt.Sprintf("user_%d", userID)}, nil
 }
 func (m *mockMySQLRepo) GetUserByUsername(_ context.Context, _ string) (*model.User, error) {
 	panic("未实现")
@@ -527,7 +549,7 @@ func TestPublishMoment_Success(t *testing.T) {
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
 
-	momentID, err := svc.PublishMoment(context.Background(), 100, "Hello world!", nil, 1)
+	momentID, err := svc.PublishMoment(context.Background(), 100, "Hello world!", nil, 2)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), momentID)
 
@@ -536,7 +558,7 @@ func TestPublishMoment_Success(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, int64(100), moment.AuthorID)
 	assert.Equal(t, "Hello world!", moment.Content)
-	assert.Equal(t, 1, moment.Visibility)
+	assert.Equal(t, 2, moment.Visibility)
 
 	// 验证动态已发布到 MQ
 	assert.Len(t, mqRepo.publishedMoments, 1)
@@ -551,9 +573,21 @@ func TestPublishMoment_EmptyContent(t *testing.T) {
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
 
-	_, err := svc.PublishMoment(context.Background(), 100, "", nil, 1)
+	_, err := svc.PublishMoment(context.Background(), 100, "", nil, 2)
 	assert.Error(t, err)
 	assert.Equal(t, ErrMomentContentEmpty, err.Error())
+}
+
+func TestPublishMoment_WhitespaceAndOverlongContent(t *testing.T) {
+	mysqlRepo := newMockMySQLRepo()
+	svc := NewMomentService(mysqlRepo, newMomentMockRedisRepo(), newMomentMockMQRepo(), zap.NewNop(), time.Hour)
+
+	_, err := svc.PublishMoment(context.Background(), 100, " \n\t ", nil, 2)
+	assert.EqualError(t, err, ErrMomentContentEmpty)
+
+	_, err = svc.PublishMoment(context.Background(), 100, strings.Repeat("你", maxMomentContentRunes+1), nil, 2)
+	assert.EqualError(t, err, ErrMomentContentTooLong)
+	assert.Empty(t, mysqlRepo.moments, "rejected content must not be persisted")
 }
 
 func TestPublishMoment_InvalidVisibility(t *testing.T) {
@@ -634,10 +668,7 @@ func TestGetMoment_Visibility(t *testing.T) {
 	_, err := svc.GetMoment(context.Background(), 200, 3)
 	assert.EqualError(t, err, ErrMomentNotFound)
 
-	moment, err := svc.GetMoment(context.Background(), 300, 1)
-	assert.NoError(t, err)
-	assert.NotNil(t, moment)
-	for _, id := range []int64{2, 3} {
+	for _, id := range []int64{1, 2, 3} {
 		_, err = svc.GetMoment(context.Background(), 300, id)
 		assert.EqualError(t, err, ErrMomentNotFound)
 	}
@@ -650,7 +681,7 @@ func TestGetUserMoments_FiltersBeforePagination(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
 
-	// 非好友只能看公开动态；隐藏动态不能占用 offset/limit 名额。
+	// 非好友看不到任何动态；好友可见动态参与分页，私密动态不能占用名额。
 	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "public-1", Visibility: 1, CreatedAt: time.Now()})
 	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "friends", Visibility: 2, CreatedAt: time.Now()})
 	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "private", Visibility: 3, CreatedAt: time.Now()})
@@ -659,14 +690,7 @@ func TestGetUserMoments_FiltersBeforePagination(t *testing.T) {
 
 	page1, err := svc.GetUserMoments(context.Background(), 300, 100, 1, 0)
 	assert.NoError(t, err)
-	assert.Len(t, page1, 1)
-	assert.Equal(t, 1, page1[0].Visibility)
-
-	page2, err := svc.GetUserMoments(context.Background(), 300, 100, 1, 1)
-	assert.NoError(t, err)
-	assert.Len(t, page2, 1)
-	assert.Equal(t, 1, page2[0].Visibility)
-	assert.NotEqual(t, page1[0].ID, page2[0].ID)
+	assert.Empty(t, page1)
 
 	friendPage, err := svc.GetUserMoments(context.Background(), 200, 100, 10, 0)
 	assert.NoError(t, err)
@@ -689,6 +713,7 @@ func TestLikeMoment_Success(t *testing.T) {
 		Visibility: 1,
 		CreatedAt:  time.Now(),
 	})
+	mysqlRepo.friends[200] = []int64{100}
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
 
@@ -729,6 +754,7 @@ func TestLikeMoment_Idempotent(t *testing.T) {
 		Visibility: 1,
 		CreatedAt:  time.Now(),
 	})
+	mysqlRepo.friends[200] = []int64{100}
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
 
@@ -787,6 +813,7 @@ func TestCommentMoment_Success(t *testing.T) {
 		Visibility: 1,
 		CreatedAt:  time.Now(),
 	})
+	mysqlRepo.friends[200] = []int64{100}
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
 
@@ -924,8 +951,9 @@ func TestGetFeed_Success(t *testing.T) {
 
 	// 预填充动态
 	base := time.Now().UnixMilli()
-	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "Moment 1", Visibility: 1, CreatedAt: time.Now()})
-	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 101, Content: "Moment 2", Visibility: 1, CreatedAt: time.Now()})
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: "Moment 1", Visibility: 2, CreatedAt: time.Now()})
+	mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 101, Content: "Moment 2", Visibility: 2, CreatedAt: time.Now()})
+	mysqlRepo.friends[200] = []int64{100, 101}
 
 	// 用户 200 的收件箱（普通好友推来的两条）
 	redisRepo.PublishMomentFeed(context.Background(), 200, 1, base+1)
@@ -966,10 +994,10 @@ func TestGetFeed_Hybrid(t *testing.T) {
 	base := time.Now().UnixMilli()
 	// 动态 1=自己(200)发的, 2=普通好友(101)推来的, 3=大V好友(300)的
 	for i := int64(1); i <= 3; i++ {
-		mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100 + i, Content: fmt.Sprintf("m%d", i), Visibility: 1, CreatedAt: time.Now()})
+		mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100 + i, Content: fmt.Sprintf("m%d", i), Visibility: 2, CreatedAt: time.Now()})
 	}
 	// 用户 200 的好友：101（普通）、300（大V）
-	mysqlRepo.friends[200] = []int64{101, 300}
+	mysqlRepo.friends[200] = []int64{101, 102, 103, 300}
 	redisRepo.bigUsers[300] = true
 
 	redisRepo.AddToOutbox(context.Background(), 200, 1, base+1, 0)    // 自己寄件箱
@@ -997,9 +1025,10 @@ func TestGetFeed_CursorPagination(t *testing.T) {
 	base := time.Now().UnixMilli()
 	// 5 条动态进入用户 200 收件箱，ts 递增
 	for i := int64(1); i <= 5; i++ {
-		mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: fmt.Sprintf("m%d", i), Visibility: 1, CreatedAt: time.Now()})
+		mysqlRepo.CreateMoment(context.Background(), &model.Moment{AuthorID: 100, Content: fmt.Sprintf("m%d", i), Visibility: 2, CreatedAt: time.Now()})
 		redisRepo.PublishMomentFeed(context.Background(), 200, i, base+i)
 	}
+	mysqlRepo.friends[200] = []int64{100}
 
 	svc := NewMomentService(mysqlRepo, redisRepo, mqRepo, logger, time.Hour)
 

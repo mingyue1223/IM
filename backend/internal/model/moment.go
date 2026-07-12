@@ -7,12 +7,15 @@ type Moment struct {
 	AuthorID   int64     `json:"author_id"`
 	Content    string    `json:"content"`
 	MediaUrls  *string   `json:"media_urls,omitempty"` // 以JSON字符串形式存储在数据库中；可为空
-	Visibility int       `json:"visibility"` // 1=所有人可见，2=仅好友可见，3=私密
+	Visibility int       `json:"visibility"`           // 2=好友可见，3=仅自己可见（1 为历史值，读取时按好友可见处理）
 	CreatedAt  time.Time `json:"created_at"`
 
 	// 以下字段不落库，仅在读取时由点赞缓存（Redis）填充：
-	LikeCount int64 `json:"like_count"`   // 点赞数
-	LikedByMe bool  `json:"liked_by_me"`  // 当前查看者是否已赞
+	LikeCount    int64           `json:"like_count"`  // 点赞数
+	LikedByMe    bool            `json:"liked_by_me"` // 当前查看者是否已赞
+	AuthorName   string          `json:"author_name"`
+	AuthorAvatar string          `json:"author_avatar"`
+	Comments     []MomentComment `json:"comments"`
 }
 
 type MomentLike struct {
@@ -48,6 +51,8 @@ type MomentComment struct {
 	UserID    int64     `json:"user_id"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
+	Username  string    `json:"username"`
+	AvatarURL string    `json:"avatar_url"`
 }
 
 // FeedEntry 是 Feed ZSet（收件箱/寄件箱）中的一条记录：

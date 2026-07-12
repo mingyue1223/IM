@@ -33,9 +33,8 @@ export enum GroupRole {
 
 /** 朋友圈可见性 */
 export enum MomentVisibility {
-  Public  = 1,  // 所有人可见
   Friends = 2,  // 仅好友可见
-  Private = 3,  // 私密
+  Private = 3,  // 仅自己可见
 }
 
 /** WS 消息 type 字段 — 客户端→服务端 */
@@ -106,15 +105,17 @@ export interface ReadAck {
 
 /** 离线同步请求 */
 export interface SyncReq {
-  lastSyncTime: number;
-  batchSize:    number;
+  lastSyncTime:   number;
+  lastSyncMsgId?: number;
+  batchSize:      number;
 }
 
 /** 离线同步批次 */
 export interface SyncBatch {
-  msgs:     InboxMessage[];
-  hasMore:  boolean;
-  syncTime: number;
+  msgs:       InboxMessage[];
+  hasMore:    boolean;
+  syncTime:   number;
+  syncMsgId?: number;
 }
 
 /** 会话摘要 */
@@ -152,6 +153,11 @@ export interface KickNotification {
   reason: "new_login";
 }
 
+export interface GroupRemovedNotification {
+  groupId: number;
+  reason: "removed";
+}
+
 /** 好友申请 (通过WS) */
 
 /** 好友申请被接受通知 */
@@ -185,6 +191,7 @@ export type ServerWsMessage =
   | { type: "msgRevoked";     data: RevokedNotification }
   // `kick` is emitted by the connection manager without a `data` envelope.
   | { type: "kick";           reason: KickNotification["reason"] }
+  | { type: "groupRemoved";   data: GroupRemovedNotification }
   | { type: "error";          data: WsError };
 
 // ──────────────────────────────────────────────────────

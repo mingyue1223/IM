@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
+import { env } from "../../config/env";
 
 type AvatarSize = "sm" | "md" | "lg" | "xl";
 
@@ -15,9 +17,14 @@ function initials(name: string) {
 }
 
 export function Avatar({ src, name, size = "md", online, className }: AvatarProps) {
+  const resolvedSrc = src ? (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("blob:") || src.startsWith("data:") ? src : `${env.staticBaseUrl}${src.startsWith("/") ? "" : "/"}${src}`) : undefined;
+  const [failedSrc, setFailedSrc] = useState<string>();
+
+  useEffect(() => setFailedSrc(undefined), [resolvedSrc]);
+
   return (
     <span className={cn("ui-avatar", `ui-avatar--${size}`, className)} aria-label={name} role="img">
-      {src ? <img src={src} alt="" /> : <span>{initials(name)}</span>}
+      {resolvedSrc && failedSrc !== resolvedSrc ? <img src={resolvedSrc} alt="" onError={() => setFailedSrc(resolvedSrc)} /> : <span>{initials(name)}</span>}
       {online !== undefined && <i className={cn("ui-avatar__status", online && "is-online")} aria-hidden="true" />}
     </span>
   );

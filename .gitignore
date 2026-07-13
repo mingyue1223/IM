@@ -2,6 +2,8 @@
 *.exe
 *.test
 server
+*.out
+coverage.out
 
 # Backend
 backend/uploads/
@@ -9,6 +11,7 @@ backend/configs/config.yaml
 backend/configs/config.local.yaml
 backend/server
 backend/server.*.log
+backend/tmp/
 
 # Benchmark output may contain access tokens.
 backend/benchmark/tokens.csv
@@ -18,6 +21,8 @@ backend/benchmark/pairs.csv
 frontend/dist/
 frontend/node_modules/
 frontend/*.tsbuildinfo
+frontend/coverage/
+frontend/vite.*.log
 
 # Environment
 .env
@@ -26,3 +31,11 @@ frontend/*.tsbuildinfo
 # Claude Code
 .claude/
 .superpowers/
+
+# Local editor and operating-system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

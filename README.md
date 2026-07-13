@@ -78,28 +78,38 @@ IM/
 
 ## 重要文档
 
-```text
-docs/
-├── [前后端联调实施计划](docs/前后端联调实施计划.md)
-├── [前后端联调问题记录](docs/前后端联调问题记录.md)
-└── [后续的优化更新计划](docs/后续的优化更新计划.md)
+<details>
+<summary><code>docs/</code> · 跨端协作与规划</summary>
 
-backend/docs/
-├── [API参考文档](backend/docs/API%20参考文档.md)
-├── [产品功能需求](backend/docs/产品功能需求.md)
-├── [产品技术设计](backend/docs/产品技术设计.md)
-├── [项目系统架构](backend/docs/项目系统架构.md)
-├── [项目部署指南](backend/docs/项目部署指南.md)
-├── [接口测试清单](backend/docs/接口测试清单.md)
-└── [压力测试总结](backend/docs/压力测试总结.md)
+- [前后端联调实施计划](docs/前后端联调实施计划.md)
+- [前后端联调问题记录](docs/前后端联调问题记录.md)
+- [后续的优化更新计划](docs/后续的优化更新计划.md)
 
-frontend/docs/
-├── [WebSocket协议](frontend/docs/WebSocket协议.md)
-├── [前后端联调指南](frontend/docs/前后端联调指南.md)
-├── [前端接口契约](frontend/docs/前端接口契约.md)
-├── [前端开发实施流程](frontend/docs/前端开发实施流程.md)
-└── [前端界面效果说明](frontend/docs/前端界面效果说明.md)
-```
+</details>
+
+<details>
+<summary><code>backend/docs/</code> · 后端、接口与部署</summary>
+
+- [API 参考文档](backend/docs/API%20参考文档.md)
+- [产品功能需求](backend/docs/产品功能需求.md)
+- [产品技术设计](backend/docs/产品技术设计.md)
+- [项目系统架构](backend/docs/项目系统架构.md)
+- [项目部署指南](backend/docs/项目部署指南.md)
+- [接口测试清单](backend/docs/接口测试清单.md)
+- [压力测试总结](backend/docs/压力测试总结.md)
+
+</details>
+
+<details>
+<summary><code>frontend/docs/</code> · 前端协议与联调</summary>
+
+- [WebSocket 协议](frontend/docs/WebSocket协议.md)
+- [前后端联调指南](frontend/docs/前后端联调指南.md)
+- [前端接口契约](frontend/docs/前端接口契约.md)
+- [前端开发实施流程](frontend/docs/前端开发实施流程.md)
+- [前端界面效果说明](frontend/docs/前端界面效果说明.md)
+
+</details>
 
 ## 快速开始
 

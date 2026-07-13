@@ -4,93 +4,122 @@
 
 一个面向 Web 的即时通讯应用，支持私聊、群聊、好友关系、朋友圈动态、文件上传与实时 WebSocket 通信。
 
-[本地开发](#本地开发) · [部署](#部署) · [接口文档](backend/docs/API%20参考文档.md) · [项目文档](docs/)
+[在线访问](https://im.vectorcontrol.tech/) · [快速开始](#快速开始) · [开发文档](docs/)
 
-![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat-square&logo=go)
-![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat-square&logo=go&logoColor=00ADD8)
+![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=3178C6)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=646CFF)
+![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?style=flat-square&logo=mysql&logoColor=4479A1)
+![Redis](https://img.shields.io/badge/Redis-7.2-DC382D?style=flat-square&logo=redis&logoColor=DC382D)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=2496ED)
 ![CI](https://img.shields.io/github/actions/workflow/status/Johnny-Cheung/IM/ghcr-publish.yml?branch=main&style=flat-square&label=CI)
 
 </div>
 
-## 项目定位
+## 项目功能
 
-GoIM 提供一套完整的即时通讯 Web 应用：前端负责会话与社交交互，后端提供 REST API 与 WebSocket 实时连接，MySQL、Redis 与 RabbitMQ 分别承担数据持久化、缓存及异步消息处理。
+GoIM 是一个完整的 Web 即时通讯系统。前端提供面向用户的聊天与社交界面，后端同时提供 REST API 与 WebSocket 长连接；MySQL、Redis、RabbitMQ 分别负责数据持久化、热点缓存和异步消息处理。
 
-## 核心功能
-
-- **即时通信**：基于 WebSocket 的私聊、群聊与在线消息推送
-- **社交关系**：好友申请、接受、删除与拉黑
-- **群组管理**：建群、成员管理、角色与群主转让
-- **朋友圈**：发布动态、评论、点赞与时间线
-- **账户与设置**：注册、登录、JWT 刷新、个人资料与会话设置
+- **账户与身份认证**：用户注册、登录、JWT 访问令牌与刷新令牌、个人资料和设置管理。
+- **好友关系**：好友申请、接受/拒绝、删除好友、拉黑用户与在线状态查询。
+- **私聊与群聊**：WebSocket 实时收发消息、离线消息、已读状态、消息撤回与会话管理。
+- **群组管理**：创建群组、邀请/移除成员、角色管理、群主转让与群成员列表。
+- **朋友圈**：发布图文动态、时间线、点赞、评论与互动通知。
+- **媒体与文件**：头像及图片、GIF、视频上传，后端提供静态资源访问。
+- **工程能力**：单元/集成测试、基准压测工具、Swagger 接口文档、Docker Compose 本地依赖和 GHCR 镜像发布。
 
 ## 技术栈
 
-| 层级 | 技术 |
-|---|---|
-| 前端 | React 19 · TypeScript · Vite · Tailwind CSS · Zustand · TanStack Query |
-| 后端 | Go 1.24+ · Gin · WebSocket · JWT |
-| 数据与消息 | MySQL 8.4 · Redis 7.2 · RabbitMQ 3.13 |
-| 工程化 | Docker Compose · GitHub Actions · GHCR · Vitest |
+| 层级 | 技术 | 职责 |
+| --- | --- | --- |
+| 前端 | React 19 · TypeScript · Vite · Tailwind CSS | SPA 页面、组件、样式与构建 |
+| 前端状态 | Zustand · TanStack Query · React Router | 本地状态、服务端缓存与路由 |
+| 后端 | Go 1.24+ · Gin | REST API、鉴权、中间件与业务服务 |
+| 实时通信 | Gorilla WebSocket | 私聊、群聊与在线实时推送 |
+| 数据存储 | MySQL 8.4 | 用户、关系、消息、群组、动态等持久化数据 |
+| 缓存 | Redis 7.2 · Lua | 会话、未读/已读、时间线及高频原子操作 |
+| 异步消息 | RabbitMQ 3.13 | 消息持久化、动态分发、点赞异步落库 |
+| 交付 | Docker Compose · GitHub Actions · GHCR | 本地依赖、CI/CD 与镜像发布 |
 
-## 仓库结构
+## 项目结构
 
-| 路径 | 说明 |
-|---|---|
-| `frontend/` | React/Vite 前端应用、API 客户端与前端测试 |
-| `backend/cmd/server/` | Go 服务入口 |
-| `backend/internal/` | API、业务服务、仓储、缓存、消息队列与 WebSocket 实现 |
-| `backend/scripts/migrations/` | MySQL 初始化与迁移脚本 |
-| `backend/benchmark/` | 压力测试工具；生成的令牌和数据文件不会提交 |
-| `docker-compose.yaml` | 本地开发依赖：MySQL、Redis、RabbitMQ |
-| `deploy/` | 生产 Docker Compose 与环境变量模板 |
-| `docs/` | 前后端联调与优化计划 |
-| `backend/docs/` | API、架构、部署与测试文档 |
+```text
+IM/
+├── frontend/                         # React/Vite 前端
+│   ├── src/
+│   │   ├── api/                      # REST API 客户端
+│   │   ├── components/               # 通用组件、布局与实时连接组件
+│   │   ├── features/                 # 好友、群组、朋友圈等功能模块
+│   │   ├── pages/                    # 登录、聊天、联系人、动态、设置页面
+│   │   ├── realtime/                 # WebSocket 客户端与通知处理
+│   │   ├── stores/                   # Zustand 状态管理
+│   │   └── test/                     # Vitest 测试
+│   └── docs/                         # 前端协议、接口与联调文档
+├── backend/                          # Go 后端
+│   ├── cmd/server/                   # 服务启动入口
+│   ├── internal/
+│   │   ├── api/                      # HTTP Handler
+│   │   ├── service/                  # 业务服务层
+│   │   ├── repository/               # MySQL、Redis、RabbitMQ 仓储层
+│   │   ├── ws/                       # WebSocket 处理与协议
+│   │   ├── consumer/                 # RabbitMQ 消费者
+│   │   ├── redis/                    # Redis Lua 脚本
+│   │   └── middleware/               # JWT、CORS 等中间件
+│   ├── scripts/migrations/           # MySQL 初始化与迁移脚本
+│   ├── configs/                      # 本地、测试、容器配置
+│   ├── benchmark/                    # 压力测试工具
+│   └── docs/                         # 后端、架构、API 与部署文档
+├── deploy/                           # 生产部署编排与变量模板
+├── docs/                             # 跨端联调与后续优化文档
+├── docker-compose.yaml               # 本地 MySQL、Redis、RabbitMQ
+└── Dockerfile                        # 前后端单镜像构建
+```
 
-## 本地开发
+## 重要文档
 
-### 1. 准备配置
+```text
+docs/
+├── [前后端联调实施计划](docs/前后端联调实施计划.md)
+├── [前后端联调问题记录](docs/前后端联调问题记录.md)
+└── [后续的优化更新计划](docs/后续的优化更新计划.md)
+
+backend/docs/
+├── [API参考文档](backend/docs/API%20参考文档.md)
+├── [产品功能需求](backend/docs/产品功能需求.md)
+├── [产品技术设计](backend/docs/产品技术设计.md)
+├── [项目系统架构](backend/docs/项目系统架构.md)
+├── [项目部署指南](backend/docs/项目部署指南.md)
+├── [接口测试清单](backend/docs/接口测试清单.md)
+└── [压力测试总结](backend/docs/压力测试总结.md)
+
+frontend/docs/
+├── [WebSocket协议](frontend/docs/WebSocket协议.md)
+├── [前后端联调指南](frontend/docs/前后端联调指南.md)
+├── [前端接口契约](frontend/docs/前端接口契约.md)
+├── [前端开发实施流程](frontend/docs/前端开发实施流程.md)
+└── [前端界面效果说明](frontend/docs/前端界面效果说明.md)
+```
+
+## 快速开始
 
 ```powershell
+# 1. 复制本地配置模板
 Copy-Item .env.example .env
 Copy-Item backend/configs/config.local.example.yaml backend/configs/config.local.yaml
 Copy-Item frontend/.env.example frontend/.env.local
-```
 
-### 2. 启动基础设施
-
-```powershell
+# 2. 启动 MySQL、Redis、RabbitMQ
 docker compose up -d
-```
 
-这会启动 MySQL、Redis 和 RabbitMQ。RabbitMQ 管理页面默认地址为 `http://localhost:15673`。
-
-### 3. 启动后端
-
-```powershell
+# 3. 启动后端（新终端）
 Set-Location backend
 go run ./cmd/server -c configs/config.local.yaml
-```
 
-后端健康检查：`http://localhost:18080/health`。
-
-### 4. 启动前端
-
-在另一个终端执行：
-
-```powershell
+# 4. 启动前端（另一个新终端）
 Set-Location frontend
 npm ci
 npm run dev
 ```
 
-打开 `http://localhost:5173` 使用应用。
-
-## 文档
-
-- [接口参考](backend/docs/API%20参考文档.md)
-- [项目系统架构](backend/docs/项目系统架构.md)
-- [项目部署指南](backend/docs/项目部署指南.md)
-- [前后端联调实施计划](docs/前后端联调实施计划.md)
+前端默认地址为 `http://localhost:5173`，后端健康检查为 `http://localhost:18080/health`。

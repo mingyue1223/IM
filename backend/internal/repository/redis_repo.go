@@ -788,3 +788,15 @@ func (r *RedisRepoImpl) SetFriendCache(ctx context.Context, uidA, uidB int64) er
 	}
 	return nil
 }
+
+// DeleteFriendCache removes the bidirectional friendship keys used by the
+// private-message Lua authorization check.
+func (r *RedisRepoImpl) DeleteFriendCache(ctx context.Context, uidA, uidB int64) error {
+	if err := r.rdb.Del(ctx,
+		fmt.Sprintf("friend:%d:%d", uidA, uidB),
+		fmt.Sprintf("friend:%d:%d", uidB, uidA),
+	).Err(); err != nil {
+		return fmt.Errorf("删除好友缓存 %d<->%d: %w", uidA, uidB, err)
+	}
+	return nil
+}

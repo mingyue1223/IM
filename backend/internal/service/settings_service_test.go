@@ -27,11 +27,13 @@ type mockSettingsRepo struct {
 	// 错误覆盖
 	getSettingsErr    error
 	createOrUpdateErr error
+	friends           map[string]bool
 }
 
 func newMockSettingsRepo() *mockSettingsRepo {
 	return &mockSettingsRepo{
 		settings: make(map[int64]*model.UserSettings),
+		friends:  make(map[string]bool),
 		nextID:   1,
 	}
 }
@@ -110,8 +112,8 @@ func (m *mockSettingsRepo) DeleteFriendship(_ context.Context, _ int64, _ int64)
 func (m *mockSettingsRepo) GetFriendList(_ context.Context, _ int64) ([]model.Friendship, error) {
 	return nil, nil
 }
-func (m *mockSettingsRepo) IsFriend(_ context.Context, _ int64, _ int64) (bool, error) {
-	return false, nil
+func (m *mockSettingsRepo) IsFriend(_ context.Context, userID, friendID int64) (bool, error) {
+	return m.friends[fmt.Sprintf("%d:%d", userID, friendID)], nil
 }
 func (m *mockSettingsRepo) CreateBlacklist(_ context.Context, _ *model.Blacklist) error { return nil }
 func (m *mockSettingsRepo) DeleteBlacklist(_ context.Context, _ int64, _ int64) error   { return nil }
@@ -322,6 +324,7 @@ func TestSettings_AddMuteConv_Duplicate(t *testing.T) {
 
 func TestSettings_AddMuteConv_MultipleConvs(t *testing.T) {
 	repo := newMockSettingsRepo()
+	repo.friends["1:3"] = true
 	svc := newTestSettingsService(repo)
 
 	err := svc.AddMuteConv(context.Background(), 1, "g_5")
@@ -337,12 +340,22 @@ func TestSettings_AddMuteConv_MultipleConvs(t *testing.T) {
 	assert.Contains(t, stored.MuteList, "p_1_3")
 }
 
+func TestSettings_AddMuteConv_RejectsDeletedPrivateConversation(t *testing.T) {
+	repo := newMockSettingsRepo()
+	svc := newTestSettingsService(repo)
+
+	assert.EqualError(t, svc.AddMuteConv(context.Background(), 1, "p_1_3"), ErrInvalidMuteConv)
+	repo.friends["1:3"] = true
+	assert.NoError(t, svc.AddMuteConv(context.Background(), 1, "p_1_3"))
+}
+
 // ──────────────────────────────────────────────────────
 // RemoveMuteConv tests
 // ──────────────────────────────────────────────────────
 
 func TestSettings_RemoveMuteConv_Success(t *testing.T) {
 	repo := newMockSettingsRepo()
+	repo.friends["1:3"] = true
 	svc := newTestSettingsService(repo)
 
 	// Add first

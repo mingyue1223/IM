@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -17,6 +19,7 @@ const (
 	ErrSettingsNotFound = "设置未找到"
 	ErrMuteConvExists   = "会话已被静音"
 	ErrMuteConvNotFound = "会话不在静音列表中"
+	ErrInvalidMuteConv  = "会话已不可用"
 )
 
 // SettingsService handles user settings: notification preferences and mute list.
@@ -46,10 +49,10 @@ func (s *SettingsService) GetSettings(ctx context.Context, userID int64) (*model
 
 	// Return default settings if no row exists
 	return &model.UserSettings{
-		UserID:             userID,
+		UserID:              userID,
 		NotificationEnabled: true,
 		MsgPreviewEnabled:   true,
-		MuteList:           "[]",
+		MuteList:            "[]",
 	}, nil
 }
 
@@ -69,6 +72,9 @@ func (s *SettingsService) UpdateSettings(ctx context.Context, userID int64, sett
 
 // AddMuteConv adds a conversation ID to the user's mute list.
 func (s *SettingsService) AddMuteConv(ctx context.Context, userID int64, convID string) error {
+	if err := s.validateMuteConversation(ctx, userID, convID); err != nil {
+		return err
+	}
 	settings, err := s.GetSettings(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("get settings for mute: %w", err)
@@ -106,6 +112,33 @@ func (s *SettingsService) AddMuteConv(ctx context.Context, userID int64, convID 
 		zap.String("convID", convID),
 	)
 
+	return nil
+}
+
+func (s *SettingsService) validateMuteConversation(ctx context.Context, userID int64, convID string) error {
+	if !strings.HasPrefix(convID, "p_") {
+		return nil
+	}
+	parts := strings.Split(convID, "_")
+	if len(parts) != 3 {
+		return fmt.Errorf(ErrInvalidMuteConv)
+	}
+	firstID, firstErr := strconv.ParseInt(parts[1], 10, 64)
+	secondID, secondErr := strconv.ParseInt(parts[2], 10, 64)
+	if firstErr != nil || secondErr != nil || firstID <= 0 || secondID <= 0 || (firstID != userID && secondID != userID) {
+		return fmt.Errorf(ErrInvalidMuteConv)
+	}
+	otherID := firstID
+	if otherID == userID {
+		otherID = secondID
+	}
+	isFriend, err := s.mysqlRepo.IsFriend(ctx, userID, otherID)
+	if err != nil {
+		return fmt.Errorf("validate private conversation: %w", err)
+	}
+	if !isFriend {
+		return fmt.Errorf(ErrInvalidMuteConv)
+	}
 	return nil
 }
 

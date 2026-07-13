@@ -4,6 +4,8 @@ import type { FriendRequest } from "../../../goim-api-types";
 import { contacts as previewContacts } from "../../mocks/data";
 import { friendsApi } from "../../lib/api";
 import { useAuthStore } from "../../stores/authStore";
+import { useChatStore } from "../../stores/chatStore";
+import { buildPrivateConvId } from "../../../goim-ws-types";
 
 export interface FriendView {
   routeId: string;
@@ -25,6 +27,7 @@ const initialPreviewRequests: FriendRequest[] = [
 
 export function useFriends() {
   const previewMode = useAuthStore((state) => state.previewMode);
+  const currentUserId = useAuthStore((state) => state.user?.id ?? 0);
   const queryClient = useQueryClient();
   const [localContacts, setLocalContacts] = useState(previewContacts);
   const [localRequests, setLocalRequests] = useState(initialPreviewRequests);
@@ -47,8 +50,17 @@ export function useFriends() {
 
   const accept = async (requestId: number) => {
     if (previewMode) { setLocalRequests((current) => current.filter((request) => request.id !== requestId)); return; }
-    await acceptMutation.mutateAsync(requestId);
+    const response = await acceptMutation.mutateAsync(requestId);
+    const acceptedFriendID = response.user_id === currentUserId ? response.friend_id : response.user_id;
+    const applicant = requestsQuery.data?.items.find((request) => request.id === requestId);
+    useChatStore.getState().addPrivateConversation(
+      buildPrivateConvId(currentUserId, acceptedFriendID),
+      acceptedFriendID,
+      applicant?.username || `用户 #${acceptedFriendID}`,
+      applicant?.avatar_url,
+    );
     await queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+    await queryClient.invalidateQueries({ queryKey: ["friends"] });
   };
   const reject = async (requestId: number) => {
     if (previewMode) { setLocalRequests((current) => current.filter((request) => request.id !== requestId)); return; }
@@ -60,8 +72,9 @@ export function useFriends() {
     await sendMutation.mutateAsync({ userId, message });
   };
   const remove = async (friend: FriendView) => {
-    if (previewMode) { setLocalContacts((current) => current.filter((contact) => contact.id !== friend.routeId)); return; }
-    await removeMutation.mutateAsync(friend.userId);
+    if (previewMode) setLocalContacts((current) => current.filter((contact) => contact.id !== friend.routeId));
+    else await removeMutation.mutateAsync(friend.userId);
+    useChatStore.getState().removeConversation(previewMode ? friend.routeId : buildPrivateConvId(currentUserId, friend.userId));
   };
   const block = async (friend: FriendView) => {
     if (previewMode) { setLocalContacts((current) => current.filter((contact) => contact.id !== friend.routeId)); return; }

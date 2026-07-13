@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -29,6 +31,10 @@ type FriendService struct {
 	mysqlRepo repository.MySQLRepo
 	redisRepo repository.RedisRepo
 	logger    *zap.Logger
+}
+
+type friendCacheRemover interface {
+	DeleteFriendCache(ctx context.Context, uidA, uidB int64) error
 }
 
 // NewFriendService 创建一个包含所有必要依赖的 FriendService。
@@ -160,6 +166,11 @@ func (s *FriendService) AcceptFriendRequest(ctx context.Context, userID, request
 		// 非致命：MySQL 已写入，缓存可在后续 IsFriend 查询时按需回填
 	}
 
+	// A friendship should be visible as a private conversation even before either
+	// side sends a message. Store one empty summary for each participant so the
+	// result survives refreshes and offline sessions.
+	s.createPrivateConversation(ctx, req.FromUserID, req.ToUserID)
+
 	// 动态流在发布时只分发给当时已是好友的用户。建立好友关系后，
 	// 回填双方最近可见的历史动态，避免新好友只能看到之后发布的内容。
 	// 回填失败不应回滚已成功创建的好友关系，后续新动态仍可正常分发。
@@ -179,6 +190,32 @@ func (s *FriendService) AcceptFriendRequest(ctx context.Context, userID, request
 	)
 
 	return fs, nil
+}
+
+func (s *FriendService) createPrivateConversation(ctx context.Context, userA, userB int64) {
+	convID := model.BuildConvID(model.ConvTypePrivate, userA, userB)
+	timestamp := time.Now().UnixMilli()
+	for _, entry := range []struct {
+		userID, targetID int64
+	}{{userA, userB}, {userB, userA}} {
+		target, err := s.mysqlRepo.GetUserByID(ctx, entry.targetID)
+		if err != nil {
+			s.logger.Warn("读取新好友资料失败", zap.Int64("userID", entry.targetID), zap.Error(err))
+		}
+		summary := model.ConvSummary{ConvID: convID, ConvType: model.ConvTypePrivate, TargetID: entry.targetID}
+		if target != nil {
+			summary.TargetName = target.Username
+			summary.TargetAvatar = target.AvatarURL
+		}
+		payload, err := json.Marshal(summary)
+		if err != nil {
+			s.logger.Warn("序列化新好友会话摘要失败", zap.Error(err))
+			continue
+		}
+		if err := s.redisRepo.UpdateConvList(ctx, entry.userID, convID, string(payload), timestamp); err != nil {
+			s.logger.Warn("创建新好友空会话失败", zap.Int64("userID", entry.userID), zap.Error(err))
+		}
+	}
 }
 
 // backfillFriendMoments writes the author's recent friend-visible moments to
@@ -325,6 +362,13 @@ func (s *FriendService) GetFriendList(ctx context.Context, userID int64) ([]Frie
 func (s *FriendService) DeleteFriend(ctx context.Context, userID, friendID int64) error {
 	if err := s.mysqlRepo.DeleteFriendship(ctx, userID, friendID); err != nil {
 		return fmt.Errorf("删除好友关系: %w", err)
+	}
+	if cache, ok := s.redisRepo.(friendCacheRemover); ok {
+		if err := cache.DeleteFriendCache(ctx, userID, friendID); err != nil {
+			// MySQL remains the source of truth; log the cache failure rather than
+			// reporting a failed deletion after the relationship is already gone.
+			s.logger.Warn("删除好友缓存失败", zap.Int64("userID", userID), zap.Int64("friendID", friendID), zap.Error(err))
+		}
 	}
 
 	s.logger.Debug("好友已删除",

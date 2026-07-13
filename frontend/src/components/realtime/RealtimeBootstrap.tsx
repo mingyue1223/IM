@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ServerWsMessage } from "../../../goim-ws-types";
+import { buildPrivateConvId } from "../../../goim-ws-types";
 import { useAuthStore } from "../../stores/authStore";
 import { useChatStore } from "../../stores/chatStore";
 import { goimSocket } from "../../realtime/socket";
@@ -23,9 +24,15 @@ async function refreshPrivateConversationIdentities() {
   try {
     const page = await friendsApi.list(100, 0);
     const chat = useChatStore.getState();
+    const friendIDs = new Set(page.items.map((friend) => friend.friend_id));
+    for (const conversation of chat.conversations) {
+      if (!conversation.group && !friendIDs.has(conversation.targetId)) chat.removeConversation(conversation.id);
+    }
     for (const friend of page.items) {
       const conversation = chat.conversations.find((item) => !item.group && item.targetId === friend.friend_id);
-      if (conversation) chat.setConversationIdentity(conversation.id, friend.nickname || `用户 #${friend.friend_id}`, friend.avatar_url, friend.online);
+      const name = friend.nickname || `用户 #${friend.friend_id}`;
+      if (conversation) chat.setConversationIdentity(conversation.id, name, friend.avatar_url, friend.online);
+      else if (chat.liveUserId) chat.addPrivateConversation(buildPrivateConvId(chat.liveUserId, friend.friend_id), friend.friend_id, name, friend.avatar_url);
     }
   } catch {
     // 在线状态刷新失败不影响现有会话和消息收发。
@@ -84,6 +91,9 @@ function handleServerMessage(message: ServerWsMessage, currentUserId: number, cl
       break;
     case "groupRemoved":
       chat.removeConversation(`g_${message.data.groupId}`);
+      break;
+    case "groupAdded":
+      chat.addGroupConversation(message.data.groupId, message.data.name);
       break;
   }
 }

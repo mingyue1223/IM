@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Contact, MessageCircle, Settings, Sparkles, UsersRound } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Avatar } from "../ui";
@@ -45,18 +45,7 @@ export function AppShell() {
           </nav>
           <NavLink aria-label="个人设置" className="nav-rail__profile" to="/app/settings/profile"><Avatar name={user?.username ?? "用户"} online size="sm" src={user?.avatarUrl} /></NavLink>
         </aside>
-        <AnimatePresence initial={false} mode="wait">
-          <motion.div
-            animate={{ opacity: 1, x: 0 }}
-            className="app-workspace"
-            exit={{ opacity: 0, x: reduceMotion ? 0 : -4 }}
-            initial={false}
-            key={location.pathname.split("/")[2]}
-            transition={{ duration: reduceMotion ? 0 : .2 }}
-          >
-            <Outlet />
-          </motion.div>
-        </AnimatePresence>
+        <div className="app-workspace"><Outlet /></div>
       </div>
     </div>
   );

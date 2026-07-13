@@ -150,7 +150,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const localMessage: ChatMessage = { id: `client-${clientMsgId}`, clientMsgId, convId: conversation.id, from: "me", senderId: get().liveUserId ?? 0, content, time: formatTime(timestamp), timestamp, status: "pending", outbound };
     set((state) => ({
       messagesByConversation: { ...state.messagesByConversation, [conversation.id]: [...(state.messagesByConversation[conversation.id] ?? []), localMessage] },
-      conversations: state.conversations.map((item) => item.id === conversation.id ? { ...item, preview: content, time: "刚刚" } : item),
+      conversations: [
+        ...state.conversations
+          .filter((item) => item.id === conversation.id)
+          .map((item) => ({ ...item, preview: content, time: "刚刚" })),
+        ...state.conversations.filter((item) => item.id !== conversation.id),
+      ],
     }));
 
     if (preview) {

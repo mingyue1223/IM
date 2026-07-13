@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -334,7 +335,14 @@ type friendMomentFanout struct {
 }
 
 type mockFriendRedisRepo struct {
-	momentFanouts []friendMomentFanout
+	momentFanouts       []friendMomentFanout
+	convUpdates         []friendConvUpdate
+	deletedFriendCaches [][2]int64
+}
+
+type friendConvUpdate struct {
+	userID, timestamp int64
+	convID, summary   string
 }
 
 func (m *mockFriendRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error {
@@ -349,7 +357,9 @@ func (m *mockFriendRedisRepo) ReadInbox(_ context.Context, _ int64, _, _ int64, 
 func (m *mockFriendRedisRepo) ReadOutbox(_ context.Context, _ int64, _, _ int64, _ int) ([]model.InboxMessage, error) {
 	return nil, nil
 }
-func (m *mockFriendRedisRepo) UpdateConvList(_ context.Context, _ int64, _ string, _ string, _ int64) error {
+
+func (m *mockFriendRedisRepo) UpdateConvList(_ context.Context, userID int64, convID, summary string, timestamp int64) error {
+	m.convUpdates = append(m.convUpdates, friendConvUpdate{userID: userID, convID: convID, summary: summary, timestamp: timestamp})
 	return nil
 }
 func (m *mockFriendRedisRepo) GetConvList(_ context.Context, _ int64) ([]model.ConvSummary, error) {
@@ -430,6 +440,10 @@ func (m *mockFriendRedisRepo) GetOutboxPage(_ context.Context, _ int64, _ int64,
 	return nil, nil
 }
 func (m *mockFriendRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64) error { return nil }
+func (m *mockFriendRedisRepo) DeleteFriendCache(_ context.Context, uidA, uidB int64) error {
+	m.deletedFriendCaches = append(m.deletedFriendCaches, [2]int64{uidA, uidB})
+	return nil
+}
 
 // ──────────────────────────────────────────────────────
 // 辅助函数：新建测试用 FriendService
@@ -606,6 +620,40 @@ func TestFriend_AcceptFriendRequest_Success(t *testing.T) {
 	isFriend, err = repo.IsFriend(context.Background(), 2, 1)
 	assert.NoError(t, err)
 	assert.True(t, isFriend)
+}
+
+func TestFriend_AcceptFriendRequest_CreatesEmptyConversationForBothUsers(t *testing.T) {
+	repo := newMockFriendRepo()
+	repo.users[1] = &model.User{ID: 1, Username: "alice", AvatarURL: "/alice.png"}
+	repo.users[2] = &model.User{ID: 2, Username: "bob", AvatarURL: "/bob.png"}
+	redisRepo := &mockFriendRedisRepo{}
+	svc := newTestFriendServiceWithRedis(repo, redisRepo)
+
+	req, err := svc.SendFriendRequest(context.Background(), 1, 2, "hello")
+	assert.NoError(t, err)
+	_, err = svc.AcceptFriendRequest(context.Background(), 2, req.ID)
+	assert.NoError(t, err)
+
+	if assert.Len(t, redisRepo.convUpdates, 2) {
+		for _, update := range redisRepo.convUpdates {
+			assert.Equal(t, "p_1_2", update.convID)
+			var summary model.ConvSummary
+			assert.NoError(t, json.Unmarshal([]byte(update.summary), &summary))
+			assert.Equal(t, model.ConvTypePrivate, summary.ConvType)
+			assert.NotZero(t, summary.TargetID)
+		}
+	}
+}
+
+func TestFriend_DeleteFriend_RemovesPrivateMessageAuthorizationCache(t *testing.T) {
+	repo := newMockFriendRepo()
+	repo.friendships[friendKey(1, 2)] = &model.Friendship{UserID: 1, FriendID: 2}
+	repo.friendships[friendKey(2, 1)] = &model.Friendship{UserID: 2, FriendID: 1}
+	redisRepo := &mockFriendRedisRepo{}
+	svc := newTestFriendServiceWithRedis(repo, redisRepo)
+
+	assert.NoError(t, svc.DeleteFriend(context.Background(), 1, 2))
+	assert.Equal(t, [][2]int64{{1, 2}}, redisRepo.deletedFriendCaches)
 }
 
 func TestFriend_AcceptFriendRequest_BackfillsVisibleMoments(t *testing.T) {

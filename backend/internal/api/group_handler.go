@@ -241,6 +241,18 @@ func (h *GroupHandler) AddMember(c *gin.Context) {
 		}
 		return
 	}
+	if h.cm != nil {
+		if client, ok := h.cm.Get(req.MemberID); ok {
+			group, getErr := h.groupSvc.GetGroupInfo(c.Request.Context(), groupID)
+			if getErr == nil && group != nil {
+				notice, _ := json.Marshal(map[string]interface{}{"type": "groupAdded", "data": map[string]interface{}{"groupId": groupID, "name": group.Name}})
+				select {
+				case client.SendCh <- notice:
+				default:
+				}
+			}
+		}
+	}
 
 	SuccessMessage(c, "member added")
 }

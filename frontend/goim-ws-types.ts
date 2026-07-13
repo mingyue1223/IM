@@ -158,6 +158,11 @@ export interface GroupRemovedNotification {
   reason: "removed";
 }
 
+export interface GroupAddedNotification {
+  groupId: number;
+  name: string;
+}
+
 /** 好友申请 (通过WS) */
 
 /** 好友申请被接受通知 */
@@ -191,7 +196,8 @@ export type ServerWsMessage =
   | { type: "msgRevoked";     data: RevokedNotification }
   // `kick` is emitted by the connection manager without a `data` envelope.
   | { type: "kick";           reason: KickNotification["reason"] }
-  | { type: "groupRemoved";   data: GroupRemovedNotification }
+    | { type: "groupRemoved";   data: GroupRemovedNotification }
+    | { type: "groupAdded";     data: GroupAddedNotification }
   | { type: "error";          data: WsError };
 
 // ──────────────────────────────────────────────────────

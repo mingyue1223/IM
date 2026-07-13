@@ -135,6 +135,7 @@ var errorCodeMap = map[string]int{
 	"设置未找到":     CodeSettingsNotFound,
 	"会话已被静音":    CodeMuteConvExists,
 	"会话不在静音列表中": CodeMuteConvNotFound,
+	"会话已不可用":    CodeInvalidParam,
 
 	// 消息服务（msg_service.go 中的错误通过 redis 包映射，这里仅做兜底）
 	"不是好友":     4001,

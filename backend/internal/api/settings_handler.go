@@ -114,6 +114,8 @@ func (h *SettingsHandler) AddMuteConv(c *gin.Context) {
 		switch err.Error() {
 		case service.ErrMuteConvExists:
 			ServiceError(c, http.StatusConflict, err.Error())
+		case service.ErrInvalidMuteConv:
+			ServiceError(c, http.StatusBadRequest, err.Error())
 		default:
 			Error(c, http.StatusInternalServerError, CodeInternalError, "内部错误")
 		}

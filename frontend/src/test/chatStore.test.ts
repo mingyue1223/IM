@@ -22,6 +22,18 @@ describe("chat message state", () => {
     expect(useChatStore.getState().messagesByConversation[conversation.id].at(-1)?.status).toBe("sent");
   });
 
+  it("moves the conversation to the top as soon as a local message is sent", () => {
+    useChatStore.getState().initializePreview();
+    const target = useChatStore.getState().conversations[2];
+
+    useChatStore.getState().sendText(target, "hello", true);
+
+    expect(useChatStore.getState().conversations[0]).toMatchObject({
+      id: target.id,
+      preview: "hello",
+    });
+  });
+
   it("deduplicates synchronized server messages", () => {
     useChatStore.getState().initializeLive(1);
     const batch = { msgs: [{ msgId: 9, convId: "p_1_2", convType: 1, fromId: 2, toId: 1, msgType: 1, content: "once", readStatus: 0, timestamp: 100 }], hasMore: false, syncTime: 100, syncMsgId: 9 };

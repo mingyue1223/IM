@@ -19,7 +19,7 @@ export interface RefreshRequest { refresh_token: string; }
 export interface UpdateUsernameRequest { username: string; }
 export interface UpdatePasswordRequest { current_password: string; new_password: string; }
 
-export interface FriendRequest { id: ApiId; from_user_id: ApiId; to_user_id: ApiId; message: string; status: 0 | 1 | 2; created_at: IsoDateTime; updated_at: IsoDateTime; }
+export interface FriendRequest { id: ApiId; from_user_id: ApiId; to_user_id: ApiId; username?: string; avatar_url?: string; message: string; status: 0 | 1 | 2; created_at: IsoDateTime; updated_at: IsoDateTime; }
 export interface Friendship { id: ApiId; user_id: ApiId; friend_id: ApiId; nickname?: string; avatar_url?: string; online: boolean; is_blocked: boolean; created_at: IsoDateTime; }
 export interface Group { id: ApiId; name: string; notice: string; owner_id: ApiId; max_members: number; created_at: IsoDateTime; updated_at: IsoDateTime; }
 export interface GroupMember { id: ApiId; group_id: ApiId; user_id: ApiId; role: 0 | 1 | 2; username: string; avatar_url?: string; muted_until?: IsoDateTime | null; joined_at: IsoDateTime; }

@@ -438,8 +438,26 @@ func (s *MsgService) HandleRevokeMsg(userID int64, data []byte) {
 		if otherID > 0 {
 			s.pushToUser(otherID, protocol.TypeMsgRevoked, notification)
 		}
+		return
 	}
-	// 群聊情况下，成员通过同步或 MQ 消费者广播发现撤回
+
+	// 群聊消息保存在群发件箱中，刷新后成员会在同步时读取到撤回占位符；
+	// 在线成员仍需要立即收到通知，不能等到下一次同步。
+	groupID, err := strconv.ParseInt(strings.TrimPrefix(req.ConvID, "g_"), 10, 64)
+	if err != nil {
+		s.logger.Warn("解析群聊 ID 失败", zap.String("convID", req.ConvID), zap.Error(err))
+		return
+	}
+	members, err := s.redisRepo.GetGroupMembers(ctx, groupID)
+	if err != nil {
+		s.logger.Warn("获取群成员以广播撤回通知失败", zap.Int64("groupID", groupID), zap.Error(err))
+		return
+	}
+	for _, memberID := range members {
+		if memberID != userID {
+			s.pushToUser(memberID, protocol.TypeMsgRevoked, notification)
+		}
+	}
 }
 
 // ──────────────────────────────────────────────────────

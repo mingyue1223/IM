@@ -211,7 +211,7 @@ func (h *FriendHandler) GetFriendRequests(c *gin.Context) {
 		offset = o
 	}
 
-	requests, err := h.friendSvc.GetFriendRequests(c.Request.Context(), userID)
+	requests, err := h.friendSvc.GetFriendRequestList(c.Request.Context(), userID)
 	if err != nil {
 		Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
 		return

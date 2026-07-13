@@ -178,11 +178,11 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .ui-overlay--centered { align-items: center; justify-content: center; }
 .ui-overlay__backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(31, 34, 44, .18); backdrop-filter: blur(3px); cursor: default; }
 .ui-drawer, .ui-dialog { position: relative; z-index: 1; border: 1px solid rgba(255,255,255,.7); background: rgba(255,255,255,.93); box-shadow: var(--shadow-lg); backdrop-filter: blur(28px); }
-.ui-drawer { width: 390px; height: 100%; padding: 26px; }
+.ui-drawer { display: flex; width: 390px; height: 100%; box-sizing: border-box; flex-direction: column; overflow: hidden; padding: 26px; }
 .ui-overlay__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .ui-overlay__header h2, .ui-dialog h2 { margin: 0 0 6px; font-size: 18px; letter-spacing: -.02em; }
 .ui-overlay__header p, .ui-dialog p { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.6; }
-.ui-overlay__content { margin-top: 34px; }
+.ui-overlay__content { min-height: 0; flex: 1; margin-top: 34px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; scrollbar-width: thin; scrollbar-color: rgba(40,44,56,.18) transparent; }
 .ui-dialog { width: min(420px, calc(100% - 40px)); padding: 26px; border-radius: var(--radius-xl); }
 .ui-dialog footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 26px; }
 .drawer-profile { display: flex; align-items: center; gap: 16px; padding: 10px 2px 28px; }

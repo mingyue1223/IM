@@ -29,6 +29,8 @@ type mockFriendRepo struct {
 	blacklist map[string]*model.Blacklist
 	// 按 ID 存储用户（用于 GetFriendList 补充信息）
 	users map[int64]*model.User
+	// 按作者存储朋友圈，用于测试添加好友后的历史回填。
+	momentsByUser map[int64][]model.Moment
 	// 下一个自增 ID
 	nextRequestID int64
 	nextFriendID  int64
@@ -55,6 +57,7 @@ func newMockFriendRepo() *mockFriendRepo {
 		friendships:    make(map[string]*model.Friendship),
 		blacklist:      make(map[string]*model.Blacklist),
 		users:          make(map[int64]*model.User),
+		momentsByUser:  make(map[int64][]model.Moment),
 		nextRequestID:  1,
 		nextFriendID:   1,
 		nextBlackID:    1,
@@ -279,8 +282,18 @@ func (m *mockFriendRepo) CreateMoment(_ context.Context, _ *model.Moment) error 
 func (m *mockFriendRepo) GetMomentByID(_ context.Context, _ int64) (*model.Moment, error) {
 	return nil, nil
 }
-func (m *mockFriendRepo) GetMomentsByUser(_ context.Context, _ int64, _ int, _ int) ([]model.Moment, error) {
-	return nil, nil
+func (m *mockFriendRepo) GetMomentsByUser(_ context.Context, userID int64, limit, offset int) ([]model.Moment, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	moments := m.momentsByUser[userID]
+	if offset >= len(moments) {
+		return []model.Moment{}, nil
+	}
+	end := offset + limit
+	if end > len(moments) {
+		end = len(moments)
+	}
+	return append([]model.Moment(nil), moments[offset:end]...), nil
 }
 func (m *mockFriendRepo) CreateMomentLike(_ context.Context, _ *model.MomentLike) error { return nil }
 func (m *mockFriendRepo) DeleteMomentLike(_ context.Context, _ int64, _ int64) error    { return nil }
@@ -314,7 +327,15 @@ func (m *mockFriendRepo) SearchPrivateMessages(_ context.Context, _ int64, _ str
 // 模拟 RedisRepo，用于好友相关测试
 // ──────────────────────────────────────────────────────
 
-type mockFriendRedisRepo struct{}
+type friendMomentFanout struct {
+	recipientID int64
+	momentID    int64
+	timestamp   int64
+}
+
+type mockFriendRedisRepo struct {
+	momentFanouts []friendMomentFanout
+}
 
 func (m *mockFriendRedisRepo) WriteInbox(_ context.Context, _ int64, _ *model.InboxMessage) error {
 	return nil
@@ -389,7 +410,10 @@ func (m *mockFriendRedisRepo) PublishMomentFeed(_ context.Context, _ int64, _ in
 func (m *mockFriendRedisRepo) GetMomentFeed(_ context.Context, _ int64, _ int64, _ int) ([]int64, error) {
 	return nil, nil
 }
-func (m *mockFriendRedisRepo) FanoutMomentFeed(_ context.Context, _ []int64, _ int64, _ int64, _ int) error {
+func (m *mockFriendRedisRepo) FanoutMomentFeed(_ context.Context, recipientIDs []int64, momentID int64, timestamp int64, _ int) error {
+	for _, recipientID := range recipientIDs {
+		m.momentFanouts = append(m.momentFanouts, friendMomentFanout{recipientID: recipientID, momentID: momentID, timestamp: timestamp})
+	}
 	return nil
 }
 func (m *mockFriendRedisRepo) AddToOutbox(_ context.Context, _ int64, _ int64, _ int64, _ int) error {
@@ -414,6 +438,10 @@ func (m *mockFriendRedisRepo) SetFriendCache(_ context.Context, _ int64, _ int64
 func newTestFriendService(repo *mockFriendRepo) *FriendService {
 	logger := zap.NewNop()
 	return NewFriendService(repo, &mockFriendRedisRepo{}, logger)
+}
+
+func newTestFriendServiceWithRedis(repo *mockFriendRepo, redisRepo *mockFriendRedisRepo) *FriendService {
+	return NewFriendService(repo, redisRepo, zap.NewNop())
 }
 
 // ──────────────────────────────────────────────────────
@@ -580,6 +608,30 @@ func TestFriend_AcceptFriendRequest_Success(t *testing.T) {
 	assert.True(t, isFriend)
 }
 
+func TestFriend_AcceptFriendRequest_BackfillsVisibleMoments(t *testing.T) {
+	repo := newMockFriendRepo()
+	redisRepo := &mockFriendRedisRepo{}
+	svc := newTestFriendServiceWithRedis(repo, redisRepo)
+	now := time.Now()
+	repo.momentsByUser[1] = []model.Moment{
+		{ID: 101, AuthorID: 1, Visibility: 2, CreatedAt: now.Add(-time.Minute)},
+		{ID: 102, AuthorID: 1, Visibility: 3, CreatedAt: now},
+	}
+	repo.momentsByUser[2] = []model.Moment{
+		{ID: 201, AuthorID: 2, Visibility: 1, CreatedAt: now.Add(-2 * time.Minute)},
+	}
+
+	req, err := svc.SendFriendRequest(context.Background(), 1, 2, "hello")
+	assert.NoError(t, err)
+	_, err = svc.AcceptFriendRequest(context.Background(), 2, req.ID)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []friendMomentFanout{
+		{recipientID: 2, momentID: 101, timestamp: now.Add(-time.Minute).UnixMilli()},
+		{recipientID: 1, momentID: 201, timestamp: now.Add(-2 * time.Minute).UnixMilli()},
+	}, redisRepo.momentFanouts)
+}
+
 func TestFriend_AcceptFriendRequest_WrongTarget(t *testing.T) {
 	repo := newMockFriendRepo()
 	svc := newTestFriendService(repo)
@@ -682,6 +734,20 @@ func TestFriend_GetFriendRequests_OnlyPending(t *testing.T) {
 	if assert.Len(t, requests, 1) {
 		assert.Equal(t, int64(1), requests[0].ID)
 		assert.Equal(t, 0, requests[0].Status)
+	}
+}
+
+func TestFriend_GetFriendRequestList_IncludesApplicantProfile(t *testing.T) {
+	repo := newMockFriendRepo()
+	repo.users[2] = &model.User{ID: 2, Username: "applicant", AvatarURL: "/uploads/applicant.png"}
+	repo.friendRequests[1] = &model.FriendRequest{ID: 1, FromUserID: 2, ToUserID: 1, Status: 0}
+	svc := newTestFriendService(repo)
+
+	requests, err := svc.GetFriendRequestList(context.Background(), 1)
+	assert.NoError(t, err)
+	if assert.Len(t, requests, 1) {
+		assert.Equal(t, "applicant", requests[0].Username)
+		assert.Equal(t, "/uploads/applicant.png", requests[0].AvatarURL)
 	}
 }
 

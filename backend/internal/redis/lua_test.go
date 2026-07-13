@@ -347,10 +347,12 @@ func TestRevokeMsgPrivate(t *testing.T) {
 	ctx := context.Background()
 
 	userID := int64(100) // 原消息发送者
+	receiverID := int64(200)
 	convID := "p_100_200"
 	msgID := int64(12345)
-	inboxKey := fmt.Sprintf("inbox:%d", userID)
-	rdb.Del(ctx, inboxKey)
+	senderInboxKey := fmt.Sprintf("inbox:%d", userID)
+	receiverInboxKey := fmt.Sprintf("inbox:%d", receiverID)
+	rdb.Del(ctx, senderInboxKey, receiverInboxKey)
 
 	// 准备：向收件箱添加一条最近发送的消息
 	ts := time.Now().UnixMilli() - 30000 // 30 秒前（在 2 分钟窗口内）
@@ -366,7 +368,8 @@ func TestRevokeMsgPrivate(t *testing.T) {
 		"timestamp":  ts,
 	}
 	msgJSON, _ := json.Marshal(msg)
-	rdb.ZAdd(ctx, inboxKey, goredis.Z{Score: float64(ts), Member: string(msgJSON)})
+	rdb.ZAdd(ctx, senderInboxKey, goredis.Z{Score: float64(ts), Member: string(msgJSON)})
+	rdb.ZAdd(ctx, receiverInboxKey, goredis.Z{Score: float64(ts), Member: string(msgJSON)})
 
 	// 撤回消息 JSON (msgType=6)
 	revokeMsg := map[string]interface{}{
@@ -382,20 +385,24 @@ func TestRevokeMsgPrivate(t *testing.T) {
 	}
 	revokeJSON, _ := json.Marshal(revokeMsg)
 
-	defer cleanupKeys(t, rdb, ctx, inboxKey)
+	defer cleanupKeys(t, rdb, ctx, senderInboxKey, receiverInboxKey)
 
 	ok, err := ExecRevokeMsg(rdb, ctx, userID, convID, msgID, string(revokeJSON), time.Now().UnixMilli())
 	require.NoError(t, err)
 
 	assert.True(t, ok, "2 分钟内撤回应成功")
 
-	// 验证撤回后的消息在收件箱中
-	remaining, _ := rdb.ZRange(ctx, inboxKey, 0, -1).Result()
-	assert.Equal(t, 1, len(remaining), "收件箱应恰好包含 1 条消息")
-	var parsed map[string]interface{}
-	json.Unmarshal([]byte(remaining[0]), &parsed)
-	mt, _ := strconv.Atoi(fmt.Sprintf("%v", parsed["msgType"]))
-	assert.Equal(t, 6, mt, "消息类型应为撤回 (6)")
+	// 双方刷新时都从各自收件箱读取，因此两个副本都必须被替换。
+	for _, inboxKey := range []string{senderInboxKey, receiverInboxKey} {
+		remaining, _ := rdb.ZRange(ctx, inboxKey, 0, -1).Result()
+		if assert.Len(t, remaining, 1, "收件箱应恰好包含 1 条消息") {
+			var parsed map[string]interface{}
+			json.Unmarshal([]byte(remaining[0]), &parsed)
+			mt, _ := strconv.Atoi(fmt.Sprintf("%v", parsed["msgType"]))
+			assert.Equal(t, 6, mt, "消息类型应为撤回 (6)")
+			assert.Equal(t, ts, int64(parsed["timestamp"].(float64)), "撤回不得改变同步游标时间戳")
+		}
+	}
 }
 
 func TestRevokeMsgTooLate(t *testing.T) {

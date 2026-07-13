@@ -168,8 +168,7 @@ func (m *mockRedisRepo) GetGroupMemberships(_ context.Context, userID int64) ([]
 func (m *mockRedisRepo) GetGroupMembers(_ context.Context, groupID int64) ([]int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// 返回空列表 — 群成员推送由 MQ 消费者处理，而非 MsgService
-	return []int64{}, nil
+	return m.groupMembers[groupID], nil
 }
 
 func (m *mockRedisRepo) AddGroupMemberRedis(_ context.Context, _ int64, _ int64) error    { return nil }
@@ -979,12 +978,15 @@ func TestRevokeMsg_Fail(t *testing.T) {
 func TestRevokeMsg_Group(t *testing.T) {
 	redisMock := newMockRedisRepo()
 	redisMock.revokeResult = true
+	redisMock.groupMembers[100] = []int64{1, 2, 3}
 	mqMock := newMockMQRepo()
 	cm := conn.NewConnectionManager()
 	logger := testLogger()
 
 	sender := conn.NewClientConnection(1, nil)
+	member := conn.NewClientConnection(2, nil)
 	cm.Register(1, sender)
+	cm.Register(2, member)
 
 	svc := NewMsgService(redisMock, mqMock, cm, logger)
 
@@ -1002,7 +1004,14 @@ func TestRevokeMsg_Group(t *testing.T) {
 	wsMsg, _ := decodeWsMessage(msg)
 	assert.Equal(t, protocol.TypeMsgRevoked, wsMsg.Type)
 
-	// 对于群聊，不直接推送给其他成员（他们通过同步发现）
+	// 在线群成员无需刷新，也应立即收到撤回通知。
+	msg, ok = drainSendCh(member)
+	assert.True(t, ok)
+	wsMsg, _ = decodeWsMessage(msg)
+	assert.Equal(t, protocol.TypeMsgRevoked, wsMsg.Type)
+	var notification model.RevokedNotification
+	assert.NoError(t, json.Unmarshal(wsMsg.Data, &notification))
+	assert.Equal(t, int64(3001), notification.ServerMsgID)
 }
 
 func TestRevokeMsg_InvalidConvID(t *testing.T) {

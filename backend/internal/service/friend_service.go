@@ -10,6 +10,8 @@ import (
 	"github.com/goim/goim/internal/repository"
 )
 
+const friendMomentBackfillLimit = 1000
+
 // ── 好友服务错误常量 ──
 
 const (
@@ -158,12 +160,43 @@ func (s *FriendService) AcceptFriendRequest(ctx context.Context, userID, request
 		// 非致命：MySQL 已写入，缓存可在后续 IsFriend 查询时按需回填
 	}
 
+	// 动态流在发布时只分发给当时已是好友的用户。建立好友关系后，
+	// 回填双方最近可见的历史动态，避免新好友只能看到之后发布的内容。
+	// 回填失败不应回滚已成功创建的好友关系，后续新动态仍可正常分发。
+	for _, pair := range [][2]int64{{req.FromUserID, req.ToUserID}, {req.ToUserID, req.FromUserID}} {
+		if err := s.backfillFriendMoments(ctx, pair[0], pair[1]); err != nil {
+			s.logger.Warn("回填新好友的历史朋友圈失败",
+				zap.Int64("authorID", pair[0]),
+				zap.Int64("recipientID", pair[1]),
+				zap.Error(err),
+			)
+		}
+	}
+
 	s.logger.Debug("好友请求已接受",
 		zap.Int64("userID", userID),
 		zap.Int64("requestID", requestID),
 	)
 
 	return fs, nil
+}
+
+// backfillFriendMoments writes the author's recent friend-visible moments to
+// one newly-added friend's timeline. Private moments are deliberately omitted.
+func (s *FriendService) backfillFriendMoments(ctx context.Context, authorID, recipientID int64) error {
+	moments, err := s.mysqlRepo.GetMomentsByUser(ctx, authorID, friendMomentBackfillLimit, 0)
+	if err != nil {
+		return fmt.Errorf("读取历史朋友圈: %w", err)
+	}
+	for _, moment := range moments {
+		if moment.Visibility == 3 {
+			continue
+		}
+		if err := s.redisRepo.FanoutMomentFeed(ctx, []int64{recipientID}, moment.ID, moment.CreatedAt.UnixMilli(), friendMomentBackfillLimit); err != nil {
+			return fmt.Errorf("写入朋友圈时间线: %w", err)
+		}
+	}
+	return nil
 }
 
 // RejectFriendRequest 拒绝好友请求。验证：
@@ -206,6 +239,40 @@ func (s *FriendService) GetFriendRequests(ctx context.Context, userID int64) ([]
 		return nil, fmt.Errorf("获取好友请求: %w", err)
 	}
 	return requests, nil
+}
+
+// FriendRequestListItem adds the applicant's public profile to a friend request.
+// The embedded request keeps the existing response fields flat in JSON.
+type FriendRequestListItem struct {
+	model.FriendRequest
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// GetFriendRequestList returns pending incoming friend requests with applicant
+// usernames and avatar URLs for display in the client.
+func (s *FriendService) GetFriendRequestList(ctx context.Context, userID int64) ([]FriendRequestListItem, error) {
+	requests, err := s.GetFriendRequests(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]FriendRequestListItem, 0, len(requests))
+	for _, request := range requests {
+		user, err := s.mysqlRepo.GetUserByID(ctx, request.FromUserID)
+		if err != nil {
+			return nil, fmt.Errorf("获取申请人资料: %w", err)
+		}
+		if user == nil {
+			return nil, fmt.Errorf("获取申请人资料: 用户 %d 不存在", request.FromUserID)
+		}
+		items = append(items, FriendRequestListItem{
+			FriendRequest: request,
+			Username:      user.Username,
+			AvatarURL:     user.AvatarURL,
+		})
+	}
+	return items, nil
 }
 
 // FriendListItem 使用用户个人资料数据丰富 Friendship 信息。

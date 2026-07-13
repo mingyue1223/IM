@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUp, BellOff, CheckCheck, CircleAlert, LoaderCircle, MessageCircle, MoreHorizontal, Plus, RotateCcw, Search, WifiOff } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { Avatar, Badge, Drawer, EmptyState, IconButton, Switch, TextField } from "../components/ui";
 import { goimSocket } from "../realtime/socket";
@@ -47,7 +47,8 @@ export function ChatPage() {
   const [muteSaving, setMuteSaving] = useState(false);
   const [muteError, setMuteError] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messageScrollRef = useRef<HTMLDivElement>(null);
+  const initiallyPositionedConversationRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (conversationId && mode === "live" && conversations.length > 0 && !selected) navigate(`/app/chats/${conversations[0].id}`, { replace: true });
@@ -59,9 +60,19 @@ export function ChatPage() {
     if (!previewMode && connectionState === "connected") goimSocket.send({ type: "readAck", data: { convId: selectedId } });
   }, [connectionState, markConversationRead, messages.length, previewMode, selectedId]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
-  }, [conversationId, messages.length, reduceMotion]);
+  useLayoutEffect(() => {
+    if (!selectedId || (mode === "live" && !syncCompleted)) return;
+    const scrollContainer = messageScrollRef.current;
+    if (!scrollContainer) return;
+
+    const isInitialPosition = initiallyPositionedConversationRef.current !== selectedId;
+    if (isInitialPosition) {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      initiallyPositionedConversationRef.current = selectedId;
+      return;
+    }
+    scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" });
+  }, [messages.length, mode, reduceMotion, selectedId, syncCompleted]);
 
   const sendMessage = () => {
     const content = draft.trim();
@@ -123,10 +134,12 @@ export function ChatPage() {
             <header className="chat-header">
               <IconButton label="返回会话列表" className="chat-header__back" onClick={() => navigate("/app/chats")}><ArrowLeft size={19} /></IconButton>
               <div className="chat-header__person"><Avatar name={selected.name} online={selected.online} src={selected.avatarUrl} /><div><h2>{selected.name}</h2><p>{selected.group ? "群聊" : selected.online ? "在线" : "离线"}</p></div></div>
-              <div className="chat-header__actions"><IconButton label="查看聊天资料" onClick={() => setDrawerOpen(true)}><MoreHorizontal size={19} /></IconButton></div>
+              <div className="chat-header__actions">
+                <IconButton label="查看聊天资料" onClick={() => setDrawerOpen(true)}><MoreHorizontal size={19} /></IconButton>
+              </div>
             </header>
             {connectionState !== "connected" && !previewMode && <div className="chat-connection-banner"><WifiOff size={14} /><span>{connectionLabels[connectionState]}，未确认的消息会保留并允许重试。</span></div>}
-            <div className="message-scroll">
+            <div className="message-scroll" ref={messageScrollRef}>
               <div className="message-day"><span>今天</span></div>
               {messages.length === 0 && <div className="conversation-empty"><MessageCircle size={21} /><p>还没有消息，发一句问候吧。</p></div>}
               <AnimatePresence initial={false}>
@@ -149,7 +162,6 @@ export function ChatPage() {
                   </motion.div>
                 ))}
               </AnimatePresence>
-              <div ref={bottomRef} />
             </div>
             <footer className="composer-wrap"><div className="composer"><textarea aria-label="输入消息" maxLength={2000} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder="输入消息…" rows={1} value={draft} /><span className="composer__count">{draft.length}/2000</span><button aria-label="发送消息" className="composer__send" disabled={!draft.trim()} onClick={sendMessage} type="button"><ArrowUp size={20} /></button></div></footer>
           </>

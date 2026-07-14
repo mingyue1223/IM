@@ -449,6 +449,42 @@
   .auth-caption { bottom: max(16px, env(safe-area-inset-bottom)); }
 }
 
+.history-loader { display: flex; justify-content: center; min-height: 34px; margin-bottom: 8px; }
+.message-image { display: block; overflow: hidden; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); }
+.message-image img { display: block; width: min(320px, 62vw); max-height: 360px; object-fit: contain; }
+.message-file { display: grid; grid-template-columns: 28px minmax(0, 1fr) 18px; align-items: center; gap: 10px; width: min(330px, 68vw); padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text); background: var(--color-surface); text-decoration: none; }
+.message-file span { min-width: 0; display: grid; gap: 3px; }
+.message-file strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.message-file small { color: var(--color-text-tertiary); font-size: 11px; }
+.message-reply-preview { display: flex; align-items: center; gap: 5px; max-width: 320px; padding: 5px 8px; border-left: 2px solid var(--color-accent); color: var(--color-text-secondary); background: var(--color-surface-hover); font-size: 11px; }
+.message-reply-preview span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-icon-action { display: inline-grid; place-items: center; border: 0; padding: 2px; color: inherit; background: transparent; cursor: pointer; }
+.message-row.is-system { justify-content: center; }
+.message-row.is-system .message-stack { align-items: center; }
+.message-bubble--system { max-width: min(520px, 80vw); padding: 6px 10px; border-radius: 4px; color: var(--color-text-secondary); background: var(--color-surface-hover); font-size: 12px; text-align: center; }
+.composer-tools { display: flex; align-items: center; gap: 4px; min-height: 34px; padding: 0 4px 4px; }
+.composer-reply { display: grid; grid-template-columns: 18px minmax(0, 1fr) 32px; align-items: center; gap: 7px; margin-bottom: 6px; padding: 7px 9px; border-left: 2px solid var(--color-accent); background: var(--color-surface-hover); }
+.composer-reply span { min-width: 0; display: grid; gap: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.composer-reply strong { color: var(--color-accent); font-size: 11px; }
+.composer-error { margin: 0 4px 5px; color: #c64242; font-size: 12px; }
+.message-search-form { display: grid; gap: 12px; }
+.message-search-form input[type="datetime-local"] { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--color-text); background: transparent; }
+.message-search-results { display: grid; gap: 2px; margin-top: 18px; border-top: 1px solid var(--color-border); }
+.message-search-results > button { display: grid; gap: 6px; width: 100%; padding: 12px 2px; border: 0; border-bottom: 1px solid var(--color-border); color: var(--color-text); background: transparent; text-align: left; cursor: pointer; }
+.message-search-results > button:hover { background: var(--color-surface-hover); }
+.message-search-results > button > span { display: flex; justify-content: space-between; gap: 10px; color: var(--color-text-secondary); font-size: 11px; }
+.message-search-results p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.message-search-empty { padding: 24px 0; color: var(--color-text-tertiary); text-align: center; }
+.contact-profile__section header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.contact-edit-remark { display: inline-flex; align-items: center; gap: 5px; border: 0; color: var(--color-accent); background: transparent; cursor: pointer; }
+.contact-remark-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; margin: 12px 0; }
+
+@media (max-width: 720px) {
+  .message-image img { width: min(260px, 72vw); max-height: 300px; }
+  .message-file { width: min(280px, 76vw); }
+  .composer-tools { min-height: 38px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-workspace, .request-panel__content { transform: none !important; }
 }

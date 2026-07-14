@@ -40,10 +40,11 @@ export function useFriends() {
   const removeMutation = useMutation({ mutationFn: (friendId: number) => friendsApi.remove(friendId), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["friends"] }) });
   const blockMutation = useMutation({ mutationFn: (friendId: number) => friendsApi.block({ blocked_id: friendId }), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["friends"] }) });
   const unblockMutation = useMutation({ mutationFn: (friendId: number) => friendsApi.unblock({ blocked_id: friendId }), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["friends"] }) });
+  const remarkMutation = useMutation({ mutationFn: (input: { friendId: number; remark: string }) => friendsApi.updateRemark(input.friendId, { remark: input.remark }), onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["friends"] }) });
 
   const contacts: FriendView[] = useMemo(() => {
     if (previewMode) return localContacts.map((contact) => ({ routeId: contact.id, userId: previewIds[contact.id], name: contact.name, note: contact.note, online: contact.online, location: contact.location, groups: contact.groups, isBlocked: false }));
-    return (friendsQuery.data?.items ?? []).map((friend) => ({ routeId: String(friend.friend_id), userId: friend.friend_id, name: friend.nickname || `用户 #${friend.friend_id}`, avatarUrl: friend.avatar_url, note: "好友", online: friend.online, isBlocked: friend.is_blocked }));
+    return (friendsQuery.data?.items ?? []).map((friend) => ({ routeId: String(friend.friend_id), userId: friend.friend_id, name: friend.remark || friend.nickname || `用户 #${friend.friend_id}`, avatarUrl: friend.avatar_url, note: friend.remark && friend.nickname ? friend.nickname : "好友", online: friend.online, isBlocked: friend.is_blocked }));
   }, [friendsQuery.data, localContacts, previewMode]);
 
   const requests = previewMode ? localRequests : (requestsQuery.data?.items ?? []);
@@ -84,18 +85,23 @@ export function useFriends() {
     if (previewMode) return;
     await unblockMutation.mutateAsync(friendId);
   };
+  const updateRemark = async (friendId: number, remark: string) => {
+    if (previewMode) return;
+    await remarkMutation.mutateAsync({ friendId, remark });
+  };
 
   return {
     contacts,
     requests,
     isLoading: !previewMode && (friendsQuery.isLoading || requestsQuery.isLoading),
     error: friendsQuery.error ?? requestsQuery.error,
-    isMutating: acceptMutation.isPending || rejectMutation.isPending || sendMutation.isPending || removeMutation.isPending || blockMutation.isPending || unblockMutation.isPending,
+    isMutating: acceptMutation.isPending || rejectMutation.isPending || sendMutation.isPending || removeMutation.isPending || blockMutation.isPending || unblockMutation.isPending || remarkMutation.isPending,
     accept,
     reject,
     sendRequest,
     remove,
     block,
     unblock,
+    updateRemark,
   };
 }

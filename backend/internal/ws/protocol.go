@@ -23,6 +23,7 @@ const (
 	TypeFriendApply    = protocol.TypeFriendApply
 	TypeFriendAccepted = protocol.TypeFriendAccepted
 	TypePresence       = protocol.TypePresence
+	TypeTyping         = protocol.TypeTyping
 	TypeError          = protocol.TypeError
 	TypePing           = protocol.TypePing
 	TypePong           = protocol.TypePong

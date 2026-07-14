@@ -50,6 +50,10 @@ func (d *MessageDispatcher) HandleMessage(c *conn.ClientConnection, rawMsg []byt
 		if d.MsgSvc != nil {
 			d.MsgSvc.HandleRevokeMsg(c.UserID, msg.Data)
 		}
+	case TypeTyping:
+		if d.MsgSvc != nil {
+			d.MsgSvc.HandleTyping(c.UserID, msg.Data)
+		}
 	case TypeFriendApply:
 		if d.FriendSvc != nil {
 			d.FriendSvc.HandleFriendApply(c.UserID, msg.Data)

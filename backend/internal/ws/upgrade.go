@@ -22,6 +22,11 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
+type PresenceHooks struct {
+	OnConnect    func(userID int64)
+	OnDisconnect func(userID int64)
+}
+
 // ServeWebSocket 返回一个 Gin 处理函数，该处理函数执行以下操作：
 //  1. 从查询参数 (?token=...) 验证 JWT 令牌
 //  2. 将 HTTP 连接升级为 WebSocket
@@ -29,8 +34,12 @@ var upgrader = websocket.Upgrader{
 //  4. 踢掉同一用户的现有连接（单设备策略）
 //  5. 更新 Redis 在线状态（online:{userID} TTL=60s, conn:{userID} TTL=60s）
 //  6. 启动 ReadPump 和 WritePump 协程
-func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionManager, msgHandler func(*conn.ClientConnection, []byte)) gin.HandlerFunc {
+func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionManager, msgHandler func(*conn.ClientConnection, []byte), presenceHooks ...PresenceHooks) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var hooks PresenceHooks
+		if len(presenceHooks) > 0 {
+			hooks = presenceHooks[0]
+		}
 		// JWT 认证 — WebSocket 的令牌通过查询参数传递
 		token := c.Query("token")
 		if token == "" {
@@ -56,6 +65,9 @@ func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionMana
 
 		// 踢掉该用户的旧连接（单设备策略）
 		cm.KickOld(claims.UserID, client)
+		if hooks.OnConnect != nil {
+			go hooks.OnConnect(claims.UserID)
+		}
 
 		// 更新 Redis 在线状态（nil 保护 — Redis 在测试环境中为可选项）
 		if rdb != nil {
@@ -80,9 +92,17 @@ func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionMana
 				for {
 					select {
 					case <-done:
+						active, ok := cm.Get(userID)
+						if !ok || active != client {
+							return
+						}
+						cm.Delete(userID)
 						ctx := context.Background()
 						if err := rdb.Del(ctx, fmt.Sprintf("online:%d", userID), fmt.Sprintf("conn:%d", userID)).Err(); err != nil {
 							log.Printf("Redis 清理在线键错误: %v", err)
+						}
+						if hooks.OnDisconnect != nil {
+							go hooks.OnDisconnect(userID)
 						}
 						return
 					case <-ticker.C:
@@ -94,6 +114,18 @@ func ServeWebSocket(jwtSecret string, rdb *redis.Client, cm *conn.ConnectionMana
 							log.Printf("Redis 刷新连接键错误: %v", err)
 						}
 					}
+				}
+			}(claims.UserID, client.CloseCh)
+		} else {
+			go func(userID int64, done <-chan struct{}) {
+				<-done
+				active, ok := cm.Get(userID)
+				if !ok || active != client {
+					return
+				}
+				cm.Delete(userID)
+				if hooks.OnDisconnect != nil {
+					hooks.OnDisconnect(userID)
 				}
 			}(claims.UserID, client.CloseCh)
 		}

@@ -6,6 +6,7 @@ import { useChatStore } from "../../stores/chatStore";
 import { goimSocket } from "../../realtime/socket";
 import { friendsApi, groupsApi, settingsApi } from "../../lib/api";
 import { configureNotifications, notifyIncomingMessage } from "../../realtime/notifications";
+import { queryClient } from "../../lib/queryClient";
 
 let loadedSettings: Awaited<ReturnType<typeof settingsApi.get>> | null = null;
 
@@ -30,7 +31,7 @@ async function refreshPrivateConversationIdentities() {
     }
     for (const friend of page.items) {
       const conversation = chat.conversations.find((item) => !item.group && item.targetId === friend.friend_id);
-      const name = friend.nickname || `用户 #${friend.friend_id}`;
+      const name = friend.remark || friend.nickname || `用户 #${friend.friend_id}`;
       if (conversation) chat.setConversationIdentity(conversation.id, name, friend.avatar_url, friend.online);
       else if (chat.liveUserId) chat.addPrivateConversation(buildPrivateConvId(chat.liveUserId, friend.friend_id), friend.friend_id, name, friend.avatar_url);
     }
@@ -48,7 +49,8 @@ function handleServerMessage(message: ServerWsMessage, currentUserId: number, cl
     case "msg":
       if (message.data.fromId !== currentUserId) {
         const conversation = chat.conversations.find((item) => item.id === message.data.convId);
-        notifyIncomingMessage({ convId: message.data.convId, title: conversation?.name ?? (message.data.convType === 2 ? "群聊新消息" : "好友新消息"), content: message.data.content });
+        const content = message.data.msgType === 2 ? "[图片]" : message.data.msgType === 4 ? "[文件]" : message.data.content;
+        notifyIncomingMessage({ convId: message.data.convId, title: conversation?.name ?? (message.data.convType === 2 ? "群聊新消息" : "好友新消息"), content });
       }
       chat.receiveMessage(message.data, currentUserId);
       goimSocket.send({ type: "deliverAck", data: { serverMsgId: message.data.msgId } });
@@ -63,6 +65,20 @@ function handleServerMessage(message: ServerWsMessage, currentUserId: number, cl
           useChatStore.getState().addGroupConversation(group.id, group.name);
         }).catch(() => undefined);
       }
+      break;
+    case "typing": {
+      chat.setTyping(message.data.convId, message.data.typing);
+      if (message.data.typing) {
+        const stamp = useChatStore.getState().typingByConversation[message.data.convId];
+        window.setTimeout(() => {
+          if (useChatStore.getState().typingByConversation[message.data.convId] === stamp) useChatStore.getState().setTyping(message.data.convId, false);
+        }, 2_500);
+      }
+      break;
+    }
+    case "presence":
+      chat.setPresence(message.data.userId, message.data.online);
+      void queryClient.invalidateQueries({ queryKey: ["friends"] });
       break;
     case "syncBatch":
       chat.applySyncBatch(message.data, currentUserId);

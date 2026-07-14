@@ -10,6 +10,7 @@ const (
 	MsgTypeText    = 1
 	MsgTypeImage   = 2
 	MsgTypeVideo   = 3
+	MsgTypeFile    = 4
 	MsgTypeSystem  = 5
 	MsgTypeRevoked = 6
 

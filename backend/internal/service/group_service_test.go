@@ -240,6 +240,23 @@ func (m *mockGroupMySQLRepo) SearchPrivateMessages(_ context.Context, _ int64, _
 	return nil, nil
 }
 
+func (m *mockGroupMySQLRepo) UpdateGroupMemberMute(_ context.Context, groupID, userID int64, mutedUntil *time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := fmt.Sprintf("%d:%d", groupID, userID)
+	member, ok := m.membersByKey[key]
+	if !ok {
+		return fmt.Errorf("member not found")
+	}
+	member.MutedUntil = mutedUntil
+	for i := range m.membersByGroup[groupID] {
+		if m.membersByGroup[groupID][i].UserID == userID {
+			m.membersByGroup[groupID][i].MutedUntil = mutedUntil
+		}
+	}
+	return nil
+}
+
 // ──────────────────────────────────────────────────────
 // 模拟 RedisRepo 用于群组测试
 // ──────────────────────────────────────────────────────
@@ -262,6 +279,10 @@ func newMockGroupRedisRepo() *mockGroupRedisRepo {
 		groupMembersSets: make(map[int64]map[string]bool),
 		userGroupsSets:   make(map[int64]map[string]bool),
 	}
+}
+
+func (r *mockGroupRedisRepo) SetGroupMemberMute(_ context.Context, _ int64, _ int64, _ *time.Time) error {
+	return nil
 }
 
 func (r *mockGroupRedisRepo) GetGroupMemberships(_ context.Context, userID int64) ([]int64, error) {
@@ -851,6 +872,34 @@ func TestGroup_GetMembers_Success(t *testing.T) {
 	members, err := svc.GetMembers(context.Background(), groupID)
 	assert.NoError(t, err)
 	assert.Len(t, members, 3) // 群主 + 2名成员
+}
+
+func TestGroup_SetMemberMute(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	_ = svc.AddMember(context.Background(), groupID, 1, 2)
+	until := time.Now().Add(10 * time.Minute)
+
+	err := svc.SetMemberMute(context.Background(), 1, groupID, 2, &until)
+	assert.NoError(t, err)
+	assert.NotNil(t, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].MutedUntil)
+
+	err = svc.SetMemberMute(context.Background(), 1, groupID, 2, nil)
+	assert.NoError(t, err)
+	assert.Nil(t, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].MutedUntil)
+}
+
+func TestGroup_AdminCannotMuteAdmin(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	_ = mysqlRepo.AddGroupMember(context.Background(), &model.GroupMember{GroupID: groupID, UserID: 2, Role: model.RoleAdmin})
+	_ = mysqlRepo.AddGroupMember(context.Background(), &model.GroupMember{GroupID: groupID, UserID: 3, Role: model.RoleAdmin})
+	until := time.Now().Add(time.Minute)
+	assert.EqualError(t, svc.SetMemberMute(context.Background(), 2, groupID, 3, &until), ErrCannotMutePeer)
 }
 
 // ── 高并发点赞新增接口的 mock 桩 ──

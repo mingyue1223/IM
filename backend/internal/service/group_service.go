@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -27,11 +29,75 @@ const (
 
 const maxGroupMembers = 500
 
+const (
+	ErrCannotMutePeer  = "administrators can only mute regular members"
+	ErrCannotMuteOwner = "the group owner cannot be muted"
+)
+
 // GroupService 处理群组相关的业务逻辑。
 type GroupService struct {
 	mysqlRepo repository.MySQLRepo
 	redisRepo repository.RedisRepo
 	logger    *zap.Logger
+}
+
+type groupMuteStore interface {
+	UpdateGroupMemberMute(ctx context.Context, groupID, userID int64, mutedUntil *time.Time) error
+}
+
+type groupMuteCache interface {
+	SetGroupMemberMute(ctx context.Context, groupID, userID int64, mutedUntil *time.Time) error
+}
+
+func (s *GroupService) SetMemberMute(ctx context.Context, actorID, groupID, memberID int64, mutedUntil *time.Time) error {
+	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get group members: %w", err)
+	}
+	var actor, target *model.GroupMember
+	for i := range members {
+		if members[i].UserID == actorID {
+			actor = &members[i]
+		}
+		if members[i].UserID == memberID {
+			target = &members[i]
+		}
+	}
+	if actor == nil || actor.Role < model.RoleAdmin {
+		return fmt.Errorf(ErrNotOwnerOrAdmin)
+	}
+	if target == nil {
+		return fmt.Errorf(ErrMemberNotFound)
+	}
+	if target.Role == model.RoleOwner {
+		return fmt.Errorf(ErrCannotMuteOwner)
+	}
+	if actor.Role == model.RoleAdmin && target.Role != model.RoleMember {
+		return fmt.Errorf(ErrCannotMutePeer)
+	}
+	if mutedUntil != nil {
+		if !mutedUntil.After(time.Now()) {
+			mutedUntil = nil
+		} else if mutedUntil.After(time.Now().Add(30 * 24 * time.Hour)) {
+			return fmt.Errorf("mute duration cannot exceed 30 days")
+		}
+	}
+	store, ok := s.mysqlRepo.(groupMuteStore)
+	if !ok {
+		return fmt.Errorf("group mute storage is unavailable")
+	}
+	if err := store.UpdateGroupMemberMute(ctx, groupID, memberID, mutedUntil); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf(ErrMemberNotFound)
+		}
+		return err
+	}
+	if cache, ok := s.redisRepo.(groupMuteCache); ok {
+		if err := cache.SetGroupMemberMute(ctx, groupID, memberID, mutedUntil); err != nil {
+			s.logger.Warn("failed to update group mute cache", zap.Error(err))
+		}
+	}
+	return nil
 }
 
 // NewGroupService 使用给定的仓库和日志记录器创建一个 GroupService。

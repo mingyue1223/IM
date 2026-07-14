@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -37,6 +38,10 @@ type friendCacheRemover interface {
 	DeleteFriendCache(ctx context.Context, uidA, uidB int64) error
 }
 
+type friendRemarkStore interface {
+	UpdateFriendRemark(ctx context.Context, userID, friendID int64, remark string) error
+}
+
 // NewFriendService 创建一个包含所有必要依赖的 FriendService。
 func NewFriendService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, logger *zap.Logger) *FriendService {
 	return &FriendService{
@@ -44,6 +49,25 @@ func NewFriendService(mysqlRepo repository.MySQLRepo, redisRepo repository.Redis
 		redisRepo: redisRepo,
 		logger:    logger,
 	}
+}
+
+func (s *FriendService) UpdateFriendRemark(ctx context.Context, userID, friendID int64, remark string) error {
+	remark = strings.TrimSpace(remark)
+	if len([]rune(remark)) > 50 {
+		return fmt.Errorf("friend remark cannot exceed 50 characters")
+	}
+	isFriend, err := s.mysqlRepo.IsFriend(ctx, userID, friendID)
+	if err != nil {
+		return err
+	}
+	if !isFriend {
+		return fmt.Errorf("friend not found")
+	}
+	store, ok := s.mysqlRepo.(friendRemarkStore)
+	if !ok {
+		return fmt.Errorf("friend remark storage is unavailable")
+	}
+	return store.UpdateFriendRemark(ctx, userID, friendID, remark)
 }
 
 func (s *FriendService) GetUserByID(ctx context.Context, userID int64) (*model.User, error) {

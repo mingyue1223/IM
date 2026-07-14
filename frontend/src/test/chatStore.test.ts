@@ -4,7 +4,7 @@ import { useChatStore } from "../stores/chatStore";
 describe("chat message state", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    useChatStore.setState({ mode: null, liveUserId: null, connectionState: "idle", syncCompleted: false, conversations: [], messagesByConversation: {}, lastSyncTime: 0, lastSyncMsgId: 0 });
+    useChatStore.setState({ mode: null, liveUserId: null, connectionState: "idle", syncCompleted: false, conversations: [], messagesByConversation: {}, typingByConversation: {}, lastSyncTime: 0, lastSyncMsgId: 0 });
   });
 
   it("hydrates the preview conversations", () => {
@@ -94,5 +94,30 @@ describe("chat message state", () => {
     useChatStore.getState().removeConversation("g_22");
     expect(useChatStore.getState().conversations).toEqual([]);
     expect(useChatStore.getState().messagesByConversation["g_22"]).toBeUndefined();
+  });
+
+  it("parses image attachment metadata and keeps reply references", () => {
+    useChatStore.getState().initializeLive(1);
+    const content = JSON.stringify({ id: 7, url: "/uploads/attachments/picture.png", name: "picture.png", size: 128, mimeType: "image/png", kind: "image" });
+    useChatStore.getState().receiveMessage({ msgId: 30, convId: "p_1_2", convType: 1, fromId: 2, toId: 1, msgType: 2, content, replyToMsgId: 29, readStatus: 0, timestamp: 300 }, 1);
+    expect(useChatStore.getState().messagesByConversation["p_1_2"][0]).toMatchObject({ replyToMsgId: 29, attachment: { name: "picture.png", kind: "image" } });
+    expect(useChatStore.getState().conversations[0].preview).toBe("[图片]");
+  });
+
+  it("prepends history without duplicating live messages", () => {
+    useChatStore.getState().initializeLive(1);
+    const latest = { msgId: 41, convId: "p_1_2", convType: 1 as const, fromId: 2, toId: 1, msgType: 1 as const, content: "latest", readStatus: 0, timestamp: 410 };
+    useChatStore.getState().receiveMessage(latest, 1);
+    useChatStore.getState().prependHistory("p_1_2", [{ ...latest, msgId: 40, content: "older", timestamp: 400 }, latest], 1);
+    expect(useChatStore.getState().messagesByConversation["p_1_2"].map((message) => message.serverMsgId)).toEqual([40, 41]);
+  });
+
+  it("applies typing and presence events to conversation state", () => {
+    useChatStore.getState().initializeLive(1);
+    useChatStore.getState().receiveMessage({ msgId: 50, convId: "p_1_2", convType: 1, fromId: 2, toId: 1, msgType: 1, content: "hello", readStatus: 0, timestamp: 500 }, 1);
+    useChatStore.getState().setTyping("p_1_2", true);
+    useChatStore.getState().setPresence(2, true);
+    expect(useChatStore.getState().typingByConversation["p_1_2"]).toBeTypeOf("number");
+    expect(useChatStore.getState().conversations[0].online).toBe(true);
   });
 });

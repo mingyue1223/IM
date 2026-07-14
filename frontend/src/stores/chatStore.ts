@@ -26,11 +26,23 @@ export interface ChatMessage {
   from: "me" | "other";
   senderId: number;
   content: string;
+  msgType: MsgType;
+  attachment?: ChatAttachment;
+  replyToMsgId?: number;
   time: string;
   timestamp: number;
   status: "sent" | "pending" | "failed" | "revoked";
   outbound?: SendMessage;
   error?: string;
+}
+
+export interface ChatAttachment {
+  id: number;
+  url: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  kind: "image" | "file";
 }
 
 interface ChatState {
@@ -40,18 +52,23 @@ interface ChatState {
   syncCompleted: boolean;
   conversations: ChatConversation[];
   messagesByConversation: Record<string, ChatMessage[]>;
+  typingByConversation: Record<string, number>;
   lastSyncTime: number;
   lastSyncMsgId: number;
   initializePreview: () => void;
   initializeLive: (userId: number) => void;
   resetSession: () => void;
   setConnectionState: (state: ConnectionState) => void;
-  sendText: (conversation: ChatConversation, content: string, preview: boolean) => void;
+  sendText: (conversation: ChatConversation, content: string, preview: boolean, replyToMsgId?: number) => void;
+  sendAttachment: (conversation: ChatConversation, attachment: ChatAttachment, preview: boolean, replyToMsgId?: number) => void;
   retryMessage: (convId: string, messageId: string, preview: boolean) => void;
   markConversationRead: (convId: string) => void;
   acknowledge: (ack: ServerAck) => void;
   failLatestPending: (message: string) => void;
   receiveMessage: (message: InboxMessage, currentUserId: number) => void;
+  prependHistory: (convId: string, messages: InboxMessage[], currentUserId: number) => void;
+  setTyping: (convId: string, typing: boolean) => void;
+  setPresence: (userId: number, online: boolean) => void;
   setConversationIdentity: (convId: string, name: string, avatarUrl?: string, online?: boolean) => void;
   applySyncBatch: (batch: SyncBatch, currentUserId: number) => void;
   applyConversationSync: (summaries: ConvSummary[], unreadMap: Record<string, number>) => void;
@@ -89,6 +106,7 @@ function previewState() {
       from: message.from,
       senderId: message.from === "me" ? 0 : -1,
       content: message.content,
+      msgType: MsgType.Text,
       time: message.time,
       timestamp: Date.now() - (messages.length - index) * 60_000,
       status: message.status ?? "sent",
@@ -98,6 +116,10 @@ function previewState() {
 }
 
 function serverMessageToChat(message: InboxMessage, currentUserId: number): ChatMessage {
+  let attachment: ChatAttachment | undefined;
+  if (message.msgType === MsgType.Image || message.msgType === MsgType.File) {
+    try { attachment = JSON.parse(message.content) as ChatAttachment; } catch { attachment = undefined; }
+  }
   return {
     id: `server-${message.msgId}`,
     serverMsgId: message.msgId,
@@ -105,6 +127,9 @@ function serverMessageToChat(message: InboxMessage, currentUserId: number): Chat
     from: message.fromId === currentUserId ? "me" : "other",
     senderId: message.fromId,
     content: message.content,
+    msgType: message.msgType,
+    attachment,
+    replyToMsgId: message.replyToMsgId,
     time: formatTime(message.timestamp),
     timestamp: message.timestamp,
     status: message.msgType === MsgType.Revoked ? "revoked" : "sent",
@@ -129,6 +154,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   syncCompleted: false,
   conversations: [],
   messagesByConversation: {},
+  typingByConversation: {},
   lastSyncTime: 0,
   lastSyncMsgId: 0,
 
@@ -138,16 +164,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   initializeLive: (userId) => {
     if (get().mode === "live" && get().liveUserId === userId) return;
-    set({ mode: "live", liveUserId: userId, connectionState: "connecting", syncCompleted: false, conversations: [], messagesByConversation: {}, lastSyncTime: 0, lastSyncMsgId: 0 });
+    set({ mode: "live", liveUserId: userId, connectionState: "connecting", syncCompleted: false, conversations: [], messagesByConversation: {}, typingByConversation: {}, lastSyncTime: 0, lastSyncMsgId: 0 });
   },
-  resetSession: () => set({ mode: null, liveUserId: null, connectionState: "idle", syncCompleted: false, conversations: [], messagesByConversation: {}, lastSyncTime: 0, lastSyncMsgId: 0 }),
+  resetSession: () => set({ mode: null, liveUserId: null, connectionState: "idle", syncCompleted: false, conversations: [], messagesByConversation: {}, typingByConversation: {}, lastSyncTime: 0, lastSyncMsgId: 0 }),
   setConnectionState: (connectionState) => set({ connectionState }),
 
-  sendText: (conversation, content, preview) => {
+  sendText: (conversation, content, preview, replyToMsgId) => {
     const clientMsgId = crypto.randomUUID();
     const timestamp = Date.now();
-    const outbound: SendMessage = { msgId: clientMsgId, convType: conversation.convType, toId: conversation.targetId, msgType: MsgType.Text, content, timestamp };
-    const localMessage: ChatMessage = { id: `client-${clientMsgId}`, clientMsgId, convId: conversation.id, from: "me", senderId: get().liveUserId ?? 0, content, time: formatTime(timestamp), timestamp, status: "pending", outbound };
+    const outbound: SendMessage = { msgId: clientMsgId, convType: conversation.convType, toId: conversation.targetId, msgType: MsgType.Text, content, replyToMsgId, timestamp };
+    const localMessage: ChatMessage = { id: `client-${clientMsgId}`, clientMsgId, convId: conversation.id, from: "me", senderId: get().liveUserId ?? 0, content, msgType: MsgType.Text, replyToMsgId, time: formatTime(timestamp), timestamp, status: "pending", outbound };
     set((state) => ({
       messagesByConversation: { ...state.messagesByConversation, [conversation.id]: [...(state.messagesByConversation[conversation.id] ?? []), localMessage] },
       conversations: [
@@ -163,6 +189,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return;
     }
     if (!goimSocket.send({ type: "msg", data: outbound })) {
+      set((state) => ({ messagesByConversation: { ...state.messagesByConversation, [conversation.id]: state.messagesByConversation[conversation.id].map((message) => message.id === localMessage.id ? { ...message, status: "failed", error: "连接不可用" } : message) } }));
+    }
+  },
+
+  sendAttachment: (conversation, attachment, preview, replyToMsgId) => {
+    const clientMsgId = crypto.randomUUID();
+    const timestamp = Date.now();
+    const content = JSON.stringify(attachment);
+    const msgType = attachment.kind === "image" ? MsgType.Image : MsgType.File;
+    const outbound: SendMessage = { msgId: clientMsgId, convType: conversation.convType, toId: conversation.targetId, msgType, content, replyToMsgId, timestamp };
+    const localMessage: ChatMessage = { id: `client-${clientMsgId}`, clientMsgId, convId: conversation.id, from: "me", senderId: get().liveUserId ?? 0, content, msgType, attachment, replyToMsgId, time: formatTime(timestamp), timestamp, status: "pending", outbound };
+    set((state) => ({
+      messagesByConversation: { ...state.messagesByConversation, [conversation.id]: [...(state.messagesByConversation[conversation.id] ?? []), localMessage] },
+      conversations: state.conversations.map((item) => item.id === conversation.id ? { ...item, preview: attachment.kind === "image" ? "[图片]" : `[文件] ${attachment.name}`, time: "刚刚" } : item),
+    }));
+    if (preview) {
+      window.setTimeout(() => get().acknowledge({ clientMsgId, serverMsgId: timestamp, timestamp: Date.now() }), 420);
+    } else if (!goimSocket.send({ type: "msg", data: outbound })) {
       set((state) => ({ messagesByConversation: { ...state.messagesByConversation, [conversation.id]: state.messagesByConversation[conversation.id].map((message) => message.id === localMessage.id ? { ...message, status: "failed", error: "连接不可用" } : message) } }));
     }
   },
@@ -206,14 +250,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const targetId = message.convType === ConvType.Group
       ? message.toId
       : message.fromId === currentUserId ? message.toId : message.fromId;
+    const preview = message.msgType === MsgType.Image ? "[图片]" : message.msgType === MsgType.File ? "[文件]" : message.content;
     const updatedConversation: ChatConversation = existingConversation
-      ? { ...existingConversation, preview: message.content, time: formatTime(message.timestamp), unread: existingConversation.unread + (message.fromId === currentUserId ? 0 : 1) }
-      : { id: message.convId, name: message.convType === ConvType.Group ? `群聊 #${message.toId}` : `用户 #${targetId}`, preview: message.content, time: formatTime(message.timestamp), unread: message.fromId === currentUserId ? 0 : 1, targetId, convType: message.convType, group: message.convType === ConvType.Group };
+      ? { ...existingConversation, preview, time: formatTime(message.timestamp), unread: existingConversation.unread + (message.fromId === currentUserId ? 0 : 1) }
+      : { id: message.convId, name: message.convType === ConvType.Group ? `群聊 #${message.toId}` : `用户 #${targetId}`, preview, time: formatTime(message.timestamp), unread: message.fromId === currentUserId ? 0 : 1, targetId, convType: message.convType, group: message.convType === ConvType.Group };
     return {
       messagesByConversation: { ...state.messagesByConversation, [message.convId]: mergeServerMessages(current, [converted]) },
       conversations: [updatedConversation, ...state.conversations.filter((conversation) => conversation.id !== message.convId)],
     };
   }),
+  prependHistory: (convId, messages, currentUserId) => set((state) => ({
+    messagesByConversation: { ...state.messagesByConversation, [convId]: mergeServerMessages(messages.map((message) => serverMessageToChat(message, currentUserId)), state.messagesByConversation[convId] ?? []) },
+  })),
+  setTyping: (convId, typing) => set((state) => ({
+    typingByConversation: typing
+      ? { ...state.typingByConversation, [convId]: Date.now() }
+      : Object.fromEntries(Object.entries(state.typingByConversation).filter(([id]) => id !== convId)),
+  })),
+  setPresence: (userId, online) => set((state) => ({
+    conversations: state.conversations.map((conversation) => conversation.convType === ConvType.Private && conversation.targetId === userId ? { ...conversation, online } : conversation),
+  })),
   setConversationIdentity: (convId, name, avatarUrl, online) => set((state) => ({ conversations: state.conversations.map((conversation) => conversation.id === convId ? { ...conversation, name, avatarUrl, online: online ?? conversation.online } : conversation) })),
 
   applySyncBatch: (batch, currentUserId) => set((state) => {

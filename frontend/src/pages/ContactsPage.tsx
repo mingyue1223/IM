@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check, ChevronRight, Heart, Images, LoaderCircle, MessageCircle, Search, Trash2, UserRoundPlus, UsersRound, X } from "lucide-react";
+import { Check, ChevronRight, Heart, Images, LoaderCircle, MessageCircle, Pencil, Search, Trash2, UserRoundPlus, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -30,7 +30,7 @@ export function ContactsPage() {
   const userId = useAuthStore((state) => state.user?.id ?? 0);
   const previewMode = useAuthStore((state) => state.previewMode);
   const addPrivateConversation = useChatStore((state) => state.addPrivateConversation);
-  const { contacts, requests, isLoading, error, isMutating, accept, reject, sendRequest, remove, block, unblock } = useFriends();
+  const { contacts, requests, isLoading, error, isMutating, accept, reject, sendRequest, remove, block, unblock, updateRemark } = useFriends();
   const [requestOpen, setRequestOpen] = useState(false);
   const [dangerAction, setDangerAction] = useState<DangerAction>(null);
   const [targetUserId, setTargetUserId] = useState("");
@@ -39,6 +39,8 @@ export function ContactsPage() {
   const [requestSent, setRequestSent] = useState(false);
   const [requestActionError, setRequestActionError] = useState<string | null>(null);
   const [momentsOpen, setMomentsOpen] = useState(false);
+  const [remarkEditing, setRemarkEditing] = useState(false);
+  const [remark, setRemark] = useState("");
   const selected = contacts.find((contact) => contact.routeId === contactId) ?? contacts[0];
   const friendMomentsQuery = useQuery({
     queryKey: ["moments", "friend", selected?.userId],
@@ -52,6 +54,11 @@ export function ContactsPage() {
   useEffect(() => {
     if (contactId && contacts.length && !contacts.some((contact) => contact.routeId === contactId)) navigate(`/app/contacts/${contacts[0].routeId}`, { replace: true });
   }, [contactId, contacts, navigate]);
+
+  useEffect(() => {
+    setRemark(selected?.name ?? "");
+    setRemarkEditing(false);
+  }, [selected?.userId]);
 
   const startChat = (friend: FriendView) => {
     const convId = previewMode ? friend.routeId : buildPrivateConvId(userId, friend.userId);
@@ -86,6 +93,12 @@ export function ContactsPage() {
     catch (failure) { setRequestActionError(failure instanceof ApiError ? failure.message : "处理好友申请失败"); }
   };
 
+  const saveRemark = async () => {
+    if (!selected) return;
+    await updateRemark(selected.userId, remark.trim());
+    setRemarkEditing(false);
+  };
+
   return (
     <>
       <aside className={`module-sidebar contacts-sidebar ${contactId ? "contacts-sidebar--mobile-hidden" : ""}`}>
@@ -106,7 +119,7 @@ export function ContactsPage() {
             <Button disabled={selected.isBlocked} leadingIcon={<MessageCircle size={17} />} onClick={() => startChat(selected)} size="lg">{selected.isBlocked ? "已拉黑" : "发消息"}</Button>
             <Button leadingIcon={<Images size={17} />} onClick={() => setMomentsOpen(true)} size="lg" variant="secondary">动态</Button>
           </div>
-          <div className="contact-profile__section"><header><h3>联系人管理</h3></header><div className="contact-danger-row"><button onClick={() => setDangerAction("remove")}><Trash2 size={15} />删除好友</button><button onClick={() => setDangerAction(selected.isBlocked ? "unblock" : "block")}>{selected.isBlocked ? "解除拉黑" : "加入黑名单"}</button></div></div>
+          <div className="contact-profile__section"><header><h3>联系人管理</h3><button className="contact-edit-remark" onClick={() => setRemarkEditing((value) => !value)}><Pencil size={14} />好友备注</button></header>{remarkEditing && <div className="contact-remark-form"><TextField label="备注" maxLength={50} onChange={(event) => setRemark(event.target.value)} value={remark} /><Button disabled={isMutating} onClick={() => void saveRemark()} size="sm">保存</Button></div>}<div className="contact-danger-row"><button onClick={() => setDangerAction("remove")}><Trash2 size={15} />删除好友</button><button onClick={() => setDangerAction(selected.isBlocked ? "unblock" : "block")}>{selected.isBlocked ? "解除拉黑" : "加入黑名单"}</button></div></div>
         </motion.div></AnimatePresence> : <div className="contact-empty"><UsersRound size={24} /><h2>还没有联系人</h2><p>通过用户 ID 发送好友申请，建立第一段连接。</p><Button onClick={() => setRequestOpen(true)} size="sm">添加好友</Button></div>}
       </section>
 

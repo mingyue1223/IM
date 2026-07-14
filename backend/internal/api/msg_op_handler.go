@@ -27,9 +27,18 @@ type revokeMsgReq struct {
 }
 
 type searchMsgReq struct {
-	Query  string `form:"q" binding:"required"`
-	Limit  int    `form:"limit,default=20"`
-	Offset int    `form:"offset,default=0"`
+	Query     string `form:"q"`
+	ConvID    string `form:"convId"`
+	StartTime int64  `form:"startTime"`
+	EndTime   int64  `form:"endTime"`
+	Limit     int    `form:"limit,default=20"`
+	Offset    int    `form:"offset,default=0"`
+}
+
+type historyMsgReq struct {
+	ConvID   string `form:"convId" binding:"required"`
+	BeforeID int64  `form:"beforeId"`
+	Limit    int    `form:"limit,default=30"`
 }
 
 // ── 处理器 ──
@@ -127,9 +136,9 @@ func (h *MsgOpHandler) SearchMessages(c *gin.Context) {
 		return
 	}
 
-	msgs, err := h.msgOpSvc.SearchMessages(c.Request.Context(), userID, req.Query, req.Limit, req.Offset)
+	msgs, err := h.msgOpSvc.SearchMessagesAdvanced(c.Request.Context(), userID, req.Query, req.ConvID, req.StartTime, req.EndTime, req.Limit, req.Offset)
 	if err != nil {
-		Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		Error(c, http.StatusBadRequest, CodeInvalidParam, err.Error())
 		return
 	}
 
@@ -141,10 +150,25 @@ func (h *MsgOpHandler) SearchMessages(c *gin.Context) {
 	PaginatedSuccess(c, msgs, total, req.Offset, req.Limit)
 }
 
+func (h *MsgOpHandler) GetHistory(c *gin.Context) {
+	var req historyMsgReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeMissingParam, "convId is required")
+		return
+	}
+	items, hasMore, err := h.msgOpSvc.GetMessageHistory(c.Request.Context(), c.GetInt64("userID"), req.ConvID, req.BeforeID, req.Limit)
+	if err != nil {
+		Error(c, http.StatusForbidden, CodeInvalidParam, err.Error())
+		return
+	}
+	Success(c, gin.H{"items": items, "has_more": hasMore})
+}
+
 // RegisterRoutes registers all message operation HTTP routes on the given Gin router group.
 func (h *MsgOpHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	msg := rg.Group("/msg")
 	msg.POST("/revoke", h.RevokeMessage)
 	msg.DELETE("/:msgID", h.DeleteMessage)
 	msg.GET("/search", h.SearchMessages)
+	msg.GET("/history", h.GetHistory)
 }

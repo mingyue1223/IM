@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/goim/goim/internal/model"
 )
@@ -84,14 +85,15 @@ func NewMySQLRepo(db *sql.DB) *MySQLRepoImpl {
 // ── 消息 ──
 
 func (m *MySQLRepoImpl) InsertPrivateMessage(ctx context.Context, msg *model.PrivateMessage) error {
-	query := `INSERT INTO private_messages (id, sender_id, receiver_id, content, msg_type, created_at)
-	          VALUES (?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO private_messages (id, sender_id, receiver_id, content, msg_type, reply_to_msg_id, created_at)
+	          VALUES (?, ?, ?, ?, ?, NULLIF(?, 0), ?)`
 	_, err := m.db.ExecContext(ctx, query,
 		msg.ID,
 		msg.SenderID,
 		msg.ReceiverID,
 		msg.Content,
 		msg.MsgType,
+		msg.ReplyToMsgID,
 		msg.CreatedAt,
 	)
 	if err != nil {
@@ -101,14 +103,15 @@ func (m *MySQLRepoImpl) InsertPrivateMessage(ctx context.Context, msg *model.Pri
 }
 
 func (m *MySQLRepoImpl) InsertGroupMessage(ctx context.Context, msg *model.GroupMessage) error {
-	query := `INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, group_seq, created_at)
-	          VALUES (?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO group_messages (id, group_id, sender_id, content, msg_type, reply_to_msg_id, group_seq, created_at)
+	          VALUES (?, ?, ?, ?, ?, NULLIF(?, 0), ?, ?)`
 	_, err := m.db.ExecContext(ctx, query,
 		msg.ID,
 		msg.GroupID,
 		msg.SenderID,
 		msg.Content,
 		msg.MsgType,
+		msg.ReplyToMsgID,
 		msg.GroupSeq,
 		msg.CreatedAt,
 	)
@@ -303,7 +306,7 @@ func (m *MySQLRepoImpl) DeleteFriendship(ctx context.Context, userID, friendID i
 }
 
 func (m *MySQLRepoImpl) GetFriendList(ctx context.Context, userID int64) ([]model.Friendship, error) {
-	query := `SELECT f.id, f.user_id, f.friend_id, f.created_at
+	query := `SELECT f.id, f.user_id, f.friend_id, f.remark, f.created_at
 	          FROM friendships f
 	          WHERE f.user_id = ?`
 	rows, err := m.db.QueryContext(ctx, query, userID)
@@ -315,7 +318,7 @@ func (m *MySQLRepoImpl) GetFriendList(ctx context.Context, userID int64) ([]mode
 	var results []model.Friendship
 	for rows.Next() {
 		var fs model.Friendship
-		if err := rows.Scan(&fs.ID, &fs.UserID, &fs.FriendID, &fs.CreatedAt); err != nil {
+		if err := rows.Scan(&fs.ID, &fs.UserID, &fs.FriendID, &fs.Remark, &fs.CreatedAt); err != nil {
 			return nil, fmt.Errorf("扫描好友关系: %w", err)
 		}
 		results = append(results, fs)
@@ -476,6 +479,46 @@ func (m *MySQLRepoImpl) UpdateGroupMemberRole(ctx context.Context, groupID, user
 		return fmt.Errorf("更新群成员角色: %w", err)
 	}
 	return nil
+}
+
+func (m *MySQLRepoImpl) UpdateGroupMemberMute(ctx context.Context, groupID, userID int64, mutedUntil *time.Time) error {
+	result, err := m.db.ExecContext(ctx, `UPDATE group_members SET muted_until=? WHERE group_id=? AND user_id=?`, mutedUntil, groupID, userID)
+	if err != nil {
+		return fmt.Errorf("update group member mute: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read group member mute result: %w", err)
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (m *MySQLRepoImpl) UpdateFriendRemark(ctx context.Context, userID, friendID int64, remark string) error {
+	result, err := m.db.ExecContext(ctx, `UPDATE friendships SET remark=? WHERE user_id=? AND friend_id=?`, remark, userID, friendID)
+	if err != nil {
+		return fmt.Errorf("update friend remark: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read friend remark result: %w", err)
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (m *MySQLRepoImpl) CreateAttachment(ctx context.Context, attachment *model.Attachment) error {
+	result, err := m.db.ExecContext(ctx, `INSERT INTO attachments (user_id, file_name, file_path, url, mime_type, size, kind) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		attachment.UserID, attachment.FileName, attachment.FilePath, attachment.URL, attachment.MIMEType, attachment.Size, attachment.Kind)
+	if err != nil {
+		return fmt.Errorf("create attachment: %w", err)
+	}
+	attachment.ID, err = result.LastInsertId()
+	return err
 }
 
 // ── 朋友圈 ──
@@ -770,7 +813,7 @@ func (m *MySQLRepoImpl) CreateOrUpdateUserSettings(ctx context.Context, settings
 // ── 消息搜索（在任务 17 中完善） ──
 
 func (m *MySQLRepoImpl) SearchPrivateMessages(ctx context.Context, userID int64, query string, limit, offset int) ([]model.PrivateMessage, error) {
-	sqlQuery := `SELECT id, sender_id, receiver_id, content, msg_type, created_at
+	sqlQuery := `SELECT id, sender_id, receiver_id, content, msg_type, COALESCE(reply_to_msg_id, 0), created_at
 	             FROM private_messages
 	             WHERE (sender_id = ? OR receiver_id = ?) AND content LIKE ?
 	             ORDER BY created_at DESC LIMIT ? OFFSET ?`
@@ -784,7 +827,7 @@ func (m *MySQLRepoImpl) SearchPrivateMessages(ctx context.Context, userID int64,
 	var results []model.PrivateMessage
 	for rows.Next() {
 		var msg model.PrivateMessage
-		if err := rows.Scan(&msg.ID, &msg.SenderID, &msg.ReceiverID, &msg.Content, &msg.MsgType, &msg.CreatedAt); err != nil {
+		if err := rows.Scan(&msg.ID, &msg.SenderID, &msg.ReceiverID, &msg.Content, &msg.MsgType, &msg.ReplyToMsgID, &msg.CreatedAt); err != nil {
 			return nil, fmt.Errorf("扫描私聊消息: %w", err)
 		}
 		results = append(results, msg)
@@ -793,4 +836,150 @@ func (m *MySQLRepoImpl) SearchPrivateMessages(ctx context.Context, userID int64,
 		return nil, fmt.Errorf("遍历私聊消息: %w", err)
 	}
 	return results, nil
+}
+
+func (m *MySQLRepoImpl) GetPrivateMessageHistory(ctx context.Context, userID, peerID, beforeID int64, limit int) ([]model.InboxMessage, error) {
+	query := `SELECT id, sender_id, receiver_id, content, msg_type, COALESCE(reply_to_msg_id, 0), created_at
+	          FROM private_messages
+	          WHERE ((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?))`
+	args := []interface{}{userID, peerID, peerID, userID}
+	if beforeID > 0 {
+		query += " AND id < ?"
+		args = append(args, beforeID)
+	}
+	query += " ORDER BY id DESC LIMIT ?"
+	args = append(args, limit)
+	rows, err := m.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get private message history: %w", err)
+	}
+	defer rows.Close()
+	items := make([]model.InboxMessage, 0, limit)
+	for rows.Next() {
+		var item model.InboxMessage
+		var createdAt time.Time
+		if err := rows.Scan(&item.MsgID, &item.FromID, &item.ToID, &item.Content, &item.MsgType, &item.ReplyToMsgID, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan private message history: %w", err)
+		}
+		item.ConvType = model.ConvTypePrivate
+		item.ConvID = model.BuildConvID(model.ConvTypePrivate, userID, peerID)
+		item.Timestamp = createdAt.UnixMilli()
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (m *MySQLRepoImpl) GetGroupMessageHistory(ctx context.Context, groupID, beforeID int64, limit int) ([]model.InboxMessage, error) {
+	query := `SELECT id, sender_id, content, msg_type, COALESCE(reply_to_msg_id, 0), group_seq, created_at
+	          FROM group_messages WHERE group_id=?`
+	args := []interface{}{groupID}
+	if beforeID > 0 {
+		query += " AND id < ?"
+		args = append(args, beforeID)
+	}
+	query += " ORDER BY id DESC LIMIT ?"
+	args = append(args, limit)
+	rows, err := m.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get group message history: %w", err)
+	}
+	defer rows.Close()
+	items := make([]model.InboxMessage, 0, limit)
+	for rows.Next() {
+		var item model.InboxMessage
+		var createdAt time.Time
+		if err := rows.Scan(&item.MsgID, &item.FromID, &item.Content, &item.MsgType, &item.ReplyToMsgID, &item.GroupSeq, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan group message history: %w", err)
+		}
+		item.ConvType = model.ConvTypeGroup
+		item.ConvID = model.BuildConvID(model.ConvTypeGroup, groupID, 0)
+		item.ToID = groupID
+		item.Timestamp = createdAt.UnixMilli()
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (m *MySQLRepoImpl) SearchPrivateMessagesAdvanced(ctx context.Context, userID, peerID int64, queryText string, startMs, endMs int64, limit, offset int) ([]model.InboxMessage, error) {
+	query := `SELECT id, sender_id, receiver_id, content, msg_type, COALESCE(reply_to_msg_id, 0), created_at FROM private_messages WHERE `
+	args := make([]interface{}, 0, 10)
+	if peerID > 0 {
+		query += `((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?))`
+		args = append(args, userID, peerID, peerID, userID)
+	} else {
+		query += `(sender_id=? OR receiver_id=?)`
+		args = append(args, userID, userID)
+	}
+	query, args = appendMessageSearchFilters(query, args, queryText, startMs, endMs)
+	query += ` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+	rows, err := m.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search private messages: %w", err)
+	}
+	defer rows.Close()
+	items := make([]model.InboxMessage, 0, limit)
+	for rows.Next() {
+		var item model.InboxMessage
+		var createdAt time.Time
+		if err := rows.Scan(&item.MsgID, &item.FromID, &item.ToID, &item.Content, &item.MsgType, &item.ReplyToMsgID, &createdAt); err != nil {
+			return nil, err
+		}
+		item.ConvType = model.ConvTypePrivate
+		item.ConvID = model.BuildConvID(model.ConvTypePrivate, item.FromID, item.ToID)
+		item.Timestamp = createdAt.UnixMilli()
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (m *MySQLRepoImpl) SearchGroupMessagesAdvanced(ctx context.Context, groupIDs []int64, queryText string, startMs, endMs int64, limit, offset int) ([]model.InboxMessage, error) {
+	if len(groupIDs) == 0 {
+		return []model.InboxMessage{}, nil
+	}
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(groupIDs)), ",")
+	query := `SELECT id, group_id, sender_id, content, msg_type, COALESCE(reply_to_msg_id, 0), group_seq, created_at FROM group_messages WHERE group_id IN (` + placeholders + `)`
+	args := make([]interface{}, 0, len(groupIDs)+6)
+	for _, groupID := range groupIDs {
+		args = append(args, groupID)
+	}
+	query, args = appendMessageSearchFilters(query, args, queryText, startMs, endMs)
+	query += ` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+	rows, err := m.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search group messages: %w", err)
+	}
+	defer rows.Close()
+	items := make([]model.InboxMessage, 0, limit)
+	for rows.Next() {
+		var item model.InboxMessage
+		var groupID int64
+		var createdAt time.Time
+		if err := rows.Scan(&item.MsgID, &groupID, &item.FromID, &item.Content, &item.MsgType, &item.ReplyToMsgID, &item.GroupSeq, &createdAt); err != nil {
+			return nil, err
+		}
+		item.ConvType = model.ConvTypeGroup
+		item.ConvID = model.BuildConvID(model.ConvTypeGroup, groupID, 0)
+		item.ToID = groupID
+		item.Timestamp = createdAt.UnixMilli()
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func appendMessageSearchFilters(query string, args []interface{}, queryText string, startMs, endMs int64) (string, []interface{}) {
+	if queryText != "" {
+		query += " AND content LIKE ?"
+		args = append(args, "%"+queryText+"%")
+	}
+	if startMs > 0 {
+		query += " AND created_at >= ?"
+		args = append(args, time.UnixMilli(startMs))
+	}
+	if endMs > 0 {
+		query += " AND created_at <= ?"
+		args = append(args, time.UnixMilli(endMs))
+	}
+	return query, args
 }

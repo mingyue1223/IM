@@ -124,6 +124,7 @@ func main() {
 	authHandler := api.NewAuthHandler(authSvc)
 	friendHandler := api.NewFriendHandler(friendSvc, rdb)
 	groupHandler := api.NewGroupHandler(groupSvc, cm)
+	groupHandler.SetMessageService(msgSvc)
 	momentHandler := api.NewMomentHandler(momentSvc)
 	msgOpHandler := api.NewMsgOpHandler(msgOpSvc)
 	settingsHandler := api.NewSettingsHandler(settingsSvc)
@@ -255,7 +256,11 @@ func setupRouter(
 	uploadHandler.RegisterRoutes(protected)
 
 	// ── WebSocket 端点 ──
-	wsHandler := ws.ServeWebSocket(cfg.JWT.Secret, rdb, cm, dispatcher.Callback())
+	presenceSvc := service.NewPresenceService(mysqlRepo, cm, logger)
+	wsHandler := ws.ServeWebSocket(cfg.JWT.Secret, rdb, cm, dispatcher.Callback(), ws.PresenceHooks{
+		OnConnect:    func(userID int64) { presenceSvc.NotifyFriends(userID, true) },
+		OnDisconnect: func(userID int64) { presenceSvc.NotifyFriends(userID, false) },
+	})
 	r.GET(cfg.Server.WsPath, wsHandler)
 
 	// ── 静态文件：上传目录 ──

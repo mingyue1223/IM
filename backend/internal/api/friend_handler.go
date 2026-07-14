@@ -56,6 +56,10 @@ type unblockUserReq struct {
 	BlockedID int64 `json:"blocked_id" binding:"required"`
 }
 
+type updateFriendRemarkReq struct {
+	Remark string `json:"remark" binding:"max=50"`
+}
+
 // ── 处理器 ──
 
 // SendFriendRequest godoc
@@ -321,6 +325,24 @@ func (h *FriendHandler) DeleteFriend(c *gin.Context) {
 	SuccessMessage(c, "friend deleted")
 }
 
+func (h *FriendHandler) UpdateFriendRemark(c *gin.Context) {
+	friendID, err := strconv.ParseInt(c.Param("friendID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid friendID")
+		return
+	}
+	var req updateFriendRemarkReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid remark")
+		return
+	}
+	if err := h.friendSvc.UpdateFriendRemark(c.Request.Context(), c.GetInt64("userID"), friendID, req.Remark); err != nil {
+		ServiceError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	SuccessMessage(c, "friend remark updated")
+}
+
 // BlockUser godoc
 // @Summary      拉黑用户
 // @Description  将指定用户加入黑名单
@@ -396,6 +418,7 @@ func (h *FriendHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	friend.GET("/requests", h.GetFriendRequests)
 	friend.GET("/list", h.GetFriendList)
 	friend.DELETE("/:friendID", h.DeleteFriend)
+	friend.PUT("/:friendID/remark", h.UpdateFriendRemark)
 	friend.POST("/block", h.BlockUser)
 	friend.POST("/unblock", h.UnblockUser)
 }

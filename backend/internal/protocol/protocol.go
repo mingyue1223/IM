@@ -21,6 +21,7 @@ const (
 	TypeFriendApply    = "friendApply"
 	TypeFriendAccepted = "friendAccepted"
 	TypePresence       = "presence"
+	TypeTyping         = "typing"
 	TypeError          = "error"
 	TypePing           = "ping"
 	TypePong           = "pong"

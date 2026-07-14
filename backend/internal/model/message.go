@@ -3,24 +3,26 @@ package model
 import "time"
 
 type PrivateMessage struct {
-	ID          int64     `json:"msgId"`
-	ClientMsgID string    `json:"clientMsgId,omitempty"`
-	SenderID    int64     `json:"fromId"`
-	ReceiverID  int64     `json:"toId"`
-	Content     string    `json:"content"`
-	MsgType     int       `json:"msgType"`
-	CreatedAt   time.Time `json:"timestamp"`
+	ID           int64     `json:"msgId"`
+	ClientMsgID  string    `json:"clientMsgId,omitempty"`
+	SenderID     int64     `json:"fromId"`
+	ReceiverID   int64     `json:"toId"`
+	Content      string    `json:"content"`
+	MsgType      int       `json:"msgType"`
+	ReplyToMsgID int64     `json:"replyToMsgId,omitempty"`
+	CreatedAt    time.Time `json:"timestamp"`
 }
 
 type GroupMessage struct {
-	ID          int64     `json:"msgId"`
-	ClientMsgID string    `json:"clientMsgId,omitempty"`
-	GroupID     int64     `json:"groupId"`
-	SenderID    int64     `json:"fromId"`
-	Content     string    `json:"content"`
-	MsgType     int       `json:"msgType"`
-	GroupSeq    int64     `json:"groupSeq"`
-	CreatedAt   time.Time `json:"timestamp"`
+	ID           int64     `json:"msgId"`
+	ClientMsgID  string    `json:"clientMsgId,omitempty"`
+	GroupID      int64     `json:"groupId"`
+	SenderID     int64     `json:"fromId"`
+	Content      string    `json:"content"`
+	MsgType      int       `json:"msgType"`
+	ReplyToMsgID int64     `json:"replyToMsgId,omitempty"`
+	GroupSeq     int64     `json:"groupSeq"`
+	CreatedAt    time.Time `json:"timestamp"`
 }
 
 type MsgRevoked struct {
@@ -33,16 +35,17 @@ type MsgRevoked struct {
 
 // InboxMessage — 存储在 Redis inbox/outbox ZSet 中的消息
 type InboxMessage struct {
-	MsgID      int64  `json:"msgId"`
-	ConvID     string `json:"convId"`
-	ConvType   int    `json:"convType"`
-	FromID     int64  `json:"fromId"`
-	ToID       int64  `json:"toId"`
-	MsgType    int    `json:"msgType"`
-	Content    string `json:"content"`
-	ReadStatus int    `json:"readStatus"`         // 0=未读, 1=已读 (仅私聊)
-	GroupSeq   int64  `json:"groupSeq,omitempty"` // 群消息序号 (仅群聊)
-	Timestamp  int64  `json:"timestamp"`
+	MsgID        int64  `json:"msgId"`
+	ConvID       string `json:"convId"`
+	ConvType     int    `json:"convType"`
+	FromID       int64  `json:"fromId"`
+	ToID         int64  `json:"toId"`
+	MsgType      int    `json:"msgType"`
+	Content      string `json:"content"`
+	ReplyToMsgID int64  `json:"replyToMsgId,omitempty"`
+	ReadStatus   int    `json:"readStatus"`         // 0=未读, 1=已读 (仅私聊)
+	GroupSeq     int64  `json:"groupSeq,omitempty"` // 群消息序号 (仅群聊)
+	Timestamp    int64  `json:"timestamp"`
 }
 
 // ServerAck — 消息到达服务器后返回给发送者的回执
@@ -86,12 +89,40 @@ type ConvSync struct {
 
 // SendMessage — 客户端通过 WebSocket 发送的聊天消息
 type SendMessage struct {
-	ClientMsgID string `json:"msgId"`    // 客户端生成的ID，用于去重
-	ConvType    int    `json:"convType"` // 1=私聊, 2=群聊
-	ToID        int64  `json:"toId"`     // 接收者ID(私聊) 或 群组ID(群聊)
-	MsgType     int    `json:"msgType"`  // 1=文字, 2=图片, 3=视频, 等
-	Content     string `json:"content"`
-	Timestamp   int64  `json:"timestamp"`
+	ClientMsgID  string `json:"msgId"`    // 客户端生成的ID，用于去重
+	ConvType     int    `json:"convType"` // 1=私聊, 2=群聊
+	ToID         int64  `json:"toId"`     // 接收者ID(私聊) 或 群组ID(群聊)
+	MsgType      int    `json:"msgType"`  // 1=文字, 2=图片, 3=视频, 等
+	Content      string `json:"content"`
+	ReplyToMsgID int64  `json:"replyToMsgId,omitempty"`
+	Timestamp    int64  `json:"timestamp"`
+}
+
+// TypingEvent is an ephemeral event and is never persisted as a message.
+type TypingEvent struct {
+	ConvID   string `json:"convId"`
+	ConvType int    `json:"convType"`
+	ToID     int64  `json:"toId"`
+	FromID   int64  `json:"fromId,omitempty"`
+	Typing   bool   `json:"typing"`
+}
+
+type PresenceEvent struct {
+	UserID     int64 `json:"userId"`
+	Online     bool  `json:"online"`
+	LastSeenAt int64 `json:"lastSeenAt,omitempty"`
+}
+
+type Attachment struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	FileName  string    `json:"file_name"`
+	FilePath  string    `json:"-"`
+	URL       string    `json:"url"`
+	MIMEType  string    `json:"mime_type"`
+	Size      int64     `json:"size"`
+	Kind      string    `json:"kind"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // RevokeMsgReq — 客户端请求撤回一条消息

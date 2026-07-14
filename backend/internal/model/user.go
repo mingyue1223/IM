@@ -28,6 +28,7 @@ type Friendship struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"user_id"`
 	FriendID  int64     `json:"friend_id"`
+	Remark    string    `json:"remark"`
 	Nickname  string    `json:"nickname,omitempty"`
 	AvatarURL string    `json:"avatar_url,omitempty"`
 	Online    bool      `json:"online"`

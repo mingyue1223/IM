@@ -5,6 +5,7 @@ import { createFriendsApi } from "../api/friends";
 import { createGroupsApi } from "../api/groups";
 import { createMomentsApi } from "../api/moments";
 import { createUploadApi } from "../api/upload";
+import { createMessagesApi } from "../api/messages";
 import { env } from "../config/env";
 import { useAuthStore } from "../stores/authStore";
 
@@ -59,3 +60,4 @@ export const friendsApi = createFriendsApi(apiClient);
 export const groupsApi = createGroupsApi(apiClient);
 export const momentsApi = createMomentsApi(apiClient);
 export const uploadApi = createUploadApi(apiClient);
+export const messagesApi = createMessagesApi(apiClient);

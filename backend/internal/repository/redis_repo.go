@@ -789,6 +789,23 @@ func (r *RedisRepoImpl) SetFriendCache(ctx context.Context, uidA, uidB int64) er
 	return nil
 }
 
+func (r *RedisRepoImpl) IsFriendCached(ctx context.Context, userID, friendID int64) (bool, error) {
+	count, err := r.rdb.Exists(ctx, fmt.Sprintf("friend:%d:%d", userID, friendID)).Result()
+	return count > 0, err
+}
+
+func (r *RedisRepoImpl) SetGroupMemberMute(ctx context.Context, groupID, userID int64, mutedUntil *time.Time) error {
+	payload := map[string]int64{"mutedUntil": 0}
+	if mutedUntil != nil {
+		payload["mutedUntil"] = mutedUntil.UnixMilli()
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return r.rdb.HSet(ctx, fmt.Sprintf("group_member_info:%d", groupID), strconv.FormatInt(userID, 10), encoded).Err()
+}
+
 // DeleteFriendCache removes the bidirectional friendship keys used by the
 // private-message Lua authorization check.
 func (r *RedisRepoImpl) DeleteFriendCache(ctx context.Context, uidA, uidB int64) error {

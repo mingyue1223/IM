@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -15,9 +18,9 @@ import (
 // ── MsgOpService 错误常量 ──
 
 const (
-	ErrMsgNotRevocable    = "消息无法撤回（未找到或已过时效）"
-	ErrMsgRevokeNotOwner  = "仅发送者可撤回消息"
-	ErrMsgDeleteFailed    = "删除消息失败"
+	ErrMsgNotRevocable   = "消息无法撤回（未找到或已过时效）"
+	ErrMsgRevokeNotOwner = "仅发送者可撤回消息"
+	ErrMsgDeleteFailed   = "删除消息失败"
 )
 
 // MsgOpService 处理消息操作：撤回、删除和搜索。
@@ -27,6 +30,16 @@ type MsgOpService struct {
 	mysqlRepo repository.MySQLRepo
 	redisRepo repository.RedisRepo
 	logger    *zap.Logger
+}
+
+type messageHistoryStore interface {
+	GetPrivateMessageHistory(ctx context.Context, userID, peerID, beforeID int64, limit int) ([]model.InboxMessage, error)
+	GetGroupMessageHistory(ctx context.Context, groupID, beforeID int64, limit int) ([]model.InboxMessage, error)
+}
+
+type advancedMessageSearchStore interface {
+	SearchPrivateMessagesAdvanced(ctx context.Context, userID, peerID int64, query string, startMs, endMs int64, limit, offset int) ([]model.InboxMessage, error)
+	SearchGroupMessagesAdvanced(ctx context.Context, groupIDs []int64, query string, startMs, endMs int64, limit, offset int) ([]model.InboxMessage, error)
 }
 
 // NewMsgOpService creates a MsgOpService with all required dependencies.
@@ -145,4 +158,149 @@ func (s *MsgOpService) SearchMessages(ctx context.Context, userID int64, query s
 	}
 
 	return msgs, nil
+}
+
+func (s *MsgOpService) GetMessageHistory(ctx context.Context, userID int64, convID string, beforeID int64, limit int) ([]model.InboxMessage, bool, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	store, ok := s.mysqlRepo.(messageHistoryStore)
+	if !ok {
+		return nil, false, fmt.Errorf("message history storage is unavailable")
+	}
+	convType, targetID, err := s.authorizeConversation(ctx, userID, convID)
+	if err != nil {
+		return nil, false, err
+	}
+	var items []model.InboxMessage
+	if convType == model.ConvTypePrivate {
+		items, err = store.GetPrivateMessageHistory(ctx, userID, targetID, beforeID, limit+1)
+	} else {
+		items, err = store.GetGroupMessageHistory(ctx, targetID, beforeID, limit+1)
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+	for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
+		items[left], items[right] = items[right], items[left]
+	}
+	return items, hasMore, nil
+}
+
+func (s *MsgOpService) SearchMessagesAdvanced(ctx context.Context, userID int64, query, convID string, startMs, endMs int64, limit, offset int) ([]model.InboxMessage, error) {
+	query = strings.TrimSpace(query)
+	if query == "" && startMs <= 0 && endMs <= 0 {
+		return nil, fmt.Errorf("query or time range is required")
+	}
+	if startMs > 0 && endMs > 0 && startMs > endMs {
+		return nil, fmt.Errorf("startTime must not be after endTime")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	store, ok := s.mysqlRepo.(advancedMessageSearchStore)
+	if !ok {
+		return nil, fmt.Errorf("message search storage is unavailable")
+	}
+
+	peerID := int64(0)
+	groupIDs := []int64(nil)
+	includePrivate := true
+	includeGroups := true
+	if convID != "" {
+		convType, targetID, err := s.authorizeConversation(ctx, userID, convID)
+		if err != nil {
+			return nil, err
+		}
+		if convType == model.ConvTypePrivate {
+			peerID = targetID
+			includeGroups = false
+		} else {
+			groupIDs = []int64{targetID}
+			includePrivate = false
+		}
+	} else {
+		var err error
+		groupIDs, err = s.redisRepo.GetGroupMemberships(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("get group memberships: %w", err)
+		}
+	}
+
+	fetchLimit := limit + offset
+	items := make([]model.InboxMessage, 0, fetchLimit*2)
+	if includePrivate {
+		privateItems, err := store.SearchPrivateMessagesAdvanced(ctx, userID, peerID, query, startMs, endMs, fetchLimit, 0)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, privateItems...)
+	}
+	if includeGroups && len(groupIDs) > 0 {
+		groupItems, err := store.SearchGroupMessagesAdvanced(ctx, groupIDs, query, startMs, endMs, fetchLimit, 0)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, groupItems...)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Timestamp != items[j].Timestamp {
+			return items[i].Timestamp > items[j].Timestamp
+		}
+		return items[i].MsgID > items[j].MsgID
+	})
+	if offset >= len(items) {
+		return []model.InboxMessage{}, nil
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[offset:end], nil
+}
+
+func (s *MsgOpService) authorizeConversation(ctx context.Context, userID int64, convID string) (int, int64, error) {
+	parts := strings.Split(convID, "_")
+	if len(parts) == 3 && parts[0] == "p" {
+		first, err1 := strconv.ParseInt(parts[1], 10, 64)
+		second, err2 := strconv.ParseInt(parts[2], 10, 64)
+		if err1 != nil || err2 != nil || (first != userID && second != userID) {
+			return 0, 0, fmt.Errorf("conversation access denied")
+		}
+		peerID := first
+		if peerID == userID {
+			peerID = second
+		}
+		return model.ConvTypePrivate, peerID, nil
+	}
+	if len(parts) == 2 && parts[0] == "g" {
+		groupID, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid conversation id")
+		}
+		memberships, err := s.redisRepo.GetGroupMemberships(ctx, userID)
+		if err != nil {
+			return 0, 0, err
+		}
+		for _, membership := range memberships {
+			if membership == groupID {
+				return model.ConvTypeGroup, groupID, nil
+			}
+		}
+		return 0, 0, fmt.Errorf("conversation access denied")
+	}
+	return 0, 0, fmt.Errorf("invalid conversation id")
 }

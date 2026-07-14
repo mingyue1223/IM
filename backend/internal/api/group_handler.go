@@ -2,8 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -15,6 +17,7 @@ import (
 type GroupHandler struct {
 	groupSvc *service.GroupService
 	cm       *conn.ConnectionManager
+	msgSvc   *service.MsgService
 }
 
 // NewGroupHandler 创建一个包装了给定 GroupService 的 GroupHandler。
@@ -24,6 +27,10 @@ func NewGroupHandler(groupSvc *service.GroupService, managers ...*conn.Connectio
 		cm = managers[0]
 	}
 	return &GroupHandler{groupSvc: groupSvc, cm: cm}
+}
+
+func (h *GroupHandler) SetMessageService(msgSvc *service.MsgService) {
+	h.msgSvc = msgSvc
 }
 
 // ── Request / response DTOs ──
@@ -52,6 +59,10 @@ type updateMemberRoleRequest struct {
 
 type transferOwnerRequest struct {
 	NewOwnerID int64 `json:"new_owner_id" binding:"required"`
+}
+
+type muteMemberRequest struct {
+	DurationSeconds int64 `json:"duration_seconds" binding:"required,min=1,max=2592000"`
 }
 
 // ── Handlers ──
@@ -125,6 +136,12 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 		return
 	}
 
+	var previousNotice string
+	if h.msgSvc != nil {
+		if group, getErr := h.groupSvc.GetGroupInfo(c.Request.Context(), groupID); getErr == nil && group != nil {
+			previousNotice = group.Notice
+		}
+	}
 	err = h.groupSvc.UpdateGroup(c.Request.Context(), userID, groupID, req.Name, req.Notice)
 	if err != nil {
 		switch err.Error() {
@@ -138,6 +155,13 @@ func (h *GroupHandler) UpdateGroup(c *gin.Context) {
 			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
 		}
 		return
+	}
+	if h.msgSvc != nil && previousNotice != req.Notice {
+		content := "群公告已清空"
+		if req.Notice != "" {
+			content = fmt.Sprintf("群公告更新：%s", req.Notice)
+		}
+		h.msgSvc.SendGroupSystemMessage(userID, groupID, content)
 	}
 
 	SuccessMessage(c, "group updated")
@@ -503,6 +527,48 @@ func (h *GroupHandler) LeaveGroup(c *gin.Context) {
 	SuccessMessage(c, "left group")
 }
 
+func (h *GroupHandler) MuteMember(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("groupID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid group_id")
+		return
+	}
+	memberID, err := strconv.ParseInt(c.Param("memberID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid member_id")
+		return
+	}
+	var req muteMemberRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "duration_seconds is required")
+		return
+	}
+	mutedUntil := time.Now().Add(time.Duration(req.DurationSeconds) * time.Second)
+	if err := h.groupSvc.SetMemberMute(c.Request.Context(), c.GetInt64("userID"), groupID, memberID, &mutedUntil); err != nil {
+		ServiceError(c, http.StatusForbidden, err.Error())
+		return
+	}
+	Success(c, gin.H{"muted_until": mutedUntil})
+}
+
+func (h *GroupHandler) UnmuteMember(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("groupID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid group_id")
+		return
+	}
+	memberID, err := strconv.ParseInt(c.Param("memberID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid member_id")
+		return
+	}
+	if err := h.groupSvc.SetMemberMute(c.Request.Context(), c.GetInt64("userID"), groupID, memberID, nil); err != nil {
+		ServiceError(c, http.StatusForbidden, err.Error())
+		return
+	}
+	SuccessMessage(c, "member unmuted")
+}
+
 // RegisterRoutes registers all group HTTP routes on the given Gin router group.
 func (h *GroupHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/group")
@@ -514,6 +580,8 @@ func (h *GroupHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.DELETE("/:groupID/member/:memberID", h.RemoveMember)
 	g.GET("/:groupID/members", h.GetMembers)
 	g.PUT("/:groupID/member/:memberID/role", h.UpdateMemberRole)
+	g.PUT("/:groupID/member/:memberID/mute", h.MuteMember)
+	g.DELETE("/:groupID/member/:memberID/mute", h.UnmuteMember)
 	g.PUT("/:groupID/owner", h.TransferOwnership)
 	g.POST("/:groupID/leave", h.LeaveGroup)
 }

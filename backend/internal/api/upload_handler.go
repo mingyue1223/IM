@@ -1,6 +1,9 @@
 package api
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,8 +13,20 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/goim/goim/internal/model"
 	"github.com/goim/goim/internal/repository"
 )
+
+var chatAllowedExts = map[string]bool{
+	"jpg": true, "jpeg": true, "png": true, "gif": true, "webp": true,
+	"pdf": true, "txt": true, "md": true, "csv": true,
+	"doc": true, "docx": true, "xls": true, "xlsx": true, "ppt": true, "pptx": true,
+	"zip": true, "rar": true, "7z": true,
+}
+
+type attachmentRepo interface {
+	CreateAttachment(ctx context.Context, attachment *model.Attachment) error
+}
 
 // UploadHandler 提供文件上传端点的 Gin HTTP 处理函数。
 type UploadHandler struct {
@@ -46,6 +61,90 @@ type uploadAvatarResponse struct {
 	URL      string `json:"url"`
 	FilePath string `json:"file_path"`
 	Size     int64  `json:"size"`
+}
+
+type uploadChatFileResponse struct {
+	ID       int64  `json:"id"`
+	URL      string `json:"url"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	MIMEType string `json:"mimeType"`
+	Kind     string `json:"kind"`
+}
+
+func (h *UploadHandler) UploadChatFile(c *gin.Context) {
+	userID := c.GetInt64("userID")
+	if userID == 0 {
+		Error(c, http.StatusUnauthorized, CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	maxBytes := int64(h.maxSizeMB) * 1024 * 1024
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes+1024)
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeMissingParam, "file is required")
+		return
+	}
+	defer file.Close()
+
+	originalName := filepath.Base(strings.TrimSpace(header.Filename))
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(originalName), "."))
+	if originalName == "" || !chatAllowedExts[ext] {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "unsupported chat attachment type")
+		return
+	}
+
+	probe := make([]byte, 512)
+	n, _ := file.Read(probe)
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		Error(c, http.StatusInternalServerError, CodeInternalError, "unable to read uploaded file")
+		return
+	}
+	mimeType := http.DetectContentType(probe[:n])
+	kind := "file"
+	if strings.HasPrefix(mimeType, "image/") {
+		kind = "image"
+	}
+
+	randomBytes := make([]byte, 12)
+	if _, err := rand.Read(randomBytes); err != nil {
+		Error(c, http.StatusInternalServerError, CodeInternalError, "unable to generate file id")
+		return
+	}
+	month := time.Now().Format("2006/01")
+	relativeDir := filepath.Join("attachments", month)
+	storageDir := filepath.Join(h.uploadDir, relativeDir)
+	if err := os.MkdirAll(storageDir, 0755); err != nil {
+		Error(c, http.StatusInternalServerError, CodeInternalError, "unable to create attachment directory")
+		return
+	}
+	storedName := hex.EncodeToString(randomBytes) + "." + ext
+	storagePath := filepath.Join(storageDir, storedName)
+	dst, err := os.Create(storagePath)
+	if err != nil {
+		Error(c, http.StatusInternalServerError, CodeInternalError, "unable to save attachment")
+		return
+	}
+	written, copyErr := io.Copy(dst, file)
+	closeErr := dst.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(storagePath)
+		Error(c, http.StatusInternalServerError, CodeInternalError, "unable to save attachment")
+		return
+	}
+
+	urlPath := "/uploads/" + strings.ReplaceAll(filepath.Join(relativeDir, storedName), "\\", "/")
+	attachment := &model.Attachment{UserID: userID, FileName: originalName, FilePath: storagePath, URL: urlPath, MIMEType: mimeType, Size: written, Kind: kind}
+	if repo, ok := h.userRepo.(attachmentRepo); ok {
+		if err := repo.CreateAttachment(c.Request.Context(), attachment); err != nil {
+			_ = os.Remove(storagePath)
+			Error(c, http.StatusInternalServerError, CodeInternalError, "unable to persist attachment")
+			return
+		}
+	}
+
+	Success(c, uploadChatFileResponse{ID: attachment.ID, URL: urlPath, Name: originalName, Size: written, MIMEType: mimeType, Kind: kind})
 }
 
 // ── 处理函数 ──
@@ -145,6 +244,7 @@ func (h *UploadHandler) UploadAvatar(c *gin.Context) {
 func (h *UploadHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	upload := rg.Group("/upload")
 	upload.POST("/avatar", h.UploadAvatar)
+	upload.POST("/chat", h.UploadChatFile)
 }
 
 // allowedExtsList 返回允许的扩展名列表字符串（用于错误消息）。

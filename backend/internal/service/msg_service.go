@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,13 +105,14 @@ func (s *MsgService) handlePrivateMsg(ctx context.Context, senderID int64, req *
 
 	// 构建 PrivateMessage 用于 MQ 发布
 	pm := &model.PrivateMessage{
-		ID:          checkResult.MsgID,
-		ClientMsgID: req.ClientMsgID,
-		SenderID:    senderID,
-		ReceiverID:  req.ToID,
-		Content:     req.Content,
-		MsgType:     req.MsgType,
-		CreatedAt:   time.UnixMilli(req.Timestamp),
+		ID:           checkResult.MsgID,
+		ClientMsgID:  req.ClientMsgID,
+		SenderID:     senderID,
+		ReceiverID:   req.ToID,
+		Content:      req.Content,
+		MsgType:      req.MsgType,
+		ReplyToMsgID: req.ReplyToMsgID,
+		CreatedAt:    time.UnixMilli(req.Timestamp),
 	}
 
 	// 发布到 MQ
@@ -158,14 +160,15 @@ func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *mo
 
 	// 构建 GroupMessage 用于 MQ 发布
 	gm := &model.GroupMessage{
-		ID:          checkResult.MsgID,
-		ClientMsgID: req.ClientMsgID,
-		GroupID:     req.ToID,
-		SenderID:    senderID,
-		Content:     req.Content,
-		MsgType:     req.MsgType,
-		GroupSeq:    checkResult.GroupSeq,
-		CreatedAt:   time.UnixMilli(req.Timestamp),
+		ID:           checkResult.MsgID,
+		ClientMsgID:  req.ClientMsgID,
+		GroupID:      req.ToID,
+		SenderID:     senderID,
+		Content:      req.Content,
+		MsgType:      req.MsgType,
+		ReplyToMsgID: req.ReplyToMsgID,
+		GroupSeq:     checkResult.GroupSeq,
+		CreatedAt:    time.UnixMilli(req.Timestamp),
 	}
 
 	// 发布到 MQ
@@ -181,6 +184,68 @@ func (s *MsgService) handleGroupMsg(ctx context.Context, senderID int64, req *mo
 		zap.Int64("groupSeq", checkResult.GroupSeq),
 	)
 
+}
+
+type friendCacheReader interface {
+	IsFriendCached(ctx context.Context, userID, friendID int64) (bool, error)
+}
+
+func (s *MsgService) HandleTyping(userID int64, data []byte) {
+	var event model.TypingEvent
+	if err := json.Unmarshal(data, &event); err != nil {
+		return
+	}
+	if event.ToID <= 0 || (event.ConvType != model.ConvTypePrivate && event.ConvType != model.ConvTypeGroup) {
+		return
+	}
+	event.FromID = userID
+	event.ConvID = model.BuildConvID(event.ConvType, event.ToID, userID)
+	ctx := context.Background()
+	if event.ConvType == model.ConvTypePrivate {
+		if reader, ok := s.redisRepo.(friendCacheReader); ok {
+			allowed, err := reader.IsFriendCached(ctx, userID, event.ToID)
+			if err != nil || !allowed {
+				return
+			}
+		}
+		s.pushToUser(event.ToID, protocol.TypeTyping, &event)
+		return
+	}
+
+	members, err := s.redisRepo.GetGroupMembers(ctx, event.ToID)
+	if err != nil {
+		return
+	}
+	isMember := false
+	for _, memberID := range members {
+		if memberID == userID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		return
+	}
+	for _, memberID := range members {
+		if memberID != userID {
+			s.pushToUser(memberID, protocol.TypeTyping, &event)
+		}
+	}
+}
+
+func (s *MsgService) SendGroupSystemMessage(operatorID, groupID int64, content string) {
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	req := &model.SendMessage{
+		ClientMsgID: fmt.Sprintf("system-%d-%d", groupID, time.Now().UnixNano()),
+		ConvType:    model.ConvTypeGroup,
+		ToID:        groupID,
+		MsgType:     model.MsgTypeSystem,
+		Content:     content,
+		Timestamp:   time.Now().UnixMilli(),
+	}
+	s.handleGroupMsg(context.Background(), operatorID, req)
 }
 
 // ──────────────────────────────────────────────────────

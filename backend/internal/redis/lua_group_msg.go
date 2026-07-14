@@ -61,7 +61,9 @@ end
 local memberInfo = redis.call('HGET', 'group_member_info:' .. groupID, senderID)
 if memberInfo then
     local info = cjson.decode(memberInfo)
-    if info.muted then
+    local nowParts = redis.call('TIME')
+    local nowMilliseconds = nowParts[1] * 1000 + math.floor(nowParts[2] / 1000)
+    if info.muted == true or (info.mutedUntil and tonumber(info.mutedUntil) > nowMilliseconds) then
         return {2, 0, 0, 1, 1}
     end
 end

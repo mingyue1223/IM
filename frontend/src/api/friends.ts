@@ -1,4 +1,4 @@
-import type { AcceptFriendRequestResponse, ApiId, BlockUserRequest, FriendRequest, FriendRequestActionRequest, Friendship, Page, SendFriendRequestRequest, SendFriendRequestResponse } from "../../goim-api-types";
+import type { AcceptFriendRequestResponse, ApiId, BlockUserRequest, FriendRequest, FriendRequestActionRequest, Friendship, Page, SendFriendRequestRequest, SendFriendRequestResponse, UpdateFriendRemarkRequest } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createFriendsApi = (client: GoIMApiClient) => ({
@@ -10,4 +10,5 @@ export const createFriendsApi = (client: GoIMApiClient) => ({
   remove: (friendId: ApiId) => client.delete<void>(`/friend/${friendId}`),
   block: (input: BlockUserRequest) => client.post<void>("/friend/block", input),
   unblock: (input: BlockUserRequest) => client.post<void>("/friend/unblock", input),
+  updateRemark: (friendId: ApiId, input: UpdateFriendRemarkRequest) => client.put<void>(`/friend/${friendId}/remark`, input),
 });

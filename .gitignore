@@ -1,7 +1,7 @@
 # Go build artifacts
 *.exe
 *.test
-server
+/server
 *.out
 coverage.out
 
@@ -12,6 +12,7 @@ backend/configs/config.local.yaml
 backend/server
 backend/server.*.log
 backend/tmp/
+backend/.cache/
 
 # Benchmark output may contain access tokens.
 backend/benchmark/tokens.csv
@@ -27,6 +28,7 @@ frontend/vite.*.log
 # Environment
 .env
 *.env.local
+.run/
 
 # Claude Code
 .claude/

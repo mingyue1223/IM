@@ -14,6 +14,7 @@ export enum MsgType {
   Text    = 1,  // 纯文本消息
   Image   = 2,  // 图片消息
   Video   = 3,  // 视频消息
+  File    = 4,  // 文件消息
   System  = 5,  // 系统通知
   Revoked = 6,  // 撤回占位符
 }
@@ -70,6 +71,7 @@ export interface InboxMessage {
   toId:       number;
   msgType:    MsgType;
   content:    string;
+  replyToMsgId?: number;
   readStatus: number;   // 0=未读, 1=已读 (仅私聊)
   groupSeq?:  number;   // 群消息序号 (仅群聊)
   timestamp:  number;   // Unix 毫秒时间戳
@@ -82,6 +84,7 @@ export interface SendMessage {
   toId:      number;    // 接收者ID(私聊) 或 群组ID(群聊)
   msgType:   MsgType;
   content:   string;
+  replyToMsgId?: number;
   timestamp: number;
 }
 
@@ -153,6 +156,20 @@ export interface KickNotification {
   reason: "new_login";
 }
 
+export interface TypingEvent {
+  convId: string;
+  convType: ConvType;
+  toId: number;
+  fromId?: number;
+  typing: boolean;
+}
+
+export interface PresenceEvent {
+  userId: number;
+  online: boolean;
+  lastSeenAt?: number;
+}
+
 export interface GroupRemovedNotification {
   groupId: number;
   reason: "removed";
@@ -182,7 +199,8 @@ export type ClientWsMessage =
   | { type: "deliverAck";   data: DeliverAck }
   | { type: "readAck";      data: ReadAck }
   | { type: "syncReq";      data: SyncReq }
-  | { type: "revokeMsg";    data: RevokeMsgReq };
+  | { type: "revokeMsg";    data: RevokeMsgReq }
+  | { type: "typing";       data: TypingEvent };
 
 // ──────────────────────────────────────────────────────
 // 联合类型：服务端 → 客户端
@@ -194,6 +212,8 @@ export type ServerWsMessage =
   | { type: "syncBatch";      data: SyncBatch }
   | { type: "convSync";       data: ConvSync }
   | { type: "msgRevoked";     data: RevokedNotification }
+  | { type: "typing";         data: TypingEvent }
+  | { type: "presence";       data: PresenceEvent }
   // `kick` is emitted by the connection manager without a `data` envelope.
   | { type: "kick";           reason: KickNotification["reason"] }
     | { type: "groupRemoved";   data: GroupRemovedNotification }

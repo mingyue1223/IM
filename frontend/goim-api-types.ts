@@ -20,8 +20,9 @@ export interface UpdateUsernameRequest { username: string; }
 export interface UpdatePasswordRequest { current_password: string; new_password: string; }
 
 export interface FriendRequest { id: ApiId; from_user_id: ApiId; to_user_id: ApiId; username?: string; avatar_url?: string; message: string; status: 0 | 1 | 2; created_at: IsoDateTime; updated_at: IsoDateTime; }
-export interface Friendship { id: ApiId; user_id: ApiId; friend_id: ApiId; remark: string; nickname?: string; avatar_url?: string; online: boolean; is_blocked: boolean; created_at: IsoDateTime; }
-export interface Group { id: ApiId; name: string; notice: string; owner_id: ApiId; max_members: number; created_at: IsoDateTime; updated_at: IsoDateTime; }
+export interface Friendship { id: ApiId; user_id: ApiId; friend_id: ApiId; remark: string; group_id?: ApiId | null; nickname?: string; avatar_url?: string; online: boolean; is_blocked: boolean; created_at: IsoDateTime; }
+export interface FriendGroup { id: ApiId; user_id: ApiId; name: string; sort_order: number; created_at: IsoDateTime; updated_at: IsoDateTime; }
+export interface Group { id: ApiId; name: string; notice: string; owner_id: ApiId; max_members: number; mute_all: boolean; created_at: IsoDateTime; updated_at: IsoDateTime; }
 export interface GroupMember { id: ApiId; group_id: ApiId; user_id: ApiId; role: 0 | 1 | 2; username: string; avatar_url?: string; muted_until?: IsoDateTime | null; joined_at: IsoDateTime; }
 export interface Moment { id: ApiId; author_id: ApiId; author_name: string; author_avatar?: string; content: string; media_urls?: string | null; visibility: 1 | 2 | 3; created_at: IsoDateTime; like_count: number; liked_by_me: boolean; comments: MomentComment[]; }
 export interface MomentComment { id: ApiId; moment_id: ApiId; user_id: ApiId; username: string; avatar_url?: string; content: string; created_at: IsoDateTime; }
@@ -36,6 +37,7 @@ export interface UpdateGroupRequest { name: string; notice: string; }
 export interface AddGroupMemberRequest { member_id: ApiId; }
 export interface UpdateGroupMemberRoleRequest { role: 0 | 1; }
 export interface MuteGroupMemberRequest { duration_seconds: number; }
+export interface SetGroupMuteAllRequest { muted: boolean; }
 export interface TransferGroupOwnerRequest { new_owner_id: ApiId; }
 export interface PublishMomentRequest { content: string; media_urls?: string; visibility: 2 | 3; }
 export interface PublishMomentResponse { moment_id: ApiId; }
@@ -53,6 +55,8 @@ export interface FriendRequestActionRequest { request_id: ApiId; }
 export interface AcceptFriendRequestResponse { user_id: ApiId; friend_id: ApiId; }
 export interface BlockUserRequest { blocked_id: ApiId; }
 export interface UpdateFriendRemarkRequest { remark: string; }
+export interface FriendGroupRequest { name: string; }
+export interface MoveFriendToGroupRequest { group_id: ApiId | null; }
 
 export interface RevokeMessageRequest { convId: string; msgId: ApiId; }
 export interface SearchMessagesQuery { q?: string; convId?: string; startTime?: number; endTime?: number; limit?: number; offset?: number; }

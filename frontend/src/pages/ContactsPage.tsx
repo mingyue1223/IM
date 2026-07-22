@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check, ChevronRight, Heart, Images, LoaderCircle, MessageCircle, Pencil, Search, Trash2, UserRoundPlus, UsersRound, X } from "lucide-react";
+import { Check, ChevronRight, FolderCog, FolderPlus, Heart, Images, LoaderCircle, MessageCircle, Pencil, Search, Trash2, UserRoundPlus, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -30,7 +30,7 @@ export function ContactsPage() {
   const userId = useAuthStore((state) => state.user?.id ?? 0);
   const previewMode = useAuthStore((state) => state.previewMode);
   const addPrivateConversation = useChatStore((state) => state.addPrivateConversation);
-  const { contacts, requests, isLoading, error, isMutating, accept, reject, sendRequest, remove, block, unblock, updateRemark } = useFriends();
+  const { contacts, friendGroups, requests, isLoading, error, isMutating, accept, reject, sendRequest, remove, block, unblock, updateRemark, createGroup, renameGroup, deleteGroup, moveToGroup } = useFriends();
   const [requestOpen, setRequestOpen] = useState(false);
   const [dangerAction, setDangerAction] = useState<DangerAction>(null);
   const [targetUserId, setTargetUserId] = useState("");
@@ -41,6 +41,11 @@ export function ContactsPage() {
   const [momentsOpen, setMomentsOpen] = useState(false);
   const [remarkEditing, setRemarkEditing] = useState(false);
   const [remark, setRemark] = useState("");
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState("");
+  const [groupError, setGroupError] = useState<string | null>(null);
   const selected = contacts.find((contact) => contact.routeId === contactId) ?? contacts[0];
   const friendMomentsQuery = useQuery({
     queryKey: ["moments", "friend", selected?.userId],
@@ -98,16 +103,33 @@ export function ContactsPage() {
     await updateRemark(selected.userId, remark.trim());
     setRemarkEditing(false);
   };
+  const runGroupAction = async (action: () => Promise<void>) => {
+    setGroupError(null);
+    try { await action(); }
+    catch (failure) { setGroupError(failure instanceof ApiError ? failure.message : "好友分组操作失败"); }
+  };
+  const addFriendGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name) return;
+    await runGroupAction(() => createGroup(name));
+    setNewGroupName("");
+  };
+  const saveFriendGroup = async () => {
+    if (!editingGroupId || !editingGroupName.trim()) return;
+    await runGroupAction(() => renameGroup(editingGroupId, editingGroupName.trim()));
+    setEditingGroupId(null);
+  };
+  const renderContact = (contact: FriendView) => <NavLink className={({ isActive }) => isActive ? "contact-item is-active" : "contact-item"} key={contact.routeId} to={`/app/contacts/${contact.routeId}`}><Avatar name={contact.name} online={contact.online} src={contact.avatarUrl} /><span><strong>{contact.name}</strong><small>{contact.note}</small></span></NavLink>;
 
   return (
     <>
       <aside className={`module-sidebar contacts-sidebar ${contactId ? "contacts-sidebar--mobile-hidden" : ""}`}>
-        <header className="module-sidebar__header"><div><span className="eyebrow">Contacts</span><h1>联系人</h1></div><IconButton label="添加好友" onClick={() => setRequestOpen(true)}><UserRoundPlus size={18} /></IconButton></header>
+        <header className="module-sidebar__header"><div><span className="eyebrow">Contacts</span><h1>联系人</h1></div><span className="contact-header-actions"><IconButton label="管理好友分组" onClick={() => setGroupManagerOpen(true)}><FolderCog size={18} /></IconButton><IconButton label="添加好友" onClick={() => setRequestOpen(true)}><UserRoundPlus size={18} /></IconButton></span></header>
         <div className="module-sidebar__search"><TextField aria-label="搜索联系人" leadingIcon={<Search size={16} />} placeholder="搜索联系人" /></div>
         <button className="friend-request-entry" onClick={() => setRequestOpen(true)}><span className="friend-request-entry__icon"><UserRoundPlus size={18} /></span><span><strong>好友申请</strong><small>{requests.length ? `有 ${requests.length} 条待处理申请` : "暂无新的申请"}</small></span>{requests.length > 0 && <b>{requests.length}</b>}<ChevronRight size={16} /></button>
         <div className="sidebar-section-label"><span>联系人</span><small>{contacts.length}</small></div>
         {isLoading ? <div className="sidebar-loading"><LoaderCircle className="ui-spinner" size={17} />正在加载联系人</div> : error ? <div className="sidebar-error">联系人加载失败，稍后重试</div> : (
-          <nav aria-label="联系人列表" className="contact-nav">{contacts.map((contact) => <NavLink className={({ isActive }) => isActive ? "contact-item is-active" : "contact-item"} key={contact.routeId} to={`/app/contacts/${contact.routeId}`}><Avatar name={contact.name} online={contact.online} src={contact.avatarUrl} /><span><strong>{contact.name}</strong><small>{contact.note}</small></span></NavLink>)}</nav>
+          <nav aria-label="联系人列表" className="contact-nav">{friendGroups.map((group) => { const items = contacts.filter((contact) => contact.groupId === group.id); return items.length > 0 && <section className="contact-group" key={group.id}><h2>{group.name}<small>{items.length}</small></h2>{items.map(renderContact)}</section>; })}<section className="contact-group"><h2>未分组<small>{contacts.filter((contact) => !contact.groupId).length}</small></h2>{contacts.filter((contact) => !contact.groupId).map(renderContact)}</section></nav>
         )}
       </aside>
 
@@ -119,7 +141,7 @@ export function ContactsPage() {
             <Button disabled={selected.isBlocked} leadingIcon={<MessageCircle size={17} />} onClick={() => startChat(selected)} size="lg">{selected.isBlocked ? "已拉黑" : "发消息"}</Button>
             <Button leadingIcon={<Images size={17} />} onClick={() => setMomentsOpen(true)} size="lg" variant="secondary">动态</Button>
           </div>
-          <div className="contact-profile__section"><header><h3>联系人管理</h3><button className="contact-edit-remark" onClick={() => setRemarkEditing((value) => !value)}><Pencil size={14} />好友备注</button></header>{remarkEditing && <div className="contact-remark-form"><TextField label="备注" maxLength={50} onChange={(event) => setRemark(event.target.value)} value={remark} /><Button disabled={isMutating} onClick={() => void saveRemark()} size="sm">保存</Button></div>}<div className="contact-danger-row"><button onClick={() => setDangerAction("remove")}><Trash2 size={15} />删除好友</button><button onClick={() => setDangerAction(selected.isBlocked ? "unblock" : "block")}>{selected.isBlocked ? "解除拉黑" : "加入黑名单"}</button></div></div>
+          <div className="contact-profile__section"><header><h3>联系人管理</h3><button className="contact-edit-remark" onClick={() => setRemarkEditing((value) => !value)}><Pencil size={14} />好友备注</button></header>{remarkEditing && <div className="contact-remark-form"><TextField label="备注" maxLength={50} onChange={(event) => setRemark(event.target.value)} value={remark} /><Button disabled={isMutating} onClick={() => void saveRemark()} size="sm">保存</Button></div>}<label className="contact-group-select"><span>好友分组</span><select disabled={isMutating} onChange={(event) => void runGroupAction(() => moveToGroup(selected.userId, event.target.value ? Number(event.target.value) : null))} value={selected.groupId ?? ""}><option value="">未分组</option>{friendGroups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><div className="contact-danger-row"><button onClick={() => setDangerAction("remove")}><Trash2 size={15} />删除好友</button><button onClick={() => setDangerAction(selected.isBlocked ? "unblock" : "block")}>{selected.isBlocked ? "解除拉黑" : "加入黑名单"}</button></div></div>
         </motion.div></AnimatePresence> : <div className="contact-empty"><UsersRound size={24} /><h2>还没有联系人</h2><p>通过用户 ID 发送好友申请，建立第一段连接。</p><Button onClick={() => setRequestOpen(true)} size="sm">添加好友</Button></div>}
       </section>
 
@@ -150,6 +172,11 @@ export function ContactsPage() {
       <ConfirmDialog confirmLabel={dangerAction === "remove" ? "删除好友" : dangerAction === "unblock" ? "解除拉黑" : "确认拉黑"} description={dangerAction === "remove" ? `删除后，你与 ${selected?.name ?? "该用户"} 将不再是好友。` : dangerAction === "unblock" ? `解除后，${selected?.name ?? "该用户"} 可以重新与你互动。` : `拉黑后，${selected?.name ?? "该用户"} 将无法向你发送消息。`} destructive={dangerAction !== "unblock"} onClose={() => setDangerAction(null)} onConfirm={() => void confirmDangerAction()} open={Boolean(dangerAction)} title={dangerAction === "remove" ? "删除这个联系人？" : dangerAction === "unblock" ? "解除拉黑？" : "拉黑这个联系人？"} />
       <Drawer description="仅展示对你可见的好友动态" onClose={() => setMomentsOpen(false)} open={momentsOpen} title={`${selected?.name ?? "好友"}的动态`}>
         {friendMomentsQuery.isLoading && !previewMode ? <div className="friend-moments-state"><LoaderCircle className="ui-spinner" size={18} />正在加载动态</div> : friendMomentsQuery.isError && !previewMode ? <div className="friend-moments-state is-error">动态加载失败，请稍后重试</div> : friendMoments.length === 0 ? <div className="friend-moments-state">暂时没有可查看的动态</div> : <div className="friend-moments-list">{friendMoments.map((moment) => <article className="friend-moment-card" key={moment.id}><header><Avatar name={selected?.name ?? "好友"} size="sm" src={selected?.avatarUrl} /><div><strong>{selected?.name}</strong><time>{moment.time}</time></div></header><p>{moment.content}</p><footer><span><Heart size={14} />{moment.likeCount}</span><span>{moment.comments.length} 条评论</span></footer>{moment.comments.length > 0 && <div className="friend-moment-comments">{moment.comments.map((comment) => <p key={comment.id}><strong>{comment.author}</strong><span>{comment.content}</span></p>)}</div>}</article>)}</div>}
+      </Drawer>
+      <Drawer description="删除分组后，其中的联系人会移到未分组。" onClose={() => setGroupManagerOpen(false)} open={groupManagerOpen} title="好友分组">
+        <div className="friend-group-create"><TextField label="新分组名称" maxLength={30} onChange={(event) => setNewGroupName(event.target.value)} value={newGroupName} /><Button disabled={!newGroupName.trim() || isMutating} leadingIcon={<FolderPlus size={15} />} onClick={() => void addFriendGroup()} size="sm">创建</Button></div>
+        {groupError && <p className="inline-error">{groupError}</p>}
+        <div className="friend-group-list">{friendGroups.length === 0 ? <p>还没有好友分组</p> : friendGroups.map((group) => <div className="friend-group-row" key={group.id}>{editingGroupId === group.id ? <TextField aria-label="分组名称" maxLength={30} onChange={(event) => setEditingGroupName(event.target.value)} value={editingGroupName} /> : <span><strong>{group.name}</strong><small>{contacts.filter((contact) => contact.groupId === group.id).length} 位联系人</small></span>}<div>{editingGroupId === group.id ? <Button disabled={!editingGroupName.trim() || isMutating} onClick={() => void saveFriendGroup()} size="sm">保存</Button> : <IconButton label="重命名分组" onClick={() => { setEditingGroupId(group.id); setEditingGroupName(group.name); }}><Pencil size={15} /></IconButton>}<IconButton label="删除分组" onClick={() => void runGroupAction(() => deleteGroup(group.id))}><Trash2 size={15} /></IconButton></div></div>)}</div>
       </Drawer>
     </>
   );

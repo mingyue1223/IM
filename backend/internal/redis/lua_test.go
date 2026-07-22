@@ -224,6 +224,23 @@ func TestGroupMsgCheckMutedNoInfo(t *testing.T) {
 	rdb.Del(ctx, "msg_dedup:1:client-grp-noinfo")
 }
 
+func TestGroupMsgCheckMuteAllAllowsManagers(t *testing.T) {
+	rdb := setupTestRedis(t)
+	ctx := context.Background()
+	rdb.SAdd(ctx, "group_members:8", "1", "2")
+	rdb.Set(ctx, "group_mute_all:8", "1", 0)
+	rdb.HSet(ctx, "group_member_role:8", "1", 0, "2", 1)
+	defer cleanupKeys(t, rdb, ctx, "group_members:8", "group_mute_all:8", "group_member_role:8", "group_seq:8", "msg_dedup:2:mute-all-admin")
+
+	memberResult, err := ExecGroupMsgCheck(rdb, ctx, 8, 1, "mute-all-member")
+	require.NoError(t, err)
+	assert.Equal(t, GMErrMuted, memberResult.ErrCode)
+
+	adminResult, err := ExecGroupMsgCheck(rdb, ctx, 8, 2, "mute-all-admin")
+	require.NoError(t, err)
+	assert.Equal(t, GMErrOK, adminResult.ErrCode)
+}
+
 // ========== 收件箱标记已读 ==========
 
 func TestInboxMarkRead(t *testing.T) {

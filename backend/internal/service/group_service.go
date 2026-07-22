@@ -49,6 +49,22 @@ type groupMuteCache interface {
 	SetGroupMemberMute(ctx context.Context, groupID, userID int64, mutedUntil *time.Time) error
 }
 
+type groupRoleCache interface {
+	SetGroupMemberRole(ctx context.Context, groupID, userID int64, role int) error
+}
+
+type groupMuteAllStore interface {
+	UpdateGroupMuteAll(ctx context.Context, groupID int64, muted bool) error
+}
+
+type groupMuteAllCache interface {
+	SetGroupMuteAll(ctx context.Context, groupID int64, muted bool, members []model.GroupMember) error
+}
+
+type groupOwnershipStore interface {
+	TransferGroupOwnership(ctx context.Context, groupID, ownerID, newOwnerID int64) error
+}
+
 func (s *GroupService) SetMemberMute(ctx context.Context, actorID, groupID, memberID int64, mutedUntil *time.Time) error {
 	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
 	if err != nil {
@@ -100,6 +116,45 @@ func (s *GroupService) SetMemberMute(ctx context.Context, actorID, groupID, memb
 	return nil
 }
 
+func (s *GroupService) SetGroupMuteAll(ctx context.Context, actorID, groupID int64, muted bool) error {
+	group, err := s.mysqlRepo.GetGroupByID(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get group: %w", err)
+	}
+	if group == nil {
+		return fmt.Errorf(ErrGroupNotFound)
+	}
+	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get group members: %w", err)
+	}
+	allowed := false
+	for _, member := range members {
+		if member.UserID == actorID && member.Role >= model.RoleAdmin {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return fmt.Errorf(ErrNotOwnerOrAdmin)
+	}
+	store, ok := s.mysqlRepo.(groupMuteAllStore)
+	if !ok {
+		return fmt.Errorf("group mute-all storage is unavailable")
+	}
+	if err := store.UpdateGroupMuteAll(ctx, groupID, muted); err != nil {
+		return err
+	}
+	cache, ok := s.redisRepo.(groupMuteAllCache)
+	if !ok {
+		return fmt.Errorf("group mute-all cache is unavailable")
+	}
+	if err := cache.SetGroupMuteAll(ctx, groupID, muted, members); err != nil {
+		return fmt.Errorf("update group mute-all cache: %w", err)
+	}
+	return nil
+}
+
 // NewGroupService 使用给定的仓库和日志记录器创建一个 GroupService。
 func NewGroupService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, logger *zap.Logger) *GroupService {
 	return &GroupService{
@@ -135,6 +190,11 @@ func (s *GroupService) CreateGroup(ctx context.Context, ownerID int64, name, not
 	// 更新 Redis 缓存
 	if err := s.redisRepo.AddGroupMemberRedis(ctx, groupID, ownerID); err != nil {
 		s.logger.Warn("将群主添加到 Redis 群组缓存失败", zap.Int64("groupID", groupID), zap.Int64("userID", ownerID), zap.Error(err))
+	}
+	if cache, ok := s.redisRepo.(groupRoleCache); ok {
+		if err := cache.SetGroupMemberRole(ctx, groupID, ownerID, model.RoleOwner); err != nil {
+			s.logger.Warn("failed to cache group owner role", zap.Error(err))
+		}
 	}
 
 	return groupID, nil
@@ -253,6 +313,11 @@ func (s *GroupService) AddMember(ctx context.Context, groupID, userID, newMember
 	// 更新 Redis 缓存
 	if err := s.redisRepo.AddGroupMemberRedis(ctx, groupID, newMemberID); err != nil {
 		s.logger.Warn("将成员添加到 Redis 群组缓存失败", zap.Int64("groupID", groupID), zap.Int64("userID", newMemberID), zap.Error(err))
+	}
+	if cache, ok := s.redisRepo.(groupRoleCache); ok {
+		if err := cache.SetGroupMemberRole(ctx, groupID, newMemberID, model.RoleMember); err != nil {
+			s.logger.Warn("failed to cache group member role", zap.Error(err))
+		}
 	}
 
 	return nil
@@ -409,15 +474,29 @@ func (s *GroupService) TransferOwnership(ctx context.Context, groupID, ownerID, 
 	if !found || newOwnerID == ownerID {
 		return fmt.Errorf(ErrMemberNotFound)
 	}
-	if err := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(ownerID), 0); err != nil {
-		return fmt.Errorf("demote old owner: %w", err)
+	if store, ok := s.mysqlRepo.(groupOwnershipStore); ok {
+		if err := store.TransferGroupOwnership(ctx, groupID, ownerID, newOwnerID); err != nil {
+			return fmt.Errorf("transfer group ownership: %w", err)
+		}
+	} else {
+		if err := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(ownerID), model.RoleMember); err != nil {
+			return fmt.Errorf("demote old owner: %w", err)
+		}
+		if err := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(newOwnerID), model.RoleOwner); err != nil {
+			return fmt.Errorf("promote new owner: %w", err)
+		}
+		group.OwnerID = newOwnerID
+		if err := s.mysqlRepo.UpdateGroup(ctx, group); err != nil {
+			return fmt.Errorf("update group owner: %w", err)
+		}
 	}
-	if err := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(newOwnerID), 2); err != nil {
-		return fmt.Errorf("promote new owner: %w", err)
-	}
-	group.OwnerID = newOwnerID
-	if err := s.mysqlRepo.UpdateGroup(ctx, group); err != nil {
-		return fmt.Errorf("update group owner: %w", err)
+	if cache, ok := s.redisRepo.(groupRoleCache); ok {
+		if err := cache.SetGroupMemberRole(ctx, groupID, ownerID, model.RoleMember); err != nil {
+			s.logger.Warn("failed to cache previous owner role", zap.Error(err))
+		}
+		if err := cache.SetGroupMemberRole(ctx, groupID, newOwnerID, model.RoleOwner); err != nil {
+			s.logger.Warn("failed to cache new owner role", zap.Error(err))
+		}
 	}
 	return nil
 }
@@ -450,6 +529,11 @@ func (s *GroupService) UpdateMemberRole(ctx context.Context, groupID, userID, ta
 
 	if err := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(targetUserID), int(newRole)); err != nil {
 		return fmt.Errorf("update member role: %w", err)
+	}
+	if cache, ok := s.redisRepo.(groupRoleCache); ok {
+		if err := cache.SetGroupMemberRole(ctx, groupID, targetUserID, int(newRole)); err != nil {
+			s.logger.Warn("failed to cache group member role", zap.Error(err))
+		}
 	}
 	return nil
 }

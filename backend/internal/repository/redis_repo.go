@@ -806,6 +806,25 @@ func (r *RedisRepoImpl) SetGroupMemberMute(ctx context.Context, groupID, userID 
 	return r.rdb.HSet(ctx, fmt.Sprintf("group_member_info:%d", groupID), strconv.FormatInt(userID, 10), encoded).Err()
 }
 
+func (r *RedisRepoImpl) SetGroupMemberRole(ctx context.Context, groupID, userID int64, role int) error {
+	return r.rdb.HSet(ctx, fmt.Sprintf("group_member_role:%d", groupID), strconv.FormatInt(userID, 10), role).Err()
+}
+
+func (r *RedisRepoImpl) SetGroupMuteAll(ctx context.Context, groupID int64, muted bool, members []model.GroupMember) error {
+	pipe := r.rdb.Pipeline()
+	value := "0"
+	if muted {
+		value = "1"
+	}
+	pipe.Set(ctx, fmt.Sprintf("group_mute_all:%d", groupID), value, 0)
+	roleKey := fmt.Sprintf("group_member_role:%d", groupID)
+	for _, member := range members {
+		pipe.HSet(ctx, roleKey, strconv.FormatInt(member.UserID, 10), member.Role)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 // DeleteFriendCache removes the bidirectional friendship keys used by the
 // private-message Lua authorization check.
 func (r *RedisRepoImpl) DeleteFriendCache(ctx context.Context, uidA, uidB int64) error {

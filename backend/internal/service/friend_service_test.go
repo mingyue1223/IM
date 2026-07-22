@@ -32,10 +32,12 @@ type mockFriendRepo struct {
 	users map[int64]*model.User
 	// 按作者存储朋友圈，用于测试添加好友后的历史回填。
 	momentsByUser map[int64][]model.Moment
+	friendGroups  map[int64]*model.FriendGroup
 	// 下一个自增 ID
 	nextRequestID int64
 	nextFriendID  int64
 	nextBlackID   int64
+	nextGroupID   int64
 
 	// 错误覆盖
 	isFriendErr      error
@@ -59,9 +61,11 @@ func newMockFriendRepo() *mockFriendRepo {
 		blacklist:      make(map[string]*model.Blacklist),
 		users:          make(map[int64]*model.User),
 		momentsByUser:  make(map[int64][]model.Moment),
+		friendGroups:   make(map[int64]*model.FriendGroup),
 		nextRequestID:  1,
 		nextFriendID:   1,
 		nextBlackID:    1,
+		nextGroupID:    1,
 	}
 }
 
@@ -198,6 +202,82 @@ func (m *mockFriendRepo) IsFriend(_ context.Context, userID, friendID int64) (bo
 	}
 	_, ok := m.friendships[friendKey(userID, friendID)]
 	return ok, nil
+}
+
+func (m *mockFriendRepo) UpdateFriendRemark(_ context.Context, userID, friendID int64, remark string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	friend, ok := m.friendships[friendKey(userID, friendID)]
+	if !ok {
+		return fmt.Errorf("friend not found")
+	}
+	friend.Remark = remark
+	return nil
+}
+
+func (m *mockFriendRepo) CreateFriendGroup(_ context.Context, group *model.FriendGroup) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	group.ID = m.nextGroupID
+	m.nextGroupID++
+	m.friendGroups[group.ID] = group
+	return nil
+}
+
+func (m *mockFriendRepo) GetFriendGroups(_ context.Context, userID int64) ([]model.FriendGroup, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	groups := make([]model.FriendGroup, 0)
+	for _, group := range m.friendGroups {
+		if group.UserID == userID {
+			groups = append(groups, *group)
+		}
+	}
+	return groups, nil
+}
+
+func (m *mockFriendRepo) UpdateFriendGroup(_ context.Context, userID, groupID int64, name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	group, ok := m.friendGroups[groupID]
+	if !ok || group.UserID != userID {
+		return fmt.Errorf("friend group not found")
+	}
+	group.Name = name
+	return nil
+}
+
+func (m *mockFriendRepo) DeleteFriendGroup(_ context.Context, userID, groupID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	group, ok := m.friendGroups[groupID]
+	if !ok || group.UserID != userID {
+		return fmt.Errorf("friend group not found")
+	}
+	delete(m.friendGroups, groupID)
+	for _, friend := range m.friendships {
+		if friend.UserID == userID && friend.GroupID != nil && *friend.GroupID == groupID {
+			friend.GroupID = nil
+		}
+	}
+	return nil
+}
+
+func (m *mockFriendRepo) MoveFriendToGroup(_ context.Context, userID, friendID int64, groupID *int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	friend, ok := m.friendships[friendKey(userID, friendID)]
+	if !ok {
+		return fmt.Errorf("friend not found")
+	}
+	if groupID != nil {
+		group, ok := m.friendGroups[*groupID]
+		if !ok || group.UserID != userID {
+			return fmt.Errorf("friend group not found")
+		}
+	}
+	friend.GroupID = groupID
+	return nil
 }
 
 func (m *mockFriendRepo) CreateBlacklist(_ context.Context, bl *model.Blacklist) error {
@@ -904,6 +984,27 @@ func TestFriend_GetFriendList_WithProfile(t *testing.T) {
 	assert.Equal(t, "bob", friends[0].Nickname)
 	assert.Equal(t, "avatar2", friends[0].AvatarURL)
 	assert.True(t, friends[0].IsBlocked)
+}
+
+func TestFriend_GroupsLifecycle(t *testing.T) {
+	repo := newMockFriendRepo()
+	repo.friendships[friendKey(1, 2)] = &model.Friendship{UserID: 1, FriendID: 2}
+	svc := newTestFriendService(repo)
+
+	group, err := svc.CreateFriendGroup(context.Background(), 1, "同事")
+	assert.NoError(t, err)
+	assert.NoError(t, svc.MoveFriendToGroup(context.Background(), 1, 2, &group.ID))
+	assert.Equal(t, group.ID, *repo.friendships[friendKey(1, 2)].GroupID)
+
+	assert.NoError(t, svc.RenameFriendGroup(context.Background(), 1, group.ID, "项目组"))
+	groups, err := svc.GetFriendGroups(context.Background(), 1)
+	assert.NoError(t, err)
+	if assert.Len(t, groups, 1) {
+		assert.Equal(t, "项目组", groups[0].Name)
+	}
+
+	assert.NoError(t, svc.DeleteFriendGroup(context.Background(), 1, group.ID))
+	assert.Nil(t, repo.friendships[friendKey(1, 2)].GroupID)
 }
 
 // ── 高并发点赞新增接口的 mock 桩 ──

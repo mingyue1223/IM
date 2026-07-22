@@ -1,4 +1,4 @@
-import type { AddGroupMemberRequest, ApiId, CreateGroupRequest, CreateGroupResponse, Group, GroupMember, MuteGroupMemberRequest, Page, TransferGroupOwnerRequest, UpdateGroupMemberRoleRequest, UpdateGroupRequest } from "../../goim-api-types";
+import type { AddGroupMemberRequest, ApiId, CreateGroupRequest, CreateGroupResponse, Group, GroupMember, MuteGroupMemberRequest, Page, SetGroupMuteAllRequest, TransferGroupOwnerRequest, UpdateGroupMemberRoleRequest, UpdateGroupRequest } from "../../goim-api-types";
 import type { GoIMApiClient } from "./client";
 
 export const createGroupsApi = (client: GoIMApiClient) => ({
@@ -12,6 +12,7 @@ export const createGroupsApi = (client: GoIMApiClient) => ({
   updateRole: (groupId: ApiId, memberId: ApiId, input: UpdateGroupMemberRoleRequest) => client.put<void>(`/group/${groupId}/member/${memberId}/role`, input),
   muteMember: (groupId: ApiId, memberId: ApiId, input: MuteGroupMemberRequest) => client.put<{ muted_until: string }>(`/group/${groupId}/member/${memberId}/mute`, input),
   unmuteMember: (groupId: ApiId, memberId: ApiId) => client.delete<void>(`/group/${groupId}/member/${memberId}/mute`),
+  setMuteAll: (groupId: ApiId, input: SetGroupMuteAllRequest) => client.put<{ mute_all: boolean }>(`/group/${groupId}/mute-all`, input),
   transferOwner: (groupId: ApiId, input: TransferGroupOwnerRequest) => client.put<void>(`/group/${groupId}/owner`, input),
   leave: (groupId: ApiId) => client.post<void>(`/group/${groupId}/leave`),
 });

@@ -58,6 +58,14 @@ if isMember == 0 then
 end
 
 -- 2. Mute status check
+local muteAll = redis.call('GET', 'group_mute_all:' .. groupID)
+if muteAll == '1' then
+    local role = tonumber(redis.call('HGET', 'group_member_role:' .. groupID, senderID) or '0')
+    if role < 1 then
+        return {2, 0, 0, 1, 1}
+    end
+end
+
 local memberInfo = redis.call('HGET', 'group_member_info:' .. groupID, senderID)
 if memberInfo then
     local info = cjson.decode(memberInfo)

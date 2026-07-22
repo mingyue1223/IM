@@ -29,11 +29,21 @@ type Friendship struct {
 	UserID    int64     `json:"user_id"`
 	FriendID  int64     `json:"friend_id"`
 	Remark    string    `json:"remark"`
+	GroupID   *int64    `json:"group_id,omitempty"`
 	Nickname  string    `json:"nickname,omitempty"`
 	AvatarURL string    `json:"avatar_url,omitempty"`
 	Online    bool      `json:"online"`
 	IsBlocked bool      `json:"is_blocked"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type FriendGroup struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	Name      string    `json:"name"`
+	SortOrder int       `json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Blacklist struct {

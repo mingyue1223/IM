@@ -8,15 +8,16 @@ type Group struct {
 	Notice     string    `json:"notice"`
 	OwnerID    int64     `json:"owner_id"`
 	MaxMembers int       `json:"max_members"`
+	MuteAll    bool      `json:"mute_all"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type GroupMember struct {
-	ID        int64     `json:"id"`
-	GroupID   int64     `json:"group_id"`
-	UserID    int64     `json:"user_id"`
-	Role      int       `json:"role"` // 0=成员, 1=管理员, 2=群主
+	ID         int64      `json:"id"`
+	GroupID    int64      `json:"group_id"`
+	UserID     int64      `json:"user_id"`
+	Role       int        `json:"role"` // 0=成员, 1=管理员, 2=群主
 	MutedUntil *time.Time `json:"muted_until,omitempty"`
-	JoinedAt  time.Time `json:"joined_at"`
+	JoinedAt   time.Time  `json:"joined_at"`
 }

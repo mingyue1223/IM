@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -42,6 +43,14 @@ type friendRemarkStore interface {
 	UpdateFriendRemark(ctx context.Context, userID, friendID int64, remark string) error
 }
 
+type friendGroupStore interface {
+	CreateFriendGroup(ctx context.Context, group *model.FriendGroup) error
+	GetFriendGroups(ctx context.Context, userID int64) ([]model.FriendGroup, error)
+	UpdateFriendGroup(ctx context.Context, userID, groupID int64, name string) error
+	DeleteFriendGroup(ctx context.Context, userID, groupID int64) error
+	MoveFriendToGroup(ctx context.Context, userID, friendID int64, groupID *int64) error
+}
+
 // NewFriendService 创建一个包含所有必要依赖的 FriendService。
 func NewFriendService(mysqlRepo repository.MySQLRepo, redisRepo repository.RedisRepo, logger *zap.Logger) *FriendService {
 	return &FriendService{
@@ -68,6 +77,76 @@ func (s *FriendService) UpdateFriendRemark(ctx context.Context, userID, friendID
 		return fmt.Errorf("friend remark storage is unavailable")
 	}
 	return store.UpdateFriendRemark(ctx, userID, friendID, remark)
+}
+
+func (s *FriendService) CreateFriendGroup(ctx context.Context, userID int64, name string) (*model.FriendGroup, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > 30 {
+		return nil, fmt.Errorf("friend group name must contain 1 to 30 characters")
+	}
+	store, ok := s.mysqlRepo.(friendGroupStore)
+	if !ok {
+		return nil, fmt.Errorf("friend group storage is unavailable")
+	}
+	group := &model.FriendGroup{UserID: userID, Name: name}
+	if err := store.CreateFriendGroup(ctx, group); err != nil {
+		return nil, err
+	}
+	return group, nil
+}
+
+func (s *FriendService) GetFriendGroups(ctx context.Context, userID int64) ([]model.FriendGroup, error) {
+	store, ok := s.mysqlRepo.(friendGroupStore)
+	if !ok {
+		return nil, fmt.Errorf("friend group storage is unavailable")
+	}
+	return store.GetFriendGroups(ctx, userID)
+}
+
+func (s *FriendService) RenameFriendGroup(ctx context.Context, userID, groupID int64, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > 30 {
+		return fmt.Errorf("friend group name must contain 1 to 30 characters")
+	}
+	store, ok := s.mysqlRepo.(friendGroupStore)
+	if !ok {
+		return fmt.Errorf("friend group storage is unavailable")
+	}
+	if err := store.UpdateFriendGroup(ctx, userID, groupID, name); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("friend group not found")
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *FriendService) DeleteFriendGroup(ctx context.Context, userID, groupID int64) error {
+	store, ok := s.mysqlRepo.(friendGroupStore)
+	if !ok {
+		return fmt.Errorf("friend group storage is unavailable")
+	}
+	if err := store.DeleteFriendGroup(ctx, userID, groupID); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("friend group not found")
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *FriendService) MoveFriendToGroup(ctx context.Context, userID, friendID int64, groupID *int64) error {
+	store, ok := s.mysqlRepo.(friendGroupStore)
+	if !ok {
+		return fmt.Errorf("friend group storage is unavailable")
+	}
+	if err := store.MoveFriendToGroup(ctx, userID, friendID, groupID); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("friend or friend group not found")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *FriendService) GetUserByID(ctx context.Context, userID int64) (*model.User, error) {

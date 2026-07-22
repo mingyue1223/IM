@@ -108,6 +108,11 @@
 .friend-request-entry b { display: grid; min-width: 18px; height: 18px; place-items: center; border-radius: 999px; background: var(--color-accent); color: white; font-size: 9px; }
 .friend-request-entry > svg { color: var(--color-text-tertiary); }
 .contact-nav { display: grid; gap: 6px; padding: 0 10px 22px; }
+.contact-header-actions { display: flex; align-items: center; gap: 4px; }
+.contact-group { display: grid; gap: 6px; }
+.contact-group + .contact-group { margin-top: 8px; }
+.contact-group > h2 { display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 5px 8px 2px; color: var(--color-text-tertiary); font-size: 9px; font-weight: 650; }
+.contact-group > h2 small { font-size: 8px; font-weight: 500; }
 .contact-item { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 11px; min-height: 62px; padding: 9px 11px; border: 1px solid rgba(220,224,232,.76); border-radius: 15px; background: rgba(255,255,255,.5); color: inherit; text-decoration: none; transition: border-color var(--duration-fast), background var(--duration-fast), box-shadow var(--duration-fast), transform var(--duration-fast); }
 .contact-item:hover { border-color: rgba(198,204,218,.9); background: rgba(255,255,255,.78); }
 .contact-item.is-active { border-color: rgba(92,114,232,.18); background: var(--color-surface); box-shadow: var(--shadow-sm); }
@@ -478,6 +483,17 @@
 .contact-profile__section header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .contact-edit-remark { display: inline-flex; align-items: center; gap: 5px; border: 0; color: var(--color-accent); background: transparent; cursor: pointer; }
 .contact-remark-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; margin: 12px 0; }
+.contact-group-select { display: grid; gap: 6px; margin: 12px 0; color: var(--color-text-secondary); font-size: 10px; }
+.contact-group-select select { width: 100%; min-height: 38px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 6px; outline: none; background: var(--color-surface); color: var(--color-text-primary); }
+.contact-group-select select:focus { border-color: var(--color-accent); }
+.friend-group-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.friend-group-list { display: grid; gap: 8px; margin-top: 18px; }
+.friend-group-list > p { color: var(--color-text-tertiary); font-size: 11px; }
+.friend-group-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 54px; padding: 8px 10px; border-bottom: 1px solid var(--color-border); }
+.friend-group-row > span { display: grid; gap: 3px; }
+.friend-group-row strong { font-size: 11px; }
+.friend-group-row small { color: var(--color-text-tertiary); font-size: 9px; }
+.friend-group-row > div { display: flex; align-items: center; gap: 4px; }
 
 @media (max-width: 720px) {
   .message-image img { width: min(260px, 72vw); max-height: 300px; }

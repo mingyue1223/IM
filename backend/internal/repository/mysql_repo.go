@@ -306,7 +306,7 @@ func (m *MySQLRepoImpl) DeleteFriendship(ctx context.Context, userID, friendID i
 }
 
 func (m *MySQLRepoImpl) GetFriendList(ctx context.Context, userID int64) ([]model.Friendship, error) {
-	query := `SELECT f.id, f.user_id, f.friend_id, f.remark, f.created_at
+	query := `SELECT f.id, f.user_id, f.friend_id, f.remark, f.group_id, f.created_at
 	          FROM friendships f
 	          WHERE f.user_id = ?`
 	rows, err := m.db.QueryContext(ctx, query, userID)
@@ -318,7 +318,7 @@ func (m *MySQLRepoImpl) GetFriendList(ctx context.Context, userID int64) ([]mode
 	var results []model.Friendship
 	for rows.Next() {
 		var fs model.Friendship
-		if err := rows.Scan(&fs.ID, &fs.UserID, &fs.FriendID, &fs.Remark, &fs.CreatedAt); err != nil {
+		if err := rows.Scan(&fs.ID, &fs.UserID, &fs.FriendID, &fs.Remark, &fs.GroupID, &fs.CreatedAt); err != nil {
 			return nil, fmt.Errorf("扫描好友关系: %w", err)
 		}
 		results = append(results, fs)
@@ -347,6 +347,94 @@ func (m *MySQLRepoImpl) IsFriend(ctx context.Context, userID, friendID int64) (b
 		return false, fmt.Errorf("检查是否为好友: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (m *MySQLRepoImpl) CreateFriendGroup(ctx context.Context, group *model.FriendGroup) error {
+	result, err := m.db.ExecContext(ctx, `INSERT INTO friend_groups (user_id, name, sort_order) VALUES (?, ?, ?)`, group.UserID, group.Name, group.SortOrder)
+	if err != nil {
+		return fmt.Errorf("create friend group: %w", err)
+	}
+	group.ID, err = result.LastInsertId()
+	return err
+}
+
+func (m *MySQLRepoImpl) GetFriendGroups(ctx context.Context, userID int64) ([]model.FriendGroup, error) {
+	rows, err := m.db.QueryContext(ctx, `SELECT id, user_id, name, sort_order, created_at, updated_at FROM friend_groups WHERE user_id=? ORDER BY sort_order, id`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get friend groups: %w", err)
+	}
+	defer rows.Close()
+	groups := make([]model.FriendGroup, 0)
+	for rows.Next() {
+		var group model.FriendGroup
+		if err := rows.Scan(&group.ID, &group.UserID, &group.Name, &group.SortOrder, &group.CreatedAt, &group.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan friend group: %w", err)
+		}
+		groups = append(groups, group)
+	}
+	return groups, rows.Err()
+}
+
+func (m *MySQLRepoImpl) UpdateFriendGroup(ctx context.Context, userID, groupID int64, name string) error {
+	result, err := m.db.ExecContext(ctx, `UPDATE friend_groups SET name=? WHERE id=? AND user_id=?`, name, groupID, userID)
+	if err != nil {
+		return fmt.Errorf("update friend group: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (m *MySQLRepoImpl) DeleteFriendGroup(ctx context.Context, userID, groupID int64) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `DELETE FROM friend_groups WHERE id=? AND user_id=?`, groupID, userID)
+	if err != nil {
+		return fmt.Errorf("delete friend group: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE friendships SET group_id=NULL WHERE user_id=? AND group_id=?`, userID, groupID); err != nil {
+		return fmt.Errorf("ungroup friends: %w", err)
+	}
+	return tx.Commit()
+}
+
+func (m *MySQLRepoImpl) MoveFriendToGroup(ctx context.Context, userID, friendID int64, groupID *int64) error {
+	if groupID != nil {
+		var count int
+		if err := m.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM friend_groups WHERE id=? AND user_id=?`, *groupID, userID).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return sql.ErrNoRows
+		}
+	}
+	result, err := m.db.ExecContext(ctx, `UPDATE friendships SET group_id=? WHERE user_id=? AND friend_id=?`, groupID, userID, friendID)
+	if err != nil {
+		return fmt.Errorf("move friend to group: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (m *MySQLRepoImpl) CreateBlacklist(ctx context.Context, bl *model.Blacklist) error {
@@ -402,8 +490,8 @@ func (m *MySQLRepoImpl) CreateGroup(ctx context.Context, group *model.Group) (in
 }
 
 func (m *MySQLRepoImpl) UpdateGroup(ctx context.Context, group *model.Group) error {
-	query := "UPDATE `groups` SET name=?, notice=?, owner_id=?, updated_at=NOW() WHERE id=?"
-	_, err := m.db.ExecContext(ctx, query, group.Name, group.Notice, group.OwnerID, group.ID)
+	query := "UPDATE `groups` SET name=?, notice=?, owner_id=?, mute_all=?, updated_at=NOW() WHERE id=?"
+	_, err := m.db.ExecContext(ctx, query, group.Name, group.Notice, group.OwnerID, group.MuteAll, group.ID)
 	if err != nil {
 		return fmt.Errorf("更新群组: %w", err)
 	}
@@ -411,10 +499,10 @@ func (m *MySQLRepoImpl) UpdateGroup(ctx context.Context, group *model.Group) err
 }
 
 func (m *MySQLRepoImpl) GetGroupByID(ctx context.Context, groupID int64) (*model.Group, error) {
-	query := "SELECT id, name, notice, owner_id, max_members, created_at, updated_at FROM `groups` WHERE id = ?"
+	query := "SELECT id, name, notice, owner_id, max_members, mute_all, created_at, updated_at FROM `groups` WHERE id = ?"
 	row := m.db.QueryRowContext(ctx, query, groupID)
 	var g model.Group
-	err := row.Scan(&g.ID, &g.Name, &g.Notice, &g.OwnerID, &g.MaxMembers, &g.CreatedAt, &g.UpdatedAt)
+	err := row.Scan(&g.ID, &g.Name, &g.Notice, &g.OwnerID, &g.MaxMembers, &g.MuteAll, &g.CreatedAt, &g.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -479,6 +567,44 @@ func (m *MySQLRepoImpl) UpdateGroupMemberRole(ctx context.Context, groupID, user
 		return fmt.Errorf("更新群成员角色: %w", err)
 	}
 	return nil
+}
+
+func (m *MySQLRepoImpl) UpdateGroupMuteAll(ctx context.Context, groupID int64, muted bool) error {
+	_, err := m.db.ExecContext(ctx, "UPDATE `groups` SET mute_all=?, updated_at=NOW() WHERE id=?", muted, groupID)
+	if err != nil {
+		return fmt.Errorf("update group mute all: %w", err)
+	}
+	return nil
+}
+
+func (m *MySQLRepoImpl) TransferGroupOwnership(ctx context.Context, groupID, ownerID, newOwnerID int64) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var currentOwnerID int64
+	if err := tx.QueryRowContext(ctx, "SELECT owner_id FROM `groups` WHERE id=? FOR UPDATE", groupID).Scan(&currentOwnerID); err != nil {
+		return err
+	}
+	if currentOwnerID != ownerID {
+		return fmt.Errorf("owner changed")
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE group_members SET role=CASE WHEN user_id=? THEN 2 WHEN user_id=? THEN 0 ELSE role END WHERE group_id=? AND user_id IN (?, ?)`, newOwnerID, ownerID, groupID, ownerID, newOwnerID)
+	if err != nil {
+		return fmt.Errorf("update owner roles: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 2 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE `groups` SET owner_id=?, updated_at=NOW() WHERE id=?", newOwnerID, groupID); err != nil {
+		return fmt.Errorf("update group owner: %w", err)
+	}
+	return tx.Commit()
 }
 
 func (m *MySQLRepoImpl) UpdateGroupMemberMute(ctx context.Context, groupID, userID int64, mutedUntil *time.Time) error {

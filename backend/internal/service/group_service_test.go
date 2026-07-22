@@ -153,6 +153,30 @@ func (m *mockGroupMySQLRepo) UpdateGroupMemberRole(_ context.Context, groupID, u
 	return nil
 }
 
+func (m *mockGroupMySQLRepo) UpdateGroupMuteAll(_ context.Context, groupID int64, muted bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	group, ok := m.groupsByID[groupID]
+	if !ok {
+		return fmt.Errorf("group not found")
+	}
+	group.MuteAll = muted
+	return nil
+}
+
+func (m *mockGroupMySQLRepo) TransferGroupOwnership(ctx context.Context, groupID, ownerID, newOwnerID int64) error {
+	if err := m.UpdateGroupMemberRole(ctx, int(groupID), int(ownerID), model.RoleMember); err != nil {
+		return err
+	}
+	if err := m.UpdateGroupMemberRole(ctx, int(groupID), int(newOwnerID), model.RoleOwner); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.groupsByID[groupID].OwnerID = newOwnerID
+	return nil
+}
+
 // ── 存根：所有其他 MySQLRepo 方法 ──
 
 func (m *mockGroupMySQLRepo) GetUserByID(_ context.Context, id int64) (*model.User, error) {
@@ -268,6 +292,8 @@ type mockGroupRedisRepo struct {
 	groupMembersSets map[int64]map[string]bool
 	// user_groups:{userID} -> groupID 字符串集合
 	userGroupsSets map[int64]map[string]bool
+	muteAll        map[int64]bool
+	memberRoles    map[int64]map[int64]int
 
 	// 错误覆盖项
 	addGroupMemberErr    error
@@ -278,10 +304,28 @@ func newMockGroupRedisRepo() *mockGroupRedisRepo {
 	return &mockGroupRedisRepo{
 		groupMembersSets: make(map[int64]map[string]bool),
 		userGroupsSets:   make(map[int64]map[string]bool),
+		muteAll:          make(map[int64]bool),
+		memberRoles:      make(map[int64]map[int64]int),
 	}
 }
 
 func (r *mockGroupRedisRepo) SetGroupMemberMute(_ context.Context, _ int64, _ int64, _ *time.Time) error {
+	return nil
+}
+
+func (r *mockGroupRedisRepo) SetGroupMemberRole(_ context.Context, groupID, userID int64, role int) error {
+	if r.memberRoles[groupID] == nil {
+		r.memberRoles[groupID] = make(map[int64]int)
+	}
+	r.memberRoles[groupID][userID] = role
+	return nil
+}
+
+func (r *mockGroupRedisRepo) SetGroupMuteAll(_ context.Context, groupID int64, muted bool, members []model.GroupMember) error {
+	r.muteAll[groupID] = muted
+	for _, member := range members {
+		_ = r.SetGroupMemberRole(context.Background(), groupID, member.UserID, member.Role)
+	}
 	return nil
 }
 
@@ -900,6 +944,24 @@ func TestGroup_AdminCannotMuteAdmin(t *testing.T) {
 	_ = mysqlRepo.AddGroupMember(context.Background(), &model.GroupMember{GroupID: groupID, UserID: 3, Role: model.RoleAdmin})
 	until := time.Now().Add(time.Minute)
 	assert.EqualError(t, svc.SetMemberMute(context.Background(), 2, groupID, 3, &until), ErrCannotMutePeer)
+}
+
+func TestGroup_SetMuteAllAndTransferOwnership(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	_ = svc.AddMember(context.Background(), groupID, 1, 2)
+
+	assert.NoError(t, svc.SetGroupMuteAll(context.Background(), 1, groupID, true))
+	assert.True(t, mysqlRepo.groupsByID[groupID].MuteAll)
+	assert.True(t, redisRepo.muteAll[groupID])
+
+	assert.NoError(t, svc.TransferOwnership(context.Background(), groupID, 1, 2))
+	assert.Equal(t, int64(2), mysqlRepo.groupsByID[groupID].OwnerID)
+	assert.Equal(t, model.RoleMember, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 1)].Role)
+	assert.Equal(t, model.RoleOwner, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].Role)
+	assert.Equal(t, model.RoleOwner, redisRepo.memberRoles[groupID][2])
 }
 
 // ── 高并发点赞新增接口的 mock 桩 ──

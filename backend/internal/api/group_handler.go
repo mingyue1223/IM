@@ -65,6 +65,10 @@ type muteMemberRequest struct {
 	DurationSeconds int64 `json:"duration_seconds" binding:"required,min=1,max=2592000"`
 }
 
+type muteAllRequest struct {
+	Muted *bool `json:"muted" binding:"required"`
+}
+
 // ── Handlers ──
 
 // CreateGroup godoc
@@ -569,6 +573,39 @@ func (h *GroupHandler) UnmuteMember(c *gin.Context) {
 	SuccessMessage(c, "member unmuted")
 }
 
+func (h *GroupHandler) SetMuteAll(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("groupID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid group_id")
+		return
+	}
+	var req muteAllRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.Muted == nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "muted is required")
+		return
+	}
+	userID := c.GetInt64("userID")
+	if err := h.groupSvc.SetGroupMuteAll(c.Request.Context(), userID, groupID, *req.Muted); err != nil {
+		switch err.Error() {
+		case service.ErrNotOwnerOrAdmin:
+			ServiceError(c, http.StatusForbidden, err.Error())
+		case service.ErrGroupNotFound:
+			ServiceError(c, http.StatusNotFound, err.Error())
+		default:
+			Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		}
+		return
+	}
+	if h.msgSvc != nil {
+		content := "全员禁言已关闭"
+		if *req.Muted {
+			content = "全员禁言已开启，群主和管理员可继续发言"
+		}
+		h.msgSvc.SendGroupSystemMessage(userID, groupID, content)
+	}
+	Success(c, gin.H{"mute_all": *req.Muted})
+}
+
 // RegisterRoutes registers all group HTTP routes on the given Gin router group.
 func (h *GroupHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g := rg.Group("/group")
@@ -582,6 +619,7 @@ func (h *GroupHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	g.PUT("/:groupID/member/:memberID/role", h.UpdateMemberRole)
 	g.PUT("/:groupID/member/:memberID/mute", h.MuteMember)
 	g.DELETE("/:groupID/member/:memberID/mute", h.UnmuteMember)
+	g.PUT("/:groupID/mute-all", h.SetMuteAll)
 	g.PUT("/:groupID/owner", h.TransferOwnership)
 	g.POST("/:groupID/leave", h.LeaveGroup)
 }

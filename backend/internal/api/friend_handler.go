@@ -60,6 +60,14 @@ type updateFriendRemarkReq struct {
 	Remark string `json:"remark" binding:"max=50"`
 }
 
+type friendGroupReq struct {
+	Name string `json:"name" binding:"required,max=30"`
+}
+
+type moveFriendGroupReq struct {
+	GroupID *int64 `json:"group_id"`
+}
+
 // ── 处理器 ──
 
 // SendFriendRequest godoc
@@ -343,6 +351,78 @@ func (h *FriendHandler) UpdateFriendRemark(c *gin.Context) {
 	SuccessMessage(c, "friend remark updated")
 }
 
+func (h *FriendHandler) CreateFriendGroup(c *gin.Context) {
+	var req friendGroupReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "name is required")
+		return
+	}
+	group, err := h.friendSvc.CreateFriendGroup(c.Request.Context(), c.GetInt64("userID"), req.Name)
+	if err != nil {
+		ServiceError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	SuccessCreated(c, group)
+}
+
+func (h *FriendHandler) GetFriendGroups(c *gin.Context) {
+	groups, err := h.friendSvc.GetFriendGroups(c.Request.Context(), c.GetInt64("userID"))
+	if err != nil {
+		Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+		return
+	}
+	Success(c, groups)
+}
+
+func (h *FriendHandler) RenameFriendGroup(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("groupID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid groupID")
+		return
+	}
+	var req friendGroupReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "name is required")
+		return
+	}
+	if err := h.friendSvc.RenameFriendGroup(c.Request.Context(), c.GetInt64("userID"), groupID, req.Name); err != nil {
+		ServiceError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	SuccessMessage(c, "friend group renamed")
+}
+
+func (h *FriendHandler) DeleteFriendGroup(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("groupID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid groupID")
+		return
+	}
+	if err := h.friendSvc.DeleteFriendGroup(c.Request.Context(), c.GetInt64("userID"), groupID); err != nil {
+		ServiceError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	SuccessMessage(c, "friend group deleted")
+}
+
+func (h *FriendHandler) MoveFriendToGroup(c *gin.Context) {
+	friendID, err := strconv.ParseInt(c.Param("friendID"), 10, 64)
+	if err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid friendID")
+		return
+	}
+	var req moveFriendGroupReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, http.StatusBadRequest, CodeInvalidParam, "invalid group_id")
+		return
+	}
+	if err := h.friendSvc.MoveFriendToGroup(c.Request.Context(), c.GetInt64("userID"), friendID, req.GroupID); err != nil {
+		ServiceError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	SuccessMessage(c, "friend group updated")
+}
+
 // BlockUser godoc
 // @Summary      拉黑用户
 // @Description  将指定用户加入黑名单
@@ -417,8 +497,13 @@ func (h *FriendHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	friend.POST("/reject", h.RejectFriendRequest)
 	friend.GET("/requests", h.GetFriendRequests)
 	friend.GET("/list", h.GetFriendList)
+	friend.GET("/groups", h.GetFriendGroups)
+	friend.POST("/group", h.CreateFriendGroup)
+	friend.PUT("/group/:groupID", h.RenameFriendGroup)
+	friend.DELETE("/group/:groupID", h.DeleteFriendGroup)
 	friend.DELETE("/:friendID", h.DeleteFriend)
 	friend.PUT("/:friendID/remark", h.UpdateFriendRemark)
+	friend.PUT("/:friendID/group", h.MoveFriendToGroup)
 	friend.POST("/block", h.BlockUser)
 	friend.POST("/unblock", h.UnblockUser)
 }

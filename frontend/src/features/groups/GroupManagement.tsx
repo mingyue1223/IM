@@ -62,7 +62,7 @@ export function GroupManagementDrawer({ conversation, open, onClose }: GroupMana
   const removeConversation = useChatStore((state) => state.removeConversation);
   const setConversationMuted = useChatStore((state) => state.setConversationMuted);
   const groupId = conversation.targetId;
-  const [localGroup, setLocalGroup] = useState<Group>({ id: groupId, name: conversation.name, notice: "保持信息透明，重要结论及时同步。", owner_id: currentUserId, max_members: 500, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  const [localGroup, setLocalGroup] = useState<Group>({ id: groupId, name: conversation.name, notice: "保持信息透明，重要结论及时同步。", owner_id: currentUserId, max_members: 500, mute_all: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
   const [localMembers, setLocalMembers] = useState(previewMembers.map((member) => ({ ...member, group_id: groupId })));
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(conversation.name);
@@ -118,12 +118,21 @@ export function GroupManagementDrawer({ conversation, open, onClose }: GroupMana
       () => isMuted ? groupsApi.unmuteMember(groupId, member.user_id) : groupsApi.muteMember(groupId, member.user_id, { duration_seconds: 600 }),
     );
   };
+  const toggleGroupMuteAll = (muted: boolean) => {
+    void run(
+      () => setLocalGroup((current) => ({ ...current, mute_all: muted })),
+      () => groupsApi.setMuteAll(groupId, { muted }),
+    );
+  };
   const confirmDanger = async () => {
     if (!danger) return;
     let succeeded = false;
     if (danger.type === "remove" && danger.memberId) succeeded = await run(() => setLocalMembers((current) => current.filter((member) => member.user_id !== danger.memberId)), () => groupsApi.removeMember(groupId, danger.memberId!));
     if (danger.type === "leave") succeeded = await run(() => undefined, () => groupsApi.leave(groupId));
-    if (danger.type === "transfer" && danger.memberId) succeeded = await run(() => undefined, () => groupsApi.transferOwner(groupId, { new_owner_id: danger.memberId! }));
+    if (danger.type === "transfer" && danger.memberId) succeeded = await run(() => {
+      setLocalGroup((current) => ({ ...current, owner_id: danger.memberId! }));
+      setLocalMembers((current) => current.map((member) => member.user_id === currentUserId ? { ...member, role: 0 } : member.user_id === danger.memberId ? { ...member, role: 2 } : member));
+    }, () => groupsApi.transferOwner(groupId, { new_owner_id: danger.memberId! }));
     if (!succeeded) return;
     setDanger(null);
     if (danger.type === "leave") { removeConversation(conversation.id); onClose(); }
@@ -135,6 +144,7 @@ export function GroupManagementDrawer({ conversation, open, onClose }: GroupMana
 
   return <><Drawer description={`${members.length} 位成员 · 最多 ${group?.max_members ?? 500} 人`} onClose={onClose} open={open} title="群聊资料"><div className="group-profile-head"><Avatar name={group?.name ?? conversation.name} size="xl" /><div><h3>{group?.name ?? conversation.name}</h3><p>{group?.notice || "暂无群公告"}</p></div>{canManage && <Button onClick={() => setEditing((value) => !value)} size="sm" variant="secondary">{editing ? "取消编辑" : "编辑资料"}</Button>}</div>
     <div className="group-notification-setting"><Switch checked={Boolean(conversation.muted)} description="开启后，该群聊不会触发声音与桌面通知。" disabled={muteSaving} label="消息免打扰" onCheckedChange={(checked) => void toggleMute(checked)} /></div>
+    {canManage && <div className="group-notification-setting"><Switch checked={Boolean(group?.mute_all)} description="普通成员将无法发送消息，群主和管理员不受影响。" disabled={actionMutation.isPending} label="全员禁言" onCheckedChange={toggleGroupMuteAll} /></div>}
     {error && <p className="inline-error">{error}</p>}
     {editing && <div className="group-edit-panel"><TextField label="群名称" onChange={(event) => setName(event.target.value)} value={name} /><TextField label="群公告" onChange={(event) => setNotice(event.target.value)} value={notice} /><Button disabled={!name.trim()} onClick={saveInfo} size="sm">保存更改</Button></div>}
     {canManage && <div className="group-add-member"><h3>从好友中邀请</h3>{inviteCandidates.length === 0 ? <p>暂无可邀请的好友</p> : inviteCandidates.map((friend) => <div className="group-invite-row" key={friend.friend_id}><Avatar name={friend.nickname || `用户 ${friend.friend_id}`} size="sm" src={friend.avatar_url} /><span><strong>{friend.nickname || `用户 #${friend.friend_id}`}</strong><small>用户 #{friend.friend_id}</small></span><Button leadingIcon={<UserPlus size={14} />} onClick={() => addMember(friend.friend_id, friend.nickname || `用户 ${friend.friend_id}`, friend.avatar_url)} size="sm">添加</Button></div>)}</div>}

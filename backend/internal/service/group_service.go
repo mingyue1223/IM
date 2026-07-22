@@ -53,6 +53,10 @@ type groupRoleCache interface {
 	SetGroupMemberRole(ctx context.Context, groupID, userID int64, role int) error
 }
 
+type groupRolesCache interface {
+	SetGroupMemberRoles(ctx context.Context, groupID int64, roles map[int64]int) error
+}
+
 type groupMuteAllStore interface {
 	UpdateGroupMuteAll(ctx context.Context, groupID int64, muted bool) error
 }
@@ -98,9 +102,18 @@ func (s *GroupService) SetMemberMute(ctx context.Context, actorID, groupID, memb
 			return fmt.Errorf("mute duration cannot exceed 30 days")
 		}
 	}
+	var previousMutedUntil *time.Time
+	if target.MutedUntil != nil {
+		value := *target.MutedUntil
+		previousMutedUntil = &value
+	}
 	store, ok := s.mysqlRepo.(groupMuteStore)
 	if !ok {
 		return fmt.Errorf("group mute storage is unavailable")
+	}
+	cache, ok := s.redisRepo.(groupMuteCache)
+	if !ok {
+		return fmt.Errorf("group mute cache is unavailable")
 	}
 	if err := store.UpdateGroupMemberMute(ctx, groupID, memberID, mutedUntil); err != nil {
 		if err == sql.ErrNoRows {
@@ -108,10 +121,11 @@ func (s *GroupService) SetMemberMute(ctx context.Context, actorID, groupID, memb
 		}
 		return err
 	}
-	if cache, ok := s.redisRepo.(groupMuteCache); ok {
-		if err := cache.SetGroupMemberMute(ctx, groupID, memberID, mutedUntil); err != nil {
-			s.logger.Warn("failed to update group mute cache", zap.Error(err))
+	if err := cache.SetGroupMemberMute(ctx, groupID, memberID, mutedUntil); err != nil {
+		if rollbackErr := store.UpdateGroupMemberMute(ctx, groupID, memberID, previousMutedUntil); rollbackErr != nil {
+			return fmt.Errorf("update group mute cache: %v; rollback group mute: %w", err, rollbackErr)
 		}
+		return fmt.Errorf("update group mute cache: %w", err)
 	}
 	return nil
 }
@@ -138,18 +152,22 @@ func (s *GroupService) SetGroupMuteAll(ctx context.Context, actorID, groupID int
 	if !allowed {
 		return fmt.Errorf(ErrNotOwnerOrAdmin)
 	}
+	previousMuteAll := group.MuteAll
 	store, ok := s.mysqlRepo.(groupMuteAllStore)
 	if !ok {
 		return fmt.Errorf("group mute-all storage is unavailable")
-	}
-	if err := store.UpdateGroupMuteAll(ctx, groupID, muted); err != nil {
-		return err
 	}
 	cache, ok := s.redisRepo.(groupMuteAllCache)
 	if !ok {
 		return fmt.Errorf("group mute-all cache is unavailable")
 	}
+	if err := store.UpdateGroupMuteAll(ctx, groupID, muted); err != nil {
+		return err
+	}
 	if err := cache.SetGroupMuteAll(ctx, groupID, muted, members); err != nil {
+		if rollbackErr := store.UpdateGroupMuteAll(ctx, groupID, previousMuteAll); rollbackErr != nil {
+			return fmt.Errorf("update group mute-all cache: %v; rollback group mute-all: %w", err, rollbackErr)
+		}
 		return fmt.Errorf("update group mute-all cache: %w", err)
 	}
 	return nil
@@ -465,14 +483,20 @@ func (s *GroupService) TransferOwnership(ctx context.Context, groupID, ownerID, 
 		return fmt.Errorf("get group members: %w", err)
 	}
 	found := false
+	newOwnerPreviousRole := model.RoleMember
 	for _, member := range members {
 		if member.UserID == newOwnerID {
 			found = true
+			newOwnerPreviousRole = member.Role
 			break
 		}
 	}
 	if !found || newOwnerID == ownerID {
 		return fmt.Errorf(ErrMemberNotFound)
+	}
+	cache, ok := s.redisRepo.(groupRolesCache)
+	if !ok {
+		return fmt.Errorf("group roles cache is unavailable")
 	}
 	if store, ok := s.mysqlRepo.(groupOwnershipStore); ok {
 		if err := store.TransferGroupOwnership(ctx, groupID, ownerID, newOwnerID); err != nil {
@@ -490,13 +514,33 @@ func (s *GroupService) TransferOwnership(ctx context.Context, groupID, ownerID, 
 			return fmt.Errorf("update group owner: %w", err)
 		}
 	}
-	if cache, ok := s.redisRepo.(groupRoleCache); ok {
-		if err := cache.SetGroupMemberRole(ctx, groupID, ownerID, model.RoleMember); err != nil {
-			s.logger.Warn("failed to cache previous owner role", zap.Error(err))
+	if err := cache.SetGroupMemberRoles(ctx, groupID, map[int64]int{
+		ownerID:    model.RoleMember,
+		newOwnerID: model.RoleOwner,
+	}); err != nil {
+		var rollbackErr error
+		if store, ok := s.mysqlRepo.(groupOwnershipStore); ok {
+			rollbackErr = store.TransferGroupOwnership(ctx, groupID, newOwnerID, ownerID)
+			if rollbackErr == nil && newOwnerPreviousRole != model.RoleMember {
+				rollbackErr = s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(newOwnerID), newOwnerPreviousRole)
+			}
+		} else {
+			if rollbackErr = s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(ownerID), model.RoleOwner); rollbackErr == nil {
+				rollbackErr = s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(newOwnerID), newOwnerPreviousRole)
+			}
+			if rollbackErr == nil {
+				group.OwnerID = ownerID
+				rollbackErr = s.mysqlRepo.UpdateGroup(ctx, group)
+			}
 		}
-		if err := cache.SetGroupMemberRole(ctx, groupID, newOwnerID, model.RoleOwner); err != nil {
-			s.logger.Warn("failed to cache new owner role", zap.Error(err))
+		if rollbackErr != nil {
+			return fmt.Errorf("update group owner role cache: %v; rollback ownership: %w", err, rollbackErr)
 		}
+		_ = cache.SetGroupMemberRoles(ctx, groupID, map[int64]int{
+			ownerID:    model.RoleOwner,
+			newOwnerID: newOwnerPreviousRole,
+		})
+		return fmt.Errorf("update group owner role cache: %w", err)
 	}
 	return nil
 }
@@ -526,14 +570,33 @@ func (s *GroupService) UpdateMemberRole(ctx context.Context, groupID, userID, ta
 	if newRole != 0 && newRole != 1 {
 		return fmt.Errorf(ErrInvalidRole)
 	}
+	members, err := s.mysqlRepo.GetGroupMembers(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("get group members: %w", err)
+	}
+	previousRole := -1
+	for _, member := range members {
+		if member.UserID == targetUserID {
+			previousRole = member.Role
+			break
+		}
+	}
+	if previousRole < 0 {
+		return fmt.Errorf(ErrMemberNotFound)
+	}
+	cache, ok := s.redisRepo.(groupRoleCache)
+	if !ok {
+		return fmt.Errorf("group role cache is unavailable")
+	}
 
 	if err := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(targetUserID), int(newRole)); err != nil {
 		return fmt.Errorf("update member role: %w", err)
 	}
-	if cache, ok := s.redisRepo.(groupRoleCache); ok {
-		if err := cache.SetGroupMemberRole(ctx, groupID, targetUserID, int(newRole)); err != nil {
-			s.logger.Warn("failed to cache group member role", zap.Error(err))
+	if err := cache.SetGroupMemberRole(ctx, groupID, targetUserID, int(newRole)); err != nil {
+		if rollbackErr := s.mysqlRepo.UpdateGroupMemberRole(ctx, int(groupID), int(targetUserID), previousRole); rollbackErr != nil {
+			return fmt.Errorf("update group member role cache: %v; rollback member role: %w", err, rollbackErr)
 		}
+		return fmt.Errorf("update group member role cache: %w", err)
 	}
 	return nil
 }

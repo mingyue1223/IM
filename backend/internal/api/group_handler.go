@@ -549,7 +549,7 @@ func (h *GroupHandler) MuteMember(c *gin.Context) {
 	}
 	mutedUntil := time.Now().Add(time.Duration(req.DurationSeconds) * time.Second)
 	if err := h.groupSvc.SetMemberMute(c.Request.Context(), c.GetInt64("userID"), groupID, memberID, &mutedUntil); err != nil {
-		ServiceError(c, http.StatusForbidden, err.Error())
+		handleGroupMuteError(c, err)
 		return
 	}
 	Success(c, gin.H{"muted_until": mutedUntil})
@@ -567,10 +567,23 @@ func (h *GroupHandler) UnmuteMember(c *gin.Context) {
 		return
 	}
 	if err := h.groupSvc.SetMemberMute(c.Request.Context(), c.GetInt64("userID"), groupID, memberID, nil); err != nil {
-		ServiceError(c, http.StatusForbidden, err.Error())
+		handleGroupMuteError(c, err)
 		return
 	}
 	SuccessMessage(c, "member unmuted")
+}
+
+func handleGroupMuteError(c *gin.Context, err error) {
+	switch err.Error() {
+	case service.ErrNotOwnerOrAdmin, service.ErrCannotMuteOwner, service.ErrCannotMutePeer:
+		ServiceError(c, http.StatusForbidden, err.Error())
+	case service.ErrMemberNotFound:
+		ServiceError(c, http.StatusNotFound, err.Error())
+	case "mute duration cannot exceed 30 days":
+		ServiceError(c, http.StatusBadRequest, err.Error())
+	default:
+		Error(c, http.StatusInternalServerError, CodeInternalError, "internal error")
+	}
 }
 
 func (h *GroupHandler) SetMuteAll(c *gin.Context) {

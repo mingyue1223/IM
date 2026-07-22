@@ -358,6 +358,8 @@ func (r *RedisRepoImpl) RemoveGroupMemberRedis(ctx context.Context, groupID, use
 	}
 	pipe.HDel(ctx, fmt.Sprintf("unread:%d", userID), convID)
 	pipe.HDel(ctx, fmt.Sprintf("group_read_pos:%d", userID), convID)
+	pipe.HDel(ctx, fmt.Sprintf("group_member_info:%d", groupID), userIDStr)
+	pipe.HDel(ctx, fmt.Sprintf("group_member_role:%d", groupID), userIDStr)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("清理退群用户缓存: %w", err)
 	}
@@ -810,18 +812,34 @@ func (r *RedisRepoImpl) SetGroupMemberRole(ctx context.Context, groupID, userID 
 	return r.rdb.HSet(ctx, fmt.Sprintf("group_member_role:%d", groupID), strconv.FormatInt(userID, 10), role).Err()
 }
 
+func (r *RedisRepoImpl) SetGroupMemberRoles(ctx context.Context, groupID int64, roles map[int64]int) error {
+	if len(roles) == 0 {
+		return nil
+	}
+	values := make([]interface{}, 0, len(roles)*2)
+	for userID, role := range roles {
+		values = append(values, strconv.FormatInt(userID, 10), role)
+	}
+	return r.rdb.HSet(ctx, fmt.Sprintf("group_member_role:%d", groupID), values...).Err()
+}
+
 func (r *RedisRepoImpl) SetGroupMuteAll(ctx context.Context, groupID int64, muted bool, members []model.GroupMember) error {
-	pipe := r.rdb.Pipeline()
 	value := "0"
 	if muted {
 		value = "1"
 	}
-	pipe.Set(ctx, fmt.Sprintf("group_mute_all:%d", groupID), value, 0)
 	roleKey := fmt.Sprintf("group_member_role:%d", groupID)
-	for _, member := range members {
-		pipe.HSet(ctx, roleKey, strconv.FormatInt(member.UserID, 10), member.Role)
-	}
-	_, err := pipe.Exec(ctx)
+	_, err := r.rdb.TxPipelined(ctx, func(pipe goredis.Pipeliner) error {
+		pipe.Set(ctx, fmt.Sprintf("group_mute_all:%d", groupID), value, 0)
+		if len(members) > 0 {
+			roles := make([]interface{}, 0, len(members)*2)
+			for _, member := range members {
+				roles = append(roles, strconv.FormatInt(member.UserID, 10), member.Role)
+			}
+			pipe.HSet(ctx, roleKey, roles...)
+		}
+		return nil
+	})
 	return err
 }
 

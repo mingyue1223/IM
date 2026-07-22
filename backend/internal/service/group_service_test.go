@@ -294,10 +294,14 @@ type mockGroupRedisRepo struct {
 	userGroupsSets map[int64]map[string]bool
 	muteAll        map[int64]bool
 	memberRoles    map[int64]map[int64]int
+	memberMutes    map[int64]map[int64]*time.Time
 
 	// 错误覆盖项
 	addGroupMemberErr    error
 	removeGroupMemberErr error
+	memberMuteErr        error
+	muteAllErr           error
+	memberRoleErr        error
 }
 
 func newMockGroupRedisRepo() *mockGroupRedisRepo {
@@ -306,14 +310,25 @@ func newMockGroupRedisRepo() *mockGroupRedisRepo {
 		userGroupsSets:   make(map[int64]map[string]bool),
 		muteAll:          make(map[int64]bool),
 		memberRoles:      make(map[int64]map[int64]int),
+		memberMutes:      make(map[int64]map[int64]*time.Time),
 	}
 }
 
-func (r *mockGroupRedisRepo) SetGroupMemberMute(_ context.Context, _ int64, _ int64, _ *time.Time) error {
+func (r *mockGroupRedisRepo) SetGroupMemberMute(_ context.Context, groupID int64, userID int64, mutedUntil *time.Time) error {
+	if r.memberMuteErr != nil {
+		return r.memberMuteErr
+	}
+	if r.memberMutes[groupID] == nil {
+		r.memberMutes[groupID] = make(map[int64]*time.Time)
+	}
+	r.memberMutes[groupID][userID] = mutedUntil
 	return nil
 }
 
 func (r *mockGroupRedisRepo) SetGroupMemberRole(_ context.Context, groupID, userID int64, role int) error {
+	if r.memberRoleErr != nil {
+		return r.memberRoleErr
+	}
 	if r.memberRoles[groupID] == nil {
 		r.memberRoles[groupID] = make(map[int64]int)
 	}
@@ -321,7 +336,22 @@ func (r *mockGroupRedisRepo) SetGroupMemberRole(_ context.Context, groupID, user
 	return nil
 }
 
+func (r *mockGroupRedisRepo) SetGroupMemberRoles(ctx context.Context, groupID int64, roles map[int64]int) error {
+	if r.memberRoleErr != nil {
+		return r.memberRoleErr
+	}
+	for userID, role := range roles {
+		if err := r.SetGroupMemberRole(ctx, groupID, userID, role); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *mockGroupRedisRepo) SetGroupMuteAll(_ context.Context, groupID int64, muted bool, members []model.GroupMember) error {
+	if r.muteAllErr != nil {
+		return r.muteAllErr
+	}
 	r.muteAll[groupID] = muted
 	for _, member := range members {
 		_ = r.SetGroupMemberRole(context.Background(), groupID, member.UserID, member.Role)
@@ -929,10 +959,27 @@ func TestGroup_SetMemberMute(t *testing.T) {
 	err := svc.SetMemberMute(context.Background(), 1, groupID, 2, &until)
 	assert.NoError(t, err)
 	assert.NotNil(t, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].MutedUntil)
+	assert.Equal(t, &until, redisRepo.memberMutes[groupID][2])
 
 	err = svc.SetMemberMute(context.Background(), 1, groupID, 2, nil)
 	assert.NoError(t, err)
 	assert.Nil(t, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].MutedUntil)
+	assert.Nil(t, redisRepo.memberMutes[groupID][2])
+}
+
+func TestGroup_UnmuteRollsBackWhenRedisFails(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	_ = svc.AddMember(context.Background(), groupID, 1, 2)
+	until := time.Now().Add(10 * time.Minute)
+	assert.NoError(t, svc.SetMemberMute(context.Background(), 1, groupID, 2, &until))
+
+	redisRepo.memberMuteErr = fmt.Errorf("redis unavailable")
+	err := svc.SetMemberMute(context.Background(), 1, groupID, 2, nil)
+	assert.ErrorContains(t, err, "update group mute cache")
+	assert.Equal(t, &until, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].MutedUntil)
 }
 
 func TestGroup_AdminCannotMuteAdmin(t *testing.T) {
@@ -962,6 +1009,52 @@ func TestGroup_SetMuteAllAndTransferOwnership(t *testing.T) {
 	assert.Equal(t, model.RoleMember, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 1)].Role)
 	assert.Equal(t, model.RoleOwner, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].Role)
 	assert.Equal(t, model.RoleOwner, redisRepo.memberRoles[groupID][2])
+}
+
+func TestGroup_MuteAllRollsBackWhenRedisFails(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	assert.NoError(t, svc.SetGroupMuteAll(context.Background(), 1, groupID, true))
+
+	redisRepo.muteAllErr = fmt.Errorf("redis unavailable")
+	err := svc.SetGroupMuteAll(context.Background(), 1, groupID, false)
+	assert.ErrorContains(t, err, "update group mute-all cache")
+	assert.True(t, mysqlRepo.groupsByID[groupID].MuteAll)
+	assert.True(t, redisRepo.muteAll[groupID])
+}
+
+func TestGroup_RoleChangeRollsBackWhenRedisFails(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	_ = svc.AddMember(context.Background(), groupID, 1, 2)
+
+	redisRepo.memberRoleErr = fmt.Errorf("redis unavailable")
+	err := svc.UpdateMemberRole(context.Background(), groupID, 1, 2, model.RoleAdmin)
+	assert.ErrorContains(t, err, "update group member role cache")
+	assert.Equal(t, model.RoleMember, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].Role)
+	assert.Equal(t, model.RoleMember, redisRepo.memberRoles[groupID][2])
+}
+
+func TestGroup_TransferOwnershipRollsBackWhenRedisFails(t *testing.T) {
+	mysqlRepo := newMockGroupMySQLRepo()
+	redisRepo := newMockGroupRedisRepo()
+	svc := newTestGroupService(mysqlRepo, redisRepo)
+	groupID, _ := svc.CreateGroup(context.Background(), 1, "Group", "")
+	_ = svc.AddMember(context.Background(), groupID, 1, 2)
+	assert.NoError(t, svc.UpdateMemberRole(context.Background(), groupID, 1, 2, model.RoleAdmin))
+
+	redisRepo.memberRoleErr = fmt.Errorf("redis unavailable")
+	err := svc.TransferOwnership(context.Background(), groupID, 1, 2)
+	assert.ErrorContains(t, err, "update group owner role cache")
+	assert.Equal(t, int64(1), mysqlRepo.groupsByID[groupID].OwnerID)
+	assert.Equal(t, model.RoleOwner, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 1)].Role)
+	assert.Equal(t, model.RoleAdmin, mysqlRepo.membersByKey[fmt.Sprintf("%d:%d", groupID, 2)].Role)
+	assert.Equal(t, model.RoleOwner, redisRepo.memberRoles[groupID][1])
+	assert.Equal(t, model.RoleAdmin, redisRepo.memberRoles[groupID][2])
 }
 
 // ── 高并发点赞新增接口的 mock 桩 ──

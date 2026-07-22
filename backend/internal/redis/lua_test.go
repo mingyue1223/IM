@@ -241,6 +241,50 @@ func TestGroupMsgCheckMuteAllAllowsManagers(t *testing.T) {
 	assert.Equal(t, GMErrOK, adminResult.ErrCode)
 }
 
+func TestGroupMsgCheckUnmuteTransition(t *testing.T) {
+	rdb := setupTestRedis(t)
+	ctx := context.Background()
+	rdb.SAdd(ctx, "group_members:9", "1")
+	future := time.Now().Add(10 * time.Minute).UnixMilli()
+	mutedInfo, _ := json.Marshal(map[string]interface{}{"mutedUntil": future})
+	rdb.HSet(ctx, "group_member_info:9", "1", mutedInfo)
+	defer cleanupKeys(t, rdb, ctx, "group_members:9", "group_member_info:9", "group_seq:9", "msg_dedup:1:unmute-after")
+
+	mutedResult, err := ExecGroupMsgCheck(rdb, ctx, 9, 1, "unmute-before")
+	require.NoError(t, err)
+	assert.Equal(t, GMErrMuted, mutedResult.ErrCode)
+
+	unmutedInfo, _ := json.Marshal(map[string]interface{}{"mutedUntil": 0})
+	rdb.HSet(ctx, "group_member_info:9", "1", unmutedInfo)
+	unmutedResult, err := ExecGroupMsgCheck(rdb, ctx, 9, 1, "unmute-after")
+	require.NoError(t, err)
+	assert.Equal(t, GMErrOK, unmutedResult.ErrCode)
+}
+
+func TestGroupMsgCheckMuteAllAndRoleTransitions(t *testing.T) {
+	rdb := setupTestRedis(t)
+	ctx := context.Background()
+	rdb.SAdd(ctx, "group_members:10", "1")
+	rdb.Set(ctx, "group_mute_all:10", "1", 0)
+	rdb.HSet(ctx, "group_member_role:10", "1", 0)
+	defer cleanupKeys(t, rdb, ctx, "group_members:10", "group_mute_all:10", "group_member_role:10", "group_seq:10", "msg_dedup:1:mute-all-off", "msg_dedup:1:role-admin")
+
+	mutedResult, err := ExecGroupMsgCheck(rdb, ctx, 10, 1, "mute-all-on")
+	require.NoError(t, err)
+	assert.Equal(t, GMErrMuted, mutedResult.ErrCode)
+
+	rdb.Set(ctx, "group_mute_all:10", "0", 0)
+	unmutedResult, err := ExecGroupMsgCheck(rdb, ctx, 10, 1, "mute-all-off")
+	require.NoError(t, err)
+	assert.Equal(t, GMErrOK, unmutedResult.ErrCode)
+
+	rdb.Set(ctx, "group_mute_all:10", "1", 0)
+	rdb.HSet(ctx, "group_member_role:10", "1", 1)
+	adminResult, err := ExecGroupMsgCheck(rdb, ctx, 10, 1, "role-admin")
+	require.NoError(t, err)
+	assert.Equal(t, GMErrOK, adminResult.ErrCode)
+}
+
 // ========== 收件箱标记已读 ==========
 
 func TestInboxMarkRead(t *testing.T) {
